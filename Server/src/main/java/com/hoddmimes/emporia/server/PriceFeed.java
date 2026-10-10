@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Each connection only receives updates for instruments in markets its firm is
  * authorized for; the authorized markets are resolved when the client connects.
  * Clients are tracked by HTTP session so a logout can close the session's sockets.
+ * The latest update per instrument is kept and sent to a client when it connects.
  */
 public class PriceFeed {
 
@@ -20,14 +21,23 @@ public class PriceFeed {
     private final InstrumentCache mInstrumentCache;
     private record Client(String httpSessionId, Set<Integer> authorizedMarkets) {}
 
-    private final ConcurrentHashMap<WsContext, Client> mClients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<WsContext, Client>    mClients = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, PriceUpdate>    mLatest  = new ConcurrentHashMap<>();
 
     public PriceFeed(InstrumentCache pInstrumentCache) {
         mInstrumentCache = pInstrumentCache;
     }
 
-    public void addClient(WsContext pCtx, String pHttpSessionId, Set<Integer> pAuthorizedMarkets) {
+    // synchronized with publish() so a connecting client can't get an older snapshot after a newer update
+    public synchronized void addClient(WsContext pCtx, String pHttpSessionId, Set<Integer> pAuthorizedMarkets) {
         mClients.put(pCtx, new Client(pHttpSessionId, pAuthorizedMarkets));
+        // Bring the new client up to date
+        mLatest.values().forEach(tUpdate -> {
+            InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(tUpdate.instrumentId());
+            if (tInstrument != null && pAuthorizedMarkets.contains(tInstrument.marketId())) {
+                send(pCtx, tUpdate.toJson().toString());
+            }
+        });
     }
 
     public void removeClient(WsContext pCtx) {
@@ -50,12 +60,13 @@ public class PriceFeed {
     }
 
     /** Sends the update to every client authorized for the instrument's market. */
-    public void publish(PriceUpdate pUpdate) {
+    public synchronized void publish(PriceUpdate pUpdate) {
         InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(pUpdate.instrumentId());
         if (tInstrument == null) {
             cLog.warn("Price update for unknown instrument {} dropped", pUpdate.instrumentId());
             return;
         }
+        mLatest.put(pUpdate.instrumentId(), pUpdate);
         String tMessage = pUpdate.toJson().toString();
         mClients.forEach((tCtx, tClient) -> {
             if (tClient.authorizedMarkets().contains(tInstrument.marketId())) send(tCtx, tMessage);

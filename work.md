@@ -9,3 +9,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-10 Added InstrumentCache (from EmporiaX, without IPMC): markets and instruments are loaded at startup, kept in sync by the admin endpoints and used for trading reads, authorization checks and id allocation.
 * 26-10-10 Deleting a market that still has instruments is now refused (409), so a reused marketId can't inherit orphaned instruments.
 * 26-10-10 Added the /ws WebSocket for price updates (PriceFeed): session-authenticated, ping/pong, updates filtered by the firm's authorized markets. No price source exists yet.
+* 26-10-10 Migrated the EmporiaX matching engine (continuous and auction books, auction scheduler) into the server's me package, with REST order entry (/api/orders, /api/trades), book changes published on the /ws price feed and the first unit tests.

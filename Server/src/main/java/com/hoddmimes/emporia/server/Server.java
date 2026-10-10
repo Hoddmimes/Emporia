@@ -2,6 +2,8 @@ package com.hoddmimes.emporia.server;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hoddmimes.emporia.server.me.AuctionScheduler;
+import com.hoddmimes.emporia.server.me.MatchingEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -32,7 +34,11 @@ public class Server {
         InstrumentCache tInstrumentCache = new InstrumentCache();
         tInstrumentCache.load(mDatabase);
 
-        new RestApi(mDatabase, tInstrumentCache, mConfig).start();
+        PriceFeed      tPriceFeed      = new PriceFeed(tInstrumentCache);
+        MatchingEngine tMatchingEngine = new MatchingEngine(tInstrumentCache, tPriceFeed);
+        new AuctionScheduler(tMatchingEngine, tInstrumentCache).start();
+
+        new RestApi(mDatabase, tInstrumentCache, tPriceFeed, tMatchingEngine, mConfig).start();
     }
 
     private void parseArgs(String[] args) {

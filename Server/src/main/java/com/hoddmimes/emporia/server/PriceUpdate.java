@@ -4,26 +4,28 @@ import com.google.gson.JsonObject;
 
 /**
  * Price information for one instrument, pushed to trading clients over the /ws WebSocket.
- * Fields left null are omitted from the message; the client keeps its previous value for them.
+ * Each update is a full snapshot: a null field (e.g. an empty book side, or no trades yet)
+ * is sent as JSON null so the client clears its previous value.
+ * Prices and volumes are in display units (not scaled).
  */
 public record PriceUpdate(long instrumentId,
-                          Long bidVol, Double bidPx,
-                          Long askVol, Double askPx,
+                          Double bidVol, Double bidPx,
+                          Double askVol, Double askPx,
                           Double open, Double high, Double last,
-                          Long volume) {
+                          Double volume) {
 
     public JsonObject toJson() {
         JsonObject j = new JsonObject();
         j.addProperty("type",         "PriceUpdate");
         j.addProperty("instrumentId", instrumentId);
-        if (bidVol != null) j.addProperty("bidVol", bidVol);
-        if (bidPx  != null) j.addProperty("bidPx",  bidPx);
-        if (askVol != null) j.addProperty("askVol", askVol);
-        if (askPx  != null) j.addProperty("askPx",  askPx);
-        if (open   != null) j.addProperty("open",   open);
-        if (high   != null) j.addProperty("high",   high);
-        if (last   != null) j.addProperty("last",   last);
-        if (volume != null) j.addProperty("volume", volume);
+        j.addProperty("bidVol",       bidVol);
+        j.addProperty("bidPx",        bidPx);
+        j.addProperty("askVol",       askVol);
+        j.addProperty("askPx",        askPx);
+        j.addProperty("open",         open);
+        j.addProperty("high",         high);
+        j.addProperty("last",         last);
+        j.addProperty("volume",       volume);
         return j;
     }
 }

@@ -2,6 +2,7 @@ package com.hoddmimes.emporia.server;
 
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.endpoints.*;
+import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
 import io.javalin.http.UnauthorizedResponse;
@@ -32,7 +33,8 @@ public class RestApi {
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
 
-    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, JsonObject pConfiguration) {
+    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, PriceFeed pPriceFeed,
+                   MatchingEngine pMatchingEngine, JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
         int tSessionInactivitySeconds = 300;
@@ -43,7 +45,8 @@ public class RestApi {
             cLog.info("Session inactivity timeout: {} seconds", tSessionInactivitySeconds);
         }
 
-        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pConfiguration, tSessionInactivitySeconds);
+        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pPriceFeed, pMatchingEngine,
+                pConfiguration, tSessionInactivitySeconds);
     }
 
     public void start() {
@@ -116,11 +119,6 @@ public class RestApi {
         if (tHttpEnabled)  cLog.info("HTTP  listening on {}:{}", tInterface, tHttpPort);
     }
 
-    /** Where price sources publish updates for the trading clients on /ws. */
-    public PriceFeed priceFeed() {
-        return mCtx.priceFeed;
-    }
-
     // ── Auth filter ───────────────────────────────────────────────────────
 
     private void declareAuthFilter(Javalin pApp) {
@@ -148,6 +146,8 @@ public class RestApi {
             new MarketEndpoints(mCtx),
             new InstrumentEndpoints(mCtx),
             new PriceFeedEndpoint(mCtx),
+            new OrderEndpoints(mCtx),
+            new TradeEndpoints(mCtx),
             new AdminSessionEndpoint(mCtx),
             new AdminLoginEndpoint(mCtx),
             new AdminLogoutEndpoint(mCtx),
