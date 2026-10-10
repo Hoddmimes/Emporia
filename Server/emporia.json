@@ -1,0 +1,13 @@
+{
+  "sessionInactivityTime": "05:00",
+  "database": {
+    "host": "127.0.0.1",
+    "port": 27017,
+    "name": "emporia"
+  },
+  "http_interface": {
+    "root": "./WebContent",
+    "http_port": "8080",
+    "interface": "0.0.0.0"
+  }
+}

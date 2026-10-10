@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Instruments</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Instruments</h2>
+                <a href="/admin/create-instrument.html" class="btn btn-primary btn-sm">+ Create Instrument</a>
+            </div>
+
+            <div class="card" style="margin-bottom:16px; padding:16px 20px;">
+                <label for="market-select" style="font-weight:600; margin-right:12px;">Market</label>
+                <select id="market-select" onchange="loadInstruments()"
+                        style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);min-width:220px;">
+                    <option value="">— select a market —</option>
+                </select>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>ISIN</th>
+                            <th>Tick Size</th>
+                            <th>Lot Size</th>
+                            <th>Status</th>
+                            <th style="width:120px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="inst-body">
+                        <tr class="empty-row"><td colspan="7">Select a market to list instruments.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-instruments');
+        cdSession.guard('user-info');
+
+        const PRICE_FACTOR = 100000;
+
+        function fmtPrice(longVal) {
+            return (longVal / PRICE_FACTOR).toFixed(5).replace(/\.?0+$/, '');
+        }
+
+        function statusBadge(status) {
+            const cls = status === 'ACTIVE' ? 'badge-active' : 'badge-suspended';
+            return `<span class="badge ${cls}">${status}</span>`;
+        }
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        async function loadMarkets() {
+            try {
+                const response = await fetch('/api/admin/markets');
+                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
+                const markets = await response.json();
+                const select  = document.getElementById('market-select');
+                markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.name + (m.description ? ' — ' + m.description : '');
+                    select.appendChild(opt);
+                });
+                // Restore last selection from sessionStorage
+                const saved = sessionStorage.getItem('inst-market');
+                if (saved) { select.value = saved; loadInstruments(); }
+            } catch (e) { /* ignore */ }
+        }
+
+        async function loadInstruments() {
+            const marketId = document.getElementById('market-select').value;
+            const tbody    = document.getElementById('inst-body');
+            if (!marketId) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Select a market to list instruments.</td></tr>';
+                return;
+            }
+            sessionStorage.setItem('inst-market', marketId);
+            try {
+                const response = await fetch(`/api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
+                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
+                const instruments = await response.json();
+                if (instruments.length === 0) {
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No instruments in this market.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = instruments
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(i => `
+                        <tr>
+                            <td class="row-link" onclick="window.location='/admin/instrument.html?id=${i.mongoId}'">${escHtml(i.name)}</td>
+                            <td>${escHtml(i.instType)}</td>
+                            <td>${escHtml(i.isin)}</td>
+                            <td>${fmtPrice(i.tickSize)}</td>
+                            <td>${fmtPrice(i.lotSize)}</td>
+                            <td>${statusBadge(i.tradingStatus)}</td>
+                            <td style="text-align:right;">
+                                ${i.tradingStatus === 'ACTIVE'
+                                    ? `<button class="btn btn-outline btn-sm" onclick="setStatus('${i.mongoId}','SUSPENDED')">Suspend</button>`
+                                    : `<button class="btn btn-primary btn-sm"  onclick="setStatus('${i.mongoId}','ACTIVE')">Resume</button>`
+                                }
+                            </td>
+                        </tr>`
+                    ).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load instruments.</td></tr>';
+            }
+        }
+
+        async function setStatus(mongoId, status) {
+            try {
+                await fetch(`/api/admin/instruments/${mongoId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tradingStatus: status })
+                });
+                loadInstruments();
+            } catch (e) { /* ignore */ }
+        }
+
+        loadMarkets();
+    </script>
+</body>
+</html>

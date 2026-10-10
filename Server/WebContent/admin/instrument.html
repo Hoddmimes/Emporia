@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Instrument</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2 id="page-title">Instrument</h2>
+                <a href="/admin/instruments.html" class="btn btn-outline btn-sm">&larr; Back to Instruments</a>
+            </div>
+
+            <div id="error-banner" class="alert alert-error alert-hidden"></div>
+
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-header">
+                    <h3>Trading Status</h3>
+                </div>
+                <div style="display:flex;align-items:center;gap:16px;margin-top:8px;">
+                    <span id="status-badge"></span>
+                    <button id="suspend-btn"  class="btn btn-outline btn-sm" onclick="setStatus('SUSPENDED')" style="display:none;">Suspend Trading</button>
+                    <button id="resume-btn"   class="btn btn-primary btn-sm" onclick="setStatus('ACTIVE')"    style="display:none;">Resume Trading</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Instrument Details</h3>
+                    <button class="btn btn-danger btn-sm" onclick="showDeleteModal()">Delete</button>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">ID</span>
+                        <span class="detail-value" id="d-id"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Market</span>
+                        <span class="detail-value">
+                            <select id="d-marketId" class="field-input" style="max-width:240px;" onchange="checkChanged()">
+                                <option value="">— select market —</option>
+                            </select>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Type</span>
+                        <span class="detail-value">
+                            <select id="d-instType" class="field-input" style="max-width:180px;"
+                                    onchange="onTypeChange(); checkChanged();">
+                                <option value="COMMODITY">COMMODITY</option>
+                                <option value="EQUITY">EQUITY</option>
+                                <option value="OPTION">OPTION</option>
+                                <option value="FUTURE">FUTURE</option>
+                                <option value="OTC">OTC</option>
+                            </select>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">ISIN</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-isin" class="field-input" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Tick Size
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(decimal)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-tickSize" class="field-input" step="any" min="0" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Lot Size
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(decimal)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-lotSize" class="field-input" step="any" min="0" oninput="checkChanged()">
+                        </span>
+                    </div>
+
+                    <!-- OPTION + FUTURE -->
+                    <div class="detail-row" id="row-expirationDate">
+                        <span class="detail-label">Expiration Date</span>
+                        <span class="detail-value">
+                            <input type="date" id="d-expirationDate" class="field-input" onchange="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row" id="row-strikePrice">
+                        <span class="detail-label">Strike Price
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(decimal)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-strikePrice" class="field-input" step="any" min="0" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row" id="row-underlying">
+                        <span class="detail-label">Underlying</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-underlying" class="field-input" oninput="checkChanged()">
+                        </span>
+                    </div>
+
+                    <!-- OPTION only -->
+                    <div class="detail-row" id="row-optionType">
+                        <span class="detail-label">Option Type</span>
+                        <span class="detail-value">
+                            <select id="d-optionType" class="field-input" style="max-width:140px;" onchange="checkChanged()">
+                                <option value="">—</option>
+                                <option value="CALL">CALL</option>
+                                <option value="PUT">PUT</option>
+                            </select>
+                        </span>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                    <button id="save-btn" class="btn btn-primary" onclick="saveInstrument()" disabled>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete confirmation modal -->
+    <div id="delete-modal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <h3>Delete Instrument</h3>
+            <p>Are you sure you want to delete instrument <strong id="modal-inst-id"></strong>?
+               This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-danger"  onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-instruments');
+        cdSession.guard('user-info');
+
+        const PRICE_FACTOR = 100000;
+        const mongoId = new URLSearchParams(window.location.search).get('id');
+        let originalValues = {};
+
+        function showError(msg) {
+            const el = document.getElementById('error-banner');
+            el.textContent = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        function toDisplay(longVal) {
+            return (longVal / PRICE_FACTOR);
+        }
+
+        function toInternal(displayVal) {
+            const v = parseFloat(displayVal);
+            return isNaN(v) ? 0 : Math.round(v * PRICE_FACTOR);
+        }
+
+        function showRow(id, visible) {
+            document.getElementById(id).style.display = visible ? '' : 'none';
+        }
+
+        function onTypeChange() {
+            const type     = document.getElementById('d-instType').value;
+            const isOption = type === 'OPTION';
+            const isFuture = type === 'FUTURE';
+            showRow('row-expirationDate', isOption || isFuture);
+            showRow('row-strikePrice',    isOption || isFuture);
+            showRow('row-underlying',     isOption || isFuture);
+            showRow('row-optionType',     isOption);
+        }
+
+        function checkChanged() {
+            const changed =
+                document.getElementById('d-marketId').value       !== originalValues.marketId       ||
+                document.getElementById('d-instType').value       !== originalValues.instType        ||
+                document.getElementById('d-isin').value           !== originalValues.isin            ||
+                document.getElementById('d-tickSize').value       !== originalValues.tickSizeDisplay ||
+                document.getElementById('d-lotSize').value        !== originalValues.lotSizeDisplay  ||
+                document.getElementById('d-expirationDate').value !== originalValues.expirationDate  ||
+                document.getElementById('d-strikePrice').value    !== originalValues.strikePriceDisplay ||
+                document.getElementById('d-underlying').value     !== originalValues.underlying      ||
+                document.getElementById('d-optionType').value     !== originalValues.optionType;
+            document.getElementById('save-btn').disabled = !changed;
+        }
+
+        function updateStatusUI(status) {
+            const badge = document.getElementById('status-badge');
+            const cls   = status === 'ACTIVE' ? 'badge-active' : 'badge-suspended';
+            badge.innerHTML = `<span class="badge ${cls}">${status}</span>`;
+            document.getElementById('suspend-btn').style.display = status === 'ACTIVE'    ? '' : 'none';
+            document.getElementById('resume-btn').style.display  = status === 'SUSPENDED' ? '' : 'none';
+        }
+
+        async function loadMarkets(selectedMarketId) {
+            const response = await fetch('/api/admin/markets');
+            const markets  = await response.json();
+            const select   = document.getElementById('d-marketId');
+            markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = m.name + (m.description ? ' — ' + m.description : '');
+                if (m.id === selectedMarketId) opt.selected = true;
+                select.appendChild(opt);
+            });
+        }
+
+        async function loadInstrument() {
+            if (!mongoId) { window.location.href = '/admin/instruments.html'; return; }
+            try {
+                const response = await fetch(`/api/admin/instruments/${mongoId}`);
+                if (response.status === 404) { window.location.href = '/admin/instruments.html'; return; }
+                if (!response.ok) { showError('Failed to load instrument.'); return; }
+                const inst = await response.json();
+
+                document.getElementById('page-title').textContent  = inst.name;
+                document.getElementById('d-id').textContent        = inst.name;
+                document.getElementById('d-instType').value        = inst.instType       || 'COMMODITY';
+                document.getElementById('d-isin').value            = inst.isin           || '';
+
+                const tickDisplay   = String(toDisplay(inst.tickSize));
+                const lotDisplay    = String(toDisplay(inst.lotSize));
+                const strikeDisplay = String(toDisplay(inst.strikePrice));
+                document.getElementById('d-tickSize').value        = tickDisplay;
+                document.getElementById('d-lotSize').value         = lotDisplay;
+                document.getElementById('d-expirationDate').value  = inst.expirationDate || '';
+                document.getElementById('d-strikePrice').value     = strikeDisplay;
+                document.getElementById('d-underlying').value      = inst.underlying     || '';
+                document.getElementById('d-optionType').value      = inst.optionType     || '';
+
+                updateStatusUI(inst.tradingStatus || 'ACTIVE');
+                onTypeChange();
+                await loadMarkets(inst.marketId);
+
+                originalValues = {
+                    marketId:          inst.marketId       || '',
+                    instType:          inst.instType       || 'COMMODITY',
+                    isin:              inst.isin           || '',
+                    tickSizeDisplay:   tickDisplay,
+                    lotSizeDisplay:    lotDisplay,
+                    expirationDate:    inst.expirationDate || '',
+                    strikePriceDisplay:strikeDisplay,
+                    underlying:        inst.underlying     || '',
+                    optionType:        inst.optionType     || ''
+                };
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        async function saveInstrument() {
+            document.getElementById('error-banner').classList.add('alert-hidden');
+            const body = {
+                marketId:       document.getElementById('d-marketId').value,
+                instType:       document.getElementById('d-instType').value,
+                isin:           document.getElementById('d-isin').value.trim(),
+                tickSize:       toInternal(document.getElementById('d-tickSize').value),
+                lotSize:        toInternal(document.getElementById('d-lotSize').value),
+                expirationDate: document.getElementById('d-expirationDate').value,
+                strikePrice:    toInternal(document.getElementById('d-strikePrice').value),
+                underlying:     document.getElementById('d-underlying').value.trim(),
+                optionType:     document.getElementById('d-optionType').value
+            };
+            try {
+                const response = await fetch(`/api/admin/instruments/${mongoId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    showError(data.error || 'Failed to save changes.');
+                    return;
+                }
+                originalValues = {
+                    marketId:          body.marketId,
+                    instType:          body.instType,
+                    isin:              body.isin,
+                    tickSizeDisplay:   document.getElementById('d-tickSize').value,
+                    lotSizeDisplay:    document.getElementById('d-lotSize').value,
+                    expirationDate:    body.expirationDate,
+                    strikePriceDisplay:document.getElementById('d-strikePrice').value,
+                    underlying:        body.underlying,
+                    optionType:        body.optionType
+                };
+                const btn = document.getElementById('save-btn');
+                btn.disabled = true;
+                btn.textContent = 'Saved';
+                setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        async function setStatus(status) {
+            try {
+                const response = await fetch(`/api/admin/instruments/${mongoId}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tradingStatus: status })
+                });
+                if (!response.ok) { showError('Failed to update trading status.'); return; }
+                updateStatusUI(status);
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        function showDeleteModal() {
+            document.getElementById('modal-inst-id').textContent =
+                document.getElementById('d-id').textContent;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+        }
+
+        async function confirmDelete() {
+            closeDeleteModal();
+            try {
+                const response = await fetch(`/api/admin/instruments/${mongoId}`, { method: 'DELETE' });
+                if (!response.ok) { showError('Failed to delete instrument.'); return; }
+                window.location.href = '/admin/instruments.html';
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        loadInstrument();
+    </script>
+</body>
+</html>

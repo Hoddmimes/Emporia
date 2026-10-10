@@ -1,0 +1,23 @@
+// Common settings (Java 21 toolchain, JUnit 5) come from the root build.gradle.
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation 'io.javalin:javalin:6.3.0'
+    implementation 'io.javalin.community.ssl:ssl-plugin:6.3.0'
+    implementation 'org.mongodb:mongodb-driver-sync:5.1.0'
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.apache.logging.log4j:log4j-api:2.23.1'
+    runtimeOnly 'org.apache.logging.log4j:log4j-core:2.23.1'
+    runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl:2.23.1'
+}
+
+application {
+    mainClass = 'com.hoddmimes.emporia.server.Server'
+}
+
+run {
+    workingDir = projectDir
+    args = ['-config', 'emporia.json']
+}

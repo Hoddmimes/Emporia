@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Market View</title>
+    <link rel="stylesheet" href="/css/tr.css">
+</head>
+<body>
+    <header class="tr-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Trading Interface</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-outline btn-sm" onclick="trSession.logout()"
+                style="margin-left:14px;color:#fff;border-color:rgba(255,255,255,.4);">
+            Logout
+        </button>
+    </header>
+
+    <div class="mv-shell">
+        <nav class="mv-actions">
+            <button class="btn btn-primary btn-sm" onclick="onEnterOrder()">Enter Order</button>
+            <button class="btn btn-outline btn-sm" onclick="onMyOrders()">My Orders</button>
+            <button class="btn btn-outline btn-sm" onclick="onMyPortfolio()">My Portfolio</button>
+        </nav>
+
+        <aside class="mv-sidebar">
+            <h4>Markets</h4>
+            <ul id="mv-market-list" class="mv-market-list">
+                <li class="mv-market-desc" style="cursor:default;">Loading…</li>
+            </ul>
+        </aside>
+
+        <main class="mv-main">
+            <div class="mv-main-header">
+                <h2 id="mv-market-name">—</h2>
+                <span id="mv-market-meta" class="mv-market-meta"></span>
+                <span class="mv-wss-status">
+                    <span id="mv-wss-dot" class="mv-wss-dot disconnected"></span>
+                    <span id="mv-wss-label">Disconnected</span>
+                </span>
+            </div>
+            <div id="mv-price-container">
+                <div class="mv-empty">Select a market to view prices.</div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/tr-session.js"></script>
+    <script>
+        trSession.guard('user-info');
+
+        // ── State ─────────────────────────────────────────────────────────
+        let markets        = [];
+        let selectedMarket = null;
+        let instruments    = [];                 // current market instruments, sorted by name
+        const priceState   = new Map();          // instrumentId -> { bidVol, bidPx, askVol, askPx, open, high, last, volume }
+
+        // ── Cookie / login lookup ─────────────────────────────────────────
+        function getLoginInfo() {
+            const cookieName = "emporia=";
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const c = cookies[i].trim();
+                if (c.indexOf(cookieName) === 0) {
+                    const value = decodeURIComponent(c.substring(cookieName.length));
+                    const [firm, user, sessionId] = value.split('#');
+                    return { firm, user, sessionId };
+                }
+            }
+            return null;
+        }
+
+        // ── Markets sidebar ───────────────────────────────────────────────
+        async function loadMarkets() {
+            try {
+                const r = await fetch('/api/markets');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                markets = (data.markets || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                renderMarketList();
+                if (markets.length > 0) selectMarket(markets[0]);
+                else renderEmptyMain('No markets available.');
+            } catch (e) {
+                console.error('Failed to load markets', e);
+                renderEmptyMain('Failed to load markets.');
+            }
+        }
+
+        function renderMarketList() {
+            const ul = document.getElementById('mv-market-list');
+            ul.innerHTML = '';
+            if (markets.length === 0) {
+                ul.innerHTML = '<li class="mv-market-desc" style="cursor:default;">No markets.</li>';
+                return;
+            }
+            for (const m of markets) {
+                const li = document.createElement('li');
+                li.dataset.marketId = m.id;
+                if (selectedMarket && selectedMarket.id === m.id) li.classList.add('active');
+                li.innerHTML = '<span>' + escapeHtml(m.name) + '</span>'
+                             + '<span class="mv-market-desc">' + escapeHtml(m.description || m.type || '') + '</span>';
+                li.onclick = () => selectMarket(m);
+                ul.appendChild(li);
+            }
+        }
+
+        async function selectMarket(market) {
+            selectedMarket = market;
+            renderMarketList();
+            document.getElementById('mv-market-name').textContent = market.name;
+            document.getElementById('mv-market-meta').textContent =
+                (market.type || '') + (market.tradingStatus ? '  ·  ' + market.tradingStatus : '');
+            await loadInstruments(market.id);
+        }
+
+        // ── Instruments / price table ─────────────────────────────────────
+        async function loadInstruments(marketId) {
+            try {
+                const r = await fetch('/api/instruments?marketId=' + encodeURIComponent(marketId));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                instruments = (data.instruments || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                renderPriceTable();
+            } catch (e) {
+                console.error('Failed to load instruments', e);
+                renderEmptyMain('Failed to load instruments.');
+            }
+        }
+
+        function renderPriceTable() {
+            const container = document.getElementById('mv-price-container');
+            if (instruments.length === 0) {
+                container.innerHTML = '<div class="mv-empty">No instruments in this market.</div>';
+                return;
+            }
+            const rows = instruments.map(i => {
+                const p = priceState.get(i.id) || {};
+                return '<tr data-instrument-id="' + i.id + '">'
+                    + '<td class="mv-instr-name">' + escapeHtml(i.name) + '</td>'
+                    + '<td class="mv-bid">' + fmtSide(p.bidVol, p.bidPx) + '</td>'
+                    + '<td class="mv-ask">' + fmtSide(p.askVol, p.askPx) + '</td>'
+                    + '<td>' + fmtPx(p.open)   + '</td>'
+                    + '<td>' + fmtPx(p.high)   + '</td>'
+                    + '<td>' + fmtPx(p.last)   + '</td>'
+                    + '<td>' + fmtVol(p.volume) + '</td>'
+                    + '</tr>';
+            }).join('');
+            container.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Instrument</th>'
+                +     '<th>Bid</th>'
+                +     '<th>Ask</th>'
+                +     '<th>Open</th>'
+                +     '<th>High</th>'
+                +     '<th>Last</th>'
+                +     '<th>Volume</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                + '</table>';
+        }
+
+        function renderEmptyMain(msg) {
+            document.getElementById('mv-price-container').innerHTML =
+                '<div class="mv-empty">' + escapeHtml(msg) + '</div>';
+        }
+
+        // ── Formatters ────────────────────────────────────────────────────
+        function fmtPx(v)   { return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(2); }
+        function fmtVol(v)  { return (v == null || isNaN(v)) ? '—' : String(v); }
+        function fmtSide(vol, px) {
+            if (px == null || isNaN(px) || vol == null) return '—';
+            return vol + '@' + Number(px).toFixed(2);
+        }
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
+        // ── WS / WSS ──────────────────────────────────────────────────────
+        let wss          = null;
+        let wssHeartbeat = null;
+        const HEARTBEAT_MS = 25000;
+
+        function wssConnect() {
+            const proto = (window.location.protocol === 'https:') ? 'wss://' : 'ws://';
+            wss = new WebSocket(proto + window.location.host + '/ws');
+
+            wss.onopen = () => {
+                setWsStatus(true, 'Connected');
+                wssHeartbeat = setInterval(() => {
+                    if (wss && wss.readyState === WebSocket.OPEN) wss.send('ping');
+                }, HEARTBEAT_MS);
+
+                const login = getLoginInfo();
+                if (!login || !login.sessionId) {
+                    console.error('No emporia cookie / sessionId — server will drop the WS');
+                    return;
+                }
+                wss.send(JSON.stringify({ sessionId: login.sessionId }));
+            };
+
+            wss.onmessage = (evt) => {
+                if (evt.data === 'pong') return;
+                handleWsMessage(evt.data);
+            };
+
+            wss.onclose = (evt) => {
+                clearInterval(wssHeartbeat);
+                setWsStatus(false, 'Disconnected (' + evt.code + ') — retrying…');
+                setTimeout(wssConnect, 3000);
+            };
+
+            wss.onerror = () => {
+                clearInterval(wssHeartbeat);
+                setWsStatus(false, 'Connection error');
+            };
+        }
+
+        function handleWsMessage(raw) {
+            // Price-update bdx (shape TBD on the server). Expected:
+            //   { type: "PriceUpdate", instrumentId, bidVol, bidPx, askVol, askPx, open, high, last, volume }
+            // Unknown message types are ignored.
+            let msg;
+            try { msg = JSON.parse(raw); } catch (_) { return; }
+            if (!msg || msg.type !== 'PriceUpdate' || msg.instrumentId == null) return;
+
+            const prev = priceState.get(msg.instrumentId) || {};
+            const next = Object.assign({}, prev, msg);
+            priceState.set(msg.instrumentId, next);
+
+            if (selectedMarket && instruments.some(i => i.id === msg.instrumentId)) {
+                updateRow(msg.instrumentId, next);
+            }
+        }
+
+        function updateRow(instrumentId, p) {
+            const tr = document.querySelector('tr[data-instrument-id="' + instrumentId + '"]');
+            if (!tr) return;
+            const cells = tr.children;
+            cells[1].textContent = fmtSide(p.bidVol, p.bidPx);
+            cells[2].textContent = fmtSide(p.askVol, p.askPx);
+            cells[3].textContent = fmtPx(p.open);
+            cells[4].textContent = fmtPx(p.high);
+            cells[5].textContent = fmtPx(p.last);
+            cells[6].textContent = fmtVol(p.volume);
+        }
+
+        function setWsStatus(connected, label) {
+            document.getElementById('mv-wss-dot').className =
+                'mv-wss-dot ' + (connected ? 'connected' : 'disconnected');
+            document.getElementById('mv-wss-label').textContent = label;
+        }
+
+        // ── Top action buttons (placeholders) ─────────────────────────────
+        function onEnterOrder()   { console.log('Enter Order — TODO'); }
+        function onMyOrders()     { console.log('My Orders — TODO'); }
+        function onMyPortfolio()  { console.log('My Portfolio — TODO'); }
+
+        // ── Boot ──────────────────────────────────────────────────────────
+        loadMarkets();
+        wssConnect();
+    </script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Create User</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Create User</h2>
+                <a href="/admin/users.html" class="btn btn-outline btn-sm">&larr; Back to Users</a>
+            </div>
+
+            <div class="card" style="max-width:560px;">
+                <div id="error-msg" class="alert alert-error alert-hidden"></div>
+                <form id="create-form" onsubmit="createUser(event)">
+                    <div class="form-group">
+                        <label for="f-userId">ID <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-userId" placeholder="User ID" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-firm">Firm</label>
+                        <select id="f-firm" style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">— select firm —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-name">Name <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-name" placeholder="Full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-mail">Mail</label>
+                        <input type="email" id="f-mail" placeholder="Email address">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-phone">Phone</label>
+                        <input type="text" id="f-phone" placeholder="Phone number">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-password">Password</label>
+                        <input type="password" id="f-password" placeholder="Password (will be stored as SHA-512 hash)">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-status">Status</label>
+                        <select id="f-status" style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="INACTIVE" selected>INACTIVE</option>
+                            <option value="ACTIVE">ACTIVE</option>
+                            <option value="SUSPENDED">SUSPENDED</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button type="submit" class="btn btn-primary">Create User</button>
+                        <a href="/admin/users.html" class="btn btn-outline">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('create-user');
+        cdSession.guard('user-info');
+
+        async function loadFirms() {
+            try {
+                const response = await fetch('/api/admin/firms');
+                const firms = await response.json();
+                const select = document.getElementById('f-firm');
+                firms.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.name;
+                    opt.textContent = f.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) { /* firms list optional */ }
+        }
+
+        async function createUser(event) {
+            event.preventDefault();
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.classList.add('alert-hidden');
+
+            const body = {
+                userId: document.getElementById('f-userId').value.trim(),
+                firm:   document.getElementById('f-firm').value,
+                name:   document.getElementById('f-name').value.trim(),
+                mail:   document.getElementById('f-mail').value.trim(),
+                phone:    document.getElementById('f-phone').value.trim(),
+                password: document.getElementById('f-password').value,
+                status:   document.getElementById('f-status').value
+            };
+
+            try {
+                const response = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    errorMsg.textContent = data.error || 'Failed to create user.';
+                    errorMsg.classList.remove('alert-hidden');
+                    return;
+                }
+                window.location.href = `/admin/user.html?id=${data.mongoId}`;
+            } catch (e) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.classList.remove('alert-hidden');
+            }
+        }
+
+        loadFirms();
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('f-userId').focus();
+        });
+    </script>
+</body>
+</html>

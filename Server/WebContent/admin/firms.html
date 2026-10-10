@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Firms</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Firms</h2>
+                <a href="/admin/create-firm.html" class="btn btn-primary btn-sm">+ Create Firm</a>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="firms-body">
+                        <tr class="empty-row"><td colspan="2">Loading&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-firms');
+        cdSession.guard('user-info');
+
+        function statusBadge(status) {
+            const cls = { ACTIVE: 'badge-active', SUSPENDED: 'badge-suspended', INACTIVE: 'badge-inactive' }[status] || 'badge-inactive';
+            return `<span class="badge ${cls}">${status || ''}</span>`;
+        }
+
+        async function loadFirms() {
+            try {
+                const response = await fetch('/api/admin/firms');
+                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
+                const firms = await response.json();
+                const tbody = document.getElementById('firms-body');
+
+                if (firms.length === 0) {
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="2">No firms defined yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = firms.map(f =>
+                    `<tr class="row-link" onclick="window.location='/admin/firm.html?id=${f.id}'">
+                        <td>${escHtml(f.name)}</td>
+                        <td>${statusBadge(f.status)}</td>
+                    </tr>`
+                ).join('');
+            } catch (e) {
+                document.getElementById('firms-body').innerHTML =
+                    '<tr class="empty-row"><td colspan="2">Failed to load firms.</td></tr>';
+            }
+        }
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        loadFirms();
+    </script>
+</body>
+</html>

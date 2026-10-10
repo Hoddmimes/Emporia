@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Load Instruments</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+    <style>
+        .result-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .result-table th { background:var(--primary); color:#fff; padding:8px 12px; text-align:left; font-weight:600; }
+        .result-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+        .result-table tr:last-child td { border-bottom:none; }
+        .result-ok  { color:#2e7d32; font-weight:600; }
+        .result-err { color:var(--error); font-weight:600; }
+        .op-add    { color:var(--accent); font-weight:600; }
+        .op-delete { color:#e65100; font-weight:600; }
+        .summary   { font-size:14px; margin-bottom:12px; }
+        .summary span { font-weight:700; }
+        #drop-zone {
+            border: 2px dashed var(--border);
+            border-radius:6px;
+            padding:32px;
+            text-align:center;
+            color:var(--text-light);
+            cursor:pointer;
+            transition:border-color .2s, background .2s;
+        }
+        #drop-zone.drag-over, #drop-zone:hover { border-color:var(--accent); background:#f0f6ff; }
+        #drop-zone.has-file { border-color:#2e7d32; background:#f0fff4; color:#2e7d32; }
+    </style>
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Load Instruments</h2>
+                <a href="/admin/instruments.html" class="btn btn-outline btn-sm">&larr; Back to Instruments</a>
+            </div>
+
+            <!-- File picker -->
+            <div class="card" style="margin-bottom:16px;">
+                <div id="drop-zone" onclick="document.getElementById('file-input').click()"
+                     ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+                    <div id="drop-label">Drop a JSON file here, or click to browse</div>
+                </div>
+                <input type="file" id="file-input" accept=".json,application/json"
+                       style="display:none;" onchange="onFileSelected(event)">
+
+                <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
+                    <button id="process-btn" class="btn btn-primary" onclick="processFile()" disabled>
+                        Process File
+                    </button>
+                    <button class="btn btn-outline" onclick="clearAll()">Clear</button>
+                    <span id="file-name" style="font-size:13px; color:var(--text-light);"></span>
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <div id="preview-card" class="card" style="display:none; margin-bottom:16px;">
+                <div class="card-header" style="margin-bottom:8px;">
+                    <h3 style="margin:0;">File Preview</h3>
+                </div>
+                <div id="preview-summary" class="summary"></div>
+                <pre id="preview-text" style="font-size:12px;max-height:220px;overflow:auto;background:#f8f9fb;padding:12px;border-radius:4px;margin:0;"></pre>
+            </div>
+
+            <!-- Results -->
+            <div id="results-card" class="card" style="display:none; padding:0; overflow:hidden;">
+                <div style="padding:16px 20px 8px;">
+                    <div id="result-summary" class="summary"></div>
+                </div>
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th>Operation</th>
+                            <th>Instrument ID</th>
+                            <th>Result</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('load-instruments');
+        cdSession.guard('user-info');
+
+        let parsedJson = null;
+
+        // ── Drag-and-drop ────────────────────────────────────────────────
+
+        function onDragOver(e) {
+            e.preventDefault();
+            document.getElementById('drop-zone').classList.add('drag-over');
+        }
+
+        function onDragLeave(e) {
+            document.getElementById('drop-zone').classList.remove('drag-over');
+        }
+
+        function onDrop(e) {
+            e.preventDefault();
+            document.getElementById('drop-zone').classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) readFile(file);
+        }
+
+        function onFileSelected(e) {
+            const file = e.target.files[0];
+            if (file) readFile(file);
+        }
+
+        function readFile(file) {
+            const reader = new FileReader();
+            reader.onload = evt => {
+                try {
+                    parsedJson = JSON.parse(evt.target.result);
+                    showPreview(file.name, parsedJson);
+                } catch (err) {
+                    alert('Invalid JSON: ' + err.message);
+                    clearAll();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function showPreview(fileName, json) {
+            const addCount = (json.ADD    || []).length;
+            const delCount = (json.DELETE || []).length;
+
+            document.getElementById('drop-zone').classList.add('has-file');
+            document.getElementById('drop-label').textContent = fileName;
+            document.getElementById('file-name').textContent  = '';
+            document.getElementById('process-btn').disabled   = false;
+
+            document.getElementById('preview-summary').innerHTML =
+                `File contains <span>${addCount}</span> ADD and <span>${delCount}</span> DELETE entries.`;
+            document.getElementById('preview-text').textContent =
+                JSON.stringify(json, null, 2).slice(0, 3000) + (JSON.stringify(json).length > 3000 ? '\n…' : '');
+            document.getElementById('preview-card').style.display = '';
+            document.getElementById('results-card').style.display = 'none';
+        }
+
+        function clearAll() {
+            parsedJson = null;
+            document.getElementById('file-input').value      = '';
+            document.getElementById('drop-zone').className   = '';
+            document.getElementById('drop-label').textContent = 'Drop a JSON file here, or click to browse';
+            document.getElementById('file-name').textContent  = '';
+            document.getElementById('process-btn').disabled   = true;
+            document.getElementById('preview-card').style.display  = 'none';
+            document.getElementById('results-card').style.display  = 'none';
+        }
+
+        // ── Process ──────────────────────────────────────────────────────
+
+        async function processFile() {
+            if (!parsedJson) return;
+            const btn = document.getElementById('process-btn');
+            btn.disabled = true;
+            btn.textContent = 'Processing…';
+
+            try {
+                const response = await fetch('/api/admin/instruments/load', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(parsedJson)
+                });
+                const data = await response.json();
+                showResults(data.results || []);
+            } catch (e) {
+                alert('Connection error: ' + e.message);
+            } finally {
+                btn.disabled  = false;
+                btn.textContent = 'Process File';
+            }
+        }
+
+        function showResults(results) {
+            const okCount  = results.filter(r => r.status === 'OK').length;
+            const errCount = results.filter(r => r.status === 'ERROR').length;
+
+            document.getElementById('result-summary').innerHTML =
+                `Processed <span>${results.length}</span> operations: ` +
+                `<span style="color:#2e7d32">${okCount} OK</span>, ` +
+                `<span style="color:var(--error)">${errCount} ERROR</span>.`;
+
+            document.getElementById('results-body').innerHTML = results.map(r => {
+                const opCls  = r.operation === 'ADD' ? 'op-add' : 'op-delete';
+                const stCls  = r.status === 'OK'     ? 'result-ok' : 'result-err';
+                return `<tr>
+                    <td><span class="${opCls}">${escHtml(r.operation)}</span></td>
+                    <td>${escHtml(r.id)}</td>
+                    <td><span class="${stCls}">${r.status}</span></td>
+                    <td>${escHtml(r.message || '')}</td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('results-card').style.display = '';
+            document.getElementById('results-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+    </script>
+</body>
+</html>

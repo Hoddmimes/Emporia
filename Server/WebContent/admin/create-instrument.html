@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Create Instrument</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Create Instrument</h2>
+                <a href="/admin/instruments.html" class="btn btn-outline btn-sm">&larr; Back to Instruments</a>
+            </div>
+
+            <div class="card" style="max-width:640px;">
+                <div id="error-msg" class="alert alert-error alert-hidden"></div>
+                <form id="create-form" onsubmit="createInstrument(event)">
+
+                    <!-- Always-visible fields -->
+                    <div class="form-group">
+                        <label for="f-name">Name <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-name" placeholder="Instrument name (e.g. ERIC B)" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-marketId">Market <span style="color:var(--error)">*</span></label>
+                        <select id="f-marketId" required
+                                style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">— select market —</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-instType">Type <span style="color:var(--error)">*</span></label>
+                        <select id="f-instType" onchange="onTypeChange()" required
+                                style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">— select type —</option>
+                            <option value="COMMODITY">COMMODITY</option>
+                            <option value="EQUITY">EQUITY</option>
+                            <option value="OPTION">OPTION</option>
+                            <option value="FUTURE">FUTURE</option>
+                            <option value="OTC">OTC</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-isin">ISIN</label>
+                        <input type="text" id="f-isin" placeholder="e.g. SE0000000001">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-tickSize">Tick Size <span style="color:var(--error)">*</span>
+                            <small style="font-weight:normal;color:var(--text-light);">(decimal, e.g. 0.01)</small>
+                        </label>
+                        <input type="number" id="f-tickSize" placeholder="0.01" step="any" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-lotSize">Lot Size <span style="color:var(--error)">*</span>
+                            <small style="font-weight:normal;color:var(--text-light);">(decimal)</small>
+                        </label>
+                        <input type="number" id="f-lotSize" placeholder="1" step="any" min="0" required>
+                    </div>
+
+                    <!-- OPTION + FUTURE fields -->
+                    <div id="row-expirationDate" style="display:none;" class="form-group">
+                        <label for="f-expirationDate">Expiration Date <span style="color:var(--error)">*</span></label>
+                        <input type="date" id="f-expirationDate">
+                    </div>
+                    <div id="row-strikePrice" style="display:none;" class="form-group">
+                        <label for="f-strikePrice">Strike Price <span style="color:var(--error)">*</span>
+                            <small style="font-weight:normal;color:var(--text-light);">(decimal)</small>
+                        </label>
+                        <input type="number" id="f-strikePrice" placeholder="0.00" step="any" min="0">
+                    </div>
+                    <div id="row-underlying" style="display:none;" class="form-group">
+                        <label for="f-underlying">Underlying <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-underlying" placeholder="Underlying instrument ID">
+                    </div>
+
+                    <!-- OPTION only -->
+                    <div id="row-optionType" style="display:none;" class="form-group">
+                        <label for="f-optionType">Option Type <span style="color:var(--error)">*</span></label>
+                        <select id="f-optionType"
+                                style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">— select —</option>
+                            <option value="CALL">CALL</option>
+                            <option value="PUT">PUT</option>
+                        </select>
+                    </div>
+
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button type="submit" class="btn btn-primary">Create Instrument</button>
+                        <a href="/admin/instruments.html" class="btn btn-outline">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('create-instrument');
+        cdSession.guard('user-info');
+
+        const PRICE_FACTOR = 100000;
+
+        function toInternalPrice(decimalStr) {
+            const v = parseFloat(decimalStr);
+            return isNaN(v) ? 0 : Math.round(v * PRICE_FACTOR);
+        }
+
+        function showRow(id, visible) {
+            document.getElementById(id).style.display = visible ? '' : 'none';
+        }
+
+        function onTypeChange() {
+            const type     = document.getElementById('f-instType').value;
+            const isOption = type === 'OPTION';
+            const isFuture = type === 'FUTURE';
+            showRow('row-expirationDate', isOption || isFuture);
+            showRow('row-strikePrice',    isOption || isFuture);
+            showRow('row-underlying',     isOption || isFuture);
+            showRow('row-optionType',     isOption);
+        }
+
+        async function loadMarkets() {
+            try {
+                const response = await fetch('/api/admin/markets');
+                if (!response.ok) return;
+                const markets = await response.json();
+                const select  = document.getElementById('f-marketId');
+                markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.name + (m.description ? ' — ' + m.description : '');
+                    select.appendChild(opt);
+                });
+                // Pre-select from instruments page if remembered
+                const saved = sessionStorage.getItem('inst-market');
+                if (saved) select.value = saved;
+            } catch (e) { /* ignore */ }
+        }
+
+        async function createInstrument(event) {
+            event.preventDefault();
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.classList.add('alert-hidden');
+
+            const body = {
+                name:           document.getElementById('f-name').value.trim(),
+                marketId:       document.getElementById('f-marketId').value,
+                instType:       document.getElementById('f-instType').value,
+                isin:           document.getElementById('f-isin').value.trim(),
+                tickSize:       toInternalPrice(document.getElementById('f-tickSize').value),
+                lotSize:        toInternalPrice(document.getElementById('f-lotSize').value),
+                expirationDate: document.getElementById('f-expirationDate').value,
+                strikePrice:    toInternalPrice(document.getElementById('f-strikePrice').value),
+                underlying:     document.getElementById('f-underlying').value.trim(),
+                optionType:     document.getElementById('f-optionType').value
+            };
+
+            try {
+                const response = await fetch('/api/admin/instruments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    errorMsg.textContent = data.error || 'Failed to create instrument.';
+                    errorMsg.classList.remove('alert-hidden');
+                    return;
+                }
+                window.location.href = `/admin/instrument.html?id=${data.mongoId}`;
+            } catch (e) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.classList.remove('alert-hidden');
+            }
+        }
+
+        loadMarkets();
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('f-name').focus();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carthage TR &mdash; Dashboard</title>
+    <link rel="stylesheet" href="/css/tr.css">
+</head>
+<body>
+    <header class="tr-header">
+        <span class="logo">CARTHAGE</span>
+        <span class="subtitle">Trading Interface</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-outline btn-sm" onclick="trSession.logout()"
+                style="margin-left:14px;color:#fff;border-color:rgba(255,255,255,.4);">
+            Logout
+        </button>
+    </header>
+
+    <div class="tr-content">
+        <div class="page-title-row">
+            <h2>Dashboard</h2>
+        </div>
+
+        <div id="error-banner" class="alert alert-error alert-hidden"></div>
+
+        <div class="card">
+            <div class="card-header"><h3>Session Information</h3></div>
+            <div class="welcome-grid">
+                <div>
+                    <div class="info-item">
+                        <div class="info-label">User</div>
+                        <div class="info-value" id="info-user">&mdash;</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Firm</div>
+                        <div class="info-value" id="info-firm">&mdash;</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="info-item">
+                        <div class="info-label">Authorised Markets</div>
+                        <div id="info-markets" style="margin-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/tr-session.js"></script>
+    <script>
+        async function init() {
+            await trSession.guard('user-info');
+            const s = trSession._session;
+            if (!s) return;
+
+            document.getElementById('info-user').textContent = s.userId;
+            document.getElementById('info-firm').textContent = s.firm;
+
+            const marketsEl = document.getElementById('info-markets');
+            if (!s.markets || s.markets.length === 0) {
+                marketsEl.innerHTML = '<span class="market-chip-none">No markets authorised</span>';
+            } else {
+                marketsEl.innerHTML = s.markets
+                    .map(m => `<span class="market-chip">${m}</span>`)
+                    .join('');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

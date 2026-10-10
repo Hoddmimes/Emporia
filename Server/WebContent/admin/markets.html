@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Markets</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Markets</h2>
+                <a href="/admin/create-market.html" class="btn btn-primary btn-sm">+ Create Market</a>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Trading Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="markets-body">
+                        <tr class="empty-row"><td colspan="4">Loading&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-markets');
+        cdSession.guard('user-info');
+
+        async function loadMarkets() {
+            try {
+                const response = await fetch('/api/admin/markets');
+                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
+                const markets = await response.json();
+                const tbody = document.getElementById('markets-body');
+
+                if (markets.length === 0) {
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No markets defined yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = markets
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(m =>
+                        `<tr class="row-link" onclick="window.location='/admin/market.html?id=${m.mongoId}'">
+                            <td>${escHtml(m.name)}</td>
+                            <td>${escHtml(m.description)}</td>
+                            <td>${escHtml(m.type)}</td>
+                            <td>${tradingStatusBadge(m.tradingStatus)}</td>
+                        </tr>`
+                    ).join('');
+            } catch (e) {
+                document.getElementById('markets-body').innerHTML =
+                    '<tr class="empty-row"><td colspan="3">Failed to load markets.</td></tr>';
+            }
+        }
+
+        function tradingStatusBadge(status) {
+            const map = {
+                OPEN:      'badge-active',
+                CLOSED:    'badge-inactive',
+                SUSPENDED: 'badge-suspended',
+                PREOPEN:   'badge-warning'
+            };
+            return `<span class="badge ${map[status] || 'badge-inactive'}">${status || ''}</span>`;
+        }
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        loadMarkets();
+    </script>
+</body>
+</html>

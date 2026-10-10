@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Login</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-logo">
+                <h1>EMPORIA</h1>
+                <p>Common Data Administration</p>
+            </div>
+            <div id="error-msg" class="alert alert-error alert-hidden"></div>
+            <form id="login-form" onsubmit="doLogin(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username"
+                           value="admin" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password"
+                           autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const usernameEl = document.getElementById('username');
+            const passwordEl = document.getElementById('password');
+            (usernameEl.value ? passwordEl : usernameEl).focus();
+        });
+
+        async function doLogin(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.classList.add('alert-hidden');
+
+            try {
+                const response = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/admin/admin.html';
+                } else {
+                    errorMsg.textContent = data.message || 'Login failed';
+                    errorMsg.classList.remove('alert-hidden');
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            } catch (e) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.classList.remove('alert-hidden');
+            }
+        }
+    </script>
+</body>
+</html>

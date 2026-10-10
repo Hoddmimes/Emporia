@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Market</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2 id="page-title">Market</h2>
+                <a href="/admin/markets.html" class="btn btn-outline btn-sm">&larr; Back to Markets</a>
+            </div>
+
+            <div id="error-banner" class="alert alert-error alert-hidden"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Market Details</h3>
+                    <button class="btn btn-danger btn-sm" onclick="showDeleteModal()">Delete Market</button>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">ID</span>
+                        <span class="detail-value" id="d-id"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Description</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-description" class="field-input" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Type</span>
+                        <span class="detail-value">
+                            <select id="d-type" class="field-input" style="max-width:200px;"
+                                    onchange="onTypeChange(); checkChanged();">
+                                <option value="CONTINUOUS">CONTINUOUS</option>
+                                <option value="AUCTION">AUCTION</option>
+                                <option value="BULLETIN">BULLETIN</option>
+                            </select>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Trading Status</span>
+                        <span class="detail-value">
+                            <select id="d-tradingStatus" class="field-input" style="max-width:180px;" onchange="checkChanged()">
+                                <option value="CLOSED">CLOSED</option>
+                                <option value="OPEN">OPEN</option>
+                                <option value="PREOPEN">PREOPEN</option>
+                                <option value="SUSPENDED">SUSPENDED</option>
+                            </select>
+                        </span>
+                    </div>
+
+                    <!-- open / close — all types -->
+                    <div class="detail-row">
+                        <span class="detail-label">Open</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-open" class="field-input" placeholder="HH:MM" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Close</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-close" class="field-input" placeholder="HH:MM" oninput="checkChanged()">
+                        </span>
+                    </div>
+
+                    <!-- CONTINUOUS only -->
+                    <div class="detail-row" id="row-inverse">
+                        <span class="detail-label">Inverse</span>
+                        <span class="detail-value">
+                            <input type="checkbox" id="d-inverse" onchange="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row" id="row-preOpenTime">
+                        <span class="detail-label">Pre-Open Time</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-preOpenTime" class="field-input" placeholder="HH:MM" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row" id="row-openAuctionTime">
+                        <span class="detail-label">Open Auction Time</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-openAuctionTime" class="field-input" placeholder="HH:MM" oninput="checkChanged()">
+                        </span>
+                    </div>
+
+                    <!-- CONTINUOUS (optional) + AUCTION (required) -->
+                    <div class="detail-row" id="row-randomAuctionInterval">
+                        <span class="detail-label" id="lbl-randomAuctionInterval">Random Auction Interval</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-randomAuctionInterval" class="field-input" placeholder="seconds" oninput="checkChanged()">
+                        </span>
+                    </div>
+
+                    <!-- AUCTION only -->
+                    <div class="detail-row" id="row-auctionInterval">
+                        <span class="detail-label">Auction Interval</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-auctionInterval" class="field-input" placeholder="seconds" oninput="checkChanged()">
+                        </span>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                    <button id="save-btn" class="btn btn-primary" onclick="saveMarket()" disabled>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete confirmation modal -->
+    <div id="delete-modal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <h3>Delete Market</h3>
+            <p>Are you sure you want to delete market <strong id="modal-market-id"></strong>?
+               This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-markets');
+        cdSession.guard('user-info');
+
+        const mongoId = new URLSearchParams(window.location.search).get('id');
+        let originalValues = {};
+
+        function showError(msg) {
+            const el = document.getElementById('error-banner');
+            el.textContent = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        function showRow(id, visible) {
+            document.getElementById(id).style.display = visible ? '' : 'none';
+        }
+
+        function onTypeChange() {
+            const type = document.getElementById('d-type').value;
+            const isContinuous = type === 'CONTINUOUS';
+            const isAuction    = type === 'AUCTION';
+
+            showRow('row-inverse',               isContinuous);
+            showRow('row-preOpenTime',           isContinuous);
+            showRow('row-openAuctionTime',       isContinuous);
+            showRow('row-randomAuctionInterval', isContinuous || isAuction);
+            showRow('row-auctionInterval',       isAuction);
+
+            // randomAuctionInterval is mandatory for AUCTION, optional for CONTINUOUS
+            const lbl = document.getElementById('lbl-randomAuctionInterval');
+            lbl.innerHTML = 'Random Auction Interval' +
+                (isAuction ? ' <span style="color:var(--error)">*</span>' : '');
+        }
+
+        function checkChanged() {
+            const changed =
+                document.getElementById('d-description').value           !== originalValues.description        ||
+                document.getElementById('d-type').value                  !== originalValues.type               ||
+                document.getElementById('d-tradingStatus').value         !== originalValues.tradingStatus      ||
+                document.getElementById('d-open').value                  !== originalValues.open               ||
+                document.getElementById('d-close').value                 !== originalValues.close              ||
+                document.getElementById('d-inverse').checked             !== originalValues.inverse            ||
+                document.getElementById('d-preOpenTime').value           !== originalValues.preOpenTime        ||
+                document.getElementById('d-openAuctionTime').value       !== originalValues.openAuctionTime    ||
+                document.getElementById('d-auctionInterval').value       !== originalValues.auctionInterval    ||
+                document.getElementById('d-randomAuctionInterval').value !== originalValues.randomAuctionInterval;
+            document.getElementById('save-btn').disabled = !changed;
+        }
+
+        async function loadMarket() {
+            if (!mongoId) { window.location.href = '/admin/markets.html'; return; }
+            try {
+                const response = await fetch(`/api/admin/markets/${mongoId}`);
+                if (response.status === 404) { window.location.href = '/admin/markets.html'; return; }
+                if (!response.ok) { showError('Failed to load market.'); return; }
+                const m = await response.json();
+
+                document.getElementById('page-title').textContent     = m.name;
+                document.getElementById('d-id').textContent           = m.name;
+                document.getElementById('d-description').value        = m.description          || '';
+                document.getElementById('d-type').value               = m.type                 || 'CONTINUOUS';
+                document.getElementById('d-tradingStatus').value      = m.tradingStatus        || 'CLOSED';
+                document.getElementById('d-open').value               = m.open                 || '';
+                document.getElementById('d-close').value              = m.close                || '';
+                document.getElementById('d-inverse').checked          = !!m.inverse;
+                document.getElementById('d-preOpenTime').value        = m.preOpenTime          || '';
+                document.getElementById('d-openAuctionTime').value    = m.openAuctionTime      || '';
+                document.getElementById('d-auctionInterval').value    = m.auctionInterval      || '';
+                document.getElementById('d-randomAuctionInterval').value = m.randomAuctionInterval || '';
+
+                onTypeChange();
+
+                originalValues = {
+                    description:          m.description          || '',
+                    type:                 m.type                 || 'CONTINUOUS',
+                    tradingStatus:        m.tradingStatus        || 'CLOSED',
+                    open:                 m.open                 || '',
+                    close:                m.close                || '',
+                    inverse:              !!m.inverse,
+                    preOpenTime:          m.preOpenTime          || '',
+                    openAuctionTime:      m.openAuctionTime      || '',
+                    auctionInterval:      m.auctionInterval      || '',
+                    randomAuctionInterval:m.randomAuctionInterval || ''
+                };
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        async function saveMarket() {
+            document.getElementById('error-banner').classList.add('alert-hidden');
+            const body = {
+                description:          document.getElementById('d-description').value.trim(),
+                type:                 document.getElementById('d-type').value,
+                tradingStatus:        document.getElementById('d-tradingStatus').value,
+                open:                 document.getElementById('d-open').value.trim(),
+                close:                document.getElementById('d-close').value.trim(),
+                inverse:              document.getElementById('d-inverse').checked,
+                preOpenTime:          document.getElementById('d-preOpenTime').value.trim(),
+                openAuctionTime:      document.getElementById('d-openAuctionTime').value.trim(),
+                auctionInterval:      document.getElementById('d-auctionInterval').value.trim(),
+                randomAuctionInterval:document.getElementById('d-randomAuctionInterval').value.trim()
+            };
+            try {
+                const response = await fetch(`/api/admin/markets/${mongoId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) {
+                    const data = await response.json();
+                    showError(data.error || 'Failed to save changes.');
+                    return;
+                }
+                originalValues = {
+                    description:          body.description,
+                    type:                 body.type,
+                    tradingStatus:        body.tradingStatus,
+                    open:                 body.open,
+                    close:                body.close,
+                    inverse:              body.inverse,
+                    preOpenTime:          body.preOpenTime,
+                    openAuctionTime:      body.openAuctionTime,
+                    auctionInterval:      body.auctionInterval,
+                    randomAuctionInterval:body.randomAuctionInterval
+                };
+                const btn = document.getElementById('save-btn');
+                btn.disabled = true;
+                btn.textContent = 'Saved';
+                setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        function showDeleteModal() {
+            document.getElementById('modal-market-id').textContent =
+                document.getElementById('d-id').textContent;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+        }
+
+        async function confirmDelete() {
+            closeDeleteModal();
+            try {
+                const response = await fetch(`/api/admin/markets/${mongoId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    showError(data.error || 'Failed to delete market.');
+                    return;
+                }
+                window.location.href = '/admin/markets.html';
+            } catch (e) {
+                showError('Connection error.');
+            }
+        }
+
+        loadMarket();
+    </script>
+</body>
+</html>

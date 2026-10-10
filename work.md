@@ -1,0 +1,10 @@
+# Work
+This document outline what is being worked on and at the same time shows a timeline of the work being done.
+
+* 26-10-09 Established project and created a framework running the server. Add a claude init/principle document.
+* 26-10-09 Created the Server app: Javalin web server, configuration, trading-user and admin login/authorization and the user database layer, ported from EmporiaX.
+* 26-10-09 Added Server/WebContent with the trading client UI and the admin UI (under /admin) from EmporiaX; trading session now carries authorized markets.
+* 26-10-09 Ported the complete EmporiaX admin functionality to the Server: firms, users, markets, instruments (incl. bulk load) and authorizations.
+* 26-10-10 Added the trading endpoints /api/markets and /api/instruments, limited to the markets the user's firm is authorized for, so the trading market view loads markets and instruments.
+* 26-10-10 Added InstrumentCache (from EmporiaX, without IPMC): markets and instruments are loaded at startup, kept in sync by the admin endpoints and used for trading reads, authorization checks and id allocation.
+* 26-10-10 Deleting a market that still has instruments is now refused (409), so a reused marketId can't inherit orphaned instruments.

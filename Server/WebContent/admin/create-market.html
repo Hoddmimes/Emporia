@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Create Market</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Create Market</h2>
+                <a href="/admin/markets.html" class="btn btn-outline btn-sm">&larr; Back to Markets</a>
+            </div>
+
+            <div class="card" style="max-width:620px;">
+                <div id="error-msg" class="alert alert-error alert-hidden"></div>
+                <form id="create-form" onsubmit="createMarket(event)">
+
+                    <div class="form-group">
+                        <label for="f-name">Name <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-name" placeholder="Market name (e.g. XSTO)" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-description">Description</label>
+                        <input type="text" id="f-description" placeholder="Market description">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-type">Type <span style="color:var(--error)">*</span></label>
+                        <select id="f-type" onchange="onTypeChange()" style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">— select type —</option>
+                            <option value="CONTINUOUS">CONTINUOUS</option>
+                            <option value="AUCTION">AUCTION</option>
+                            <option value="BULLETIN">BULLETIN</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-tradingStatus">Trading Status</label>
+                        <select id="f-tradingStatus" style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="CLOSED" selected>CLOSED</option>
+                            <option value="OPEN">OPEN</option>
+                            <option value="PREOPEN">PREOPEN</option>
+                            <option value="SUSPENDED">SUSPENDED</option>
+                        </select>
+                    </div>
+
+                    <!-- open / close — all types -->
+                    <div class="form-group" id="row-open" style="display:none;">
+                        <label for="f-open">Open <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-open" placeholder="HH:MM">
+                    </div>
+                    <div class="form-group" id="row-close" style="display:none;">
+                        <label for="f-close">Close <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-close" placeholder="HH:MM">
+                    </div>
+
+                    <!-- CONTINUOUS only -->
+                    <div class="form-group" id="row-inverse" style="display:none;">
+                        <label for="f-inverse">Inverse</label>
+                        <input type="checkbox" id="f-inverse" style="width:auto;">
+                    </div>
+                    <div class="form-group" id="row-preOpenTime" style="display:none;">
+                        <label for="f-preOpenTime">Pre-Open Time</label>
+                        <input type="text" id="f-preOpenTime" placeholder="HH:MM">
+                    </div>
+                    <div class="form-group" id="row-openAuctionTime" style="display:none;">
+                        <label for="f-openAuctionTime">Open Auction Time</label>
+                        <input type="text" id="f-openAuctionTime" placeholder="HH:MM">
+                    </div>
+
+                    <!-- CONTINUOUS (optional) + AUCTION (required) -->
+                    <div class="form-group" id="row-randomAuctionInterval" style="display:none;">
+                        <label for="f-randomAuctionInterval" id="lbl-randomAuctionInterval">Random Auction Interval</label>
+                        <input type="text" id="f-randomAuctionInterval" placeholder="seconds">
+                    </div>
+
+                    <!-- AUCTION only -->
+                    <div class="form-group" id="row-auctionInterval" style="display:none;">
+                        <label for="f-auctionInterval">Auction Interval <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-auctionInterval" placeholder="seconds">
+                    </div>
+
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button type="submit" class="btn btn-primary">Create Market</button>
+                        <a href="/admin/markets.html" class="btn btn-outline">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('create-market');
+        cdSession.guard('user-info');
+
+        function showRow(id, visible) {
+            document.getElementById(id).style.display = visible ? '' : 'none';
+        }
+
+        function onTypeChange() {
+            const type = document.getElementById('f-type').value;
+            const isContinuous = type === 'CONTINUOUS';
+            const isAuction    = type === 'AUCTION';
+            const isBulletin   = type === 'BULLETIN';
+            const hasType      = isContinuous || isAuction || isBulletin;
+
+            showRow('row-open',                  hasType);
+            showRow('row-close',                 hasType);
+            showRow('row-inverse',               isContinuous);
+            showRow('row-preOpenTime',           isContinuous);
+            showRow('row-openAuctionTime',       isContinuous);
+            showRow('row-randomAuctionInterval', isContinuous || isAuction);
+            showRow('row-auctionInterval',       isAuction);
+
+            // randomAuctionInterval is mandatory for AUCTION, optional for CONTINUOUS
+            const lbl = document.getElementById('lbl-randomAuctionInterval');
+            lbl.innerHTML = 'Random Auction Interval' +
+                (isAuction ? ' <span style="color:var(--error)">*</span>' : '');
+        }
+
+        async function createMarket(event) {
+            event.preventDefault();
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.classList.add('alert-hidden');
+
+            const body = {
+                name:                 document.getElementById('f-name').value.trim(),
+                description:          document.getElementById('f-description').value.trim(),
+                type:                 document.getElementById('f-type').value,
+                tradingStatus:        document.getElementById('f-tradingStatus').value,
+                open:                 document.getElementById('f-open').value.trim(),
+                close:                document.getElementById('f-close').value.trim(),
+                inverse:              document.getElementById('f-inverse').checked,
+                preOpenTime:          document.getElementById('f-preOpenTime').value.trim(),
+                openAuctionTime:      document.getElementById('f-openAuctionTime').value.trim(),
+                auctionInterval:      document.getElementById('f-auctionInterval').value.trim(),
+                randomAuctionInterval:document.getElementById('f-randomAuctionInterval').value.trim()
+            };
+
+            try {
+                const response = await fetch('/api/admin/markets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    errorMsg.textContent = data.error || 'Failed to create market.';
+                    errorMsg.classList.remove('alert-hidden');
+                    return;
+                }
+                window.location.href = `/admin/market.html?id=${data.mongoId}`;
+            } catch (e) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.classList.remove('alert-hidden');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('f-name').focus();
+        });
+    </script>
+</body>
+</html>

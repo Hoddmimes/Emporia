@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Login</title>
+    <link rel="stylesheet" href="/css/tr.css">
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-logo">
+                <h1>EMPORIA</h1>
+                <p>Trading Interface</p>
+            </div>
+            <div id="error-msg" class="alert alert-error alert-hidden"></div>
+            <form id="login-form" onsubmit="doLogin(event)">
+                <div class="form-group">
+                    <label for="firm">Firm <span style="color:var(--error)">*</span></label>
+                    <input type="text" id="firm" name="firm"
+                           placeholder="Firm name" autocomplete="organization" required>
+                </div>
+                <div class="form-group">
+                    <label for="username">Username <span style="color:var(--error)">*</span></label>
+                    <input type="text" id="username" name="username"
+                           placeholder="User ID" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password <span style="color:var(--error)">*</span></label>
+                    <input type="password" id="password" name="password"
+                           placeholder="Password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" id="submit-btn" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('firm').focus();
+        });
+
+        async function doLogin(event) {
+            event.preventDefault();
+            const firm      = document.getElementById('firm').value.trim();
+            const userId    = document.getElementById('username').value.trim();
+            const password  = document.getElementById('password').value;
+            const errorMsg  = document.getElementById('error-msg');
+            const submitBtn = document.getElementById('submit-btn');
+
+            errorMsg.classList.add('alert-hidden');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Signing in…';
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ firm, userId, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/market-view.html';
+                } else {
+                    errorMsg.textContent = data.message || 'Login failed.';
+                    errorMsg.classList.remove('alert-hidden');
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            } catch (e) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.classList.remove('alert-hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
+            }
+        }
+    </script>
+</body>
+</html>
