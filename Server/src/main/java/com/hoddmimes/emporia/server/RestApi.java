@@ -6,6 +6,10 @@ import io.javalin.Javalin;
 import io.javalin.community.ssl.SslPlugin;
 import io.javalin.http.UnauthorizedResponse;
 import io.javalin.http.staticfiles.Location;
+import jakarta.servlet.http.HttpSessionEvent;
+import org.eclipse.jetty.server.session.DefaultSessionIdManager;
+import org.eclipse.jetty.server.session.HouseKeeper;
+import jakarta.servlet.http.HttpSessionListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,6 +25,9 @@ public class RestApi {
     // Paths reachable without being logged in
     private static final Set<String> PUBLIC_PATHS = Set.of(
             "/api/login", "/api/session", "/api/admin/login", "/api/admin/session");
+
+    // Upper bound on how often timed-out HTTP sessions are detected and removed
+    private static final int SESSION_SCAVENGE_SECONDS = 30;
 
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
@@ -72,6 +79,26 @@ public class RestApi {
         Javalin tApp = Javalin.create(config -> {
             config.showJavalinBanner = false;
             config.registerPlugin(tSslPlugin);
+            // Jetty only detects timed-out sessions when its housekeeper runs (default every 10 minutes);
+            // run it often so a timed-out session's WebSockets are closed soon after the timeout
+            config.jetty.modifyServer(server -> {
+                HouseKeeper tHouseKeeper = new HouseKeeper();
+                try {
+                    tHouseKeeper.setIntervalSec(Math.min(SESSION_SCAVENGE_SECONDS, mCtx.sessionInactivitySeconds));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                DefaultSessionIdManager tIdManager = new DefaultSessionIdManager(server);
+                tIdManager.setSessionHouseKeeper(tHouseKeeper);
+                server.setSessionIdManager(tIdManager);
+            });
+            // A session that times out (or is invalidated) takes its price-feed WebSockets with it
+            config.jetty.modifyServletContextHandler(handler -> handler.addEventListener(new HttpSessionListener() {
+                @Override
+                public void sessionDestroyed(HttpSessionEvent pEvent) {
+                    mCtx.priceFeed.closeClients(pEvent.getSession().getId(), "Session expired");
+                }
+            }));
             // Javalin refuses to start if an external static file directory is missing
             if (Files.isDirectory(Paths.get(tWebRoot))) {
                 config.staticFiles.add(tWebRoot, Location.EXTERNAL);
