@@ -8,3 +8,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-10 Added the trading endpoints /api/markets and /api/instruments, limited to the markets the user's firm is authorized for, so the trading market view loads markets and instruments.
 * 26-10-10 Added InstrumentCache (from EmporiaX, without IPMC): markets and instruments are loaded at startup, kept in sync by the admin endpoints and used for trading reads, authorization checks and id allocation.
 * 26-10-10 Deleting a market that still has instruments is now refused (409), so a reused marketId can't inherit orphaned instruments.
+* 26-10-10 Added the /ws WebSocket for price updates (PriceFeed): session-authenticated, ping/pong, updates filtered by the firm's authorized markets. No price source exists yet.

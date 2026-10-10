@@ -89,6 +89,11 @@ public class RestApi {
         if (tHttpEnabled)  cLog.info("HTTP  listening on {}:{}", tInterface, tHttpPort);
     }
 
+    /** Where price sources publish updates for the trading clients on /ws. */
+    public PriceFeed priceFeed() {
+        return mCtx.priceFeed;
+    }
+
     // ── Auth filter ───────────────────────────────────────────────────────
 
     private void declareAuthFilter(Javalin pApp) {
@@ -115,6 +120,7 @@ public class RestApi {
             new LogoutEndpoint(mCtx),
             new MarketEndpoints(mCtx),
             new InstrumentEndpoints(mCtx),
+            new PriceFeedEndpoint(mCtx),
             new AdminSessionEndpoint(mCtx),
             new AdminLoginEndpoint(mCtx),
             new AdminLogoutEndpoint(mCtx),

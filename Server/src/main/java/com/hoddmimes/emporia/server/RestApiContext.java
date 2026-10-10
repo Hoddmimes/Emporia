@@ -22,6 +22,7 @@ public class RestApiContext {
 
     public final Database        database;
     public final InstrumentCache instrumentCache;
+    public final PriceFeed       priceFeed;
     public final JsonObject      configuration;
     public final int             sessionInactivitySeconds;
 
@@ -31,6 +32,7 @@ public class RestApiContext {
                           int pSessionInactivitySeconds) {
         database                 = pDatabase;
         instrumentCache          = pInstrumentCache;
+        priceFeed                = new PriceFeed(pInstrumentCache);
         configuration            = pConfiguration;
         sessionInactivitySeconds = pSessionInactivitySeconds;
     }
