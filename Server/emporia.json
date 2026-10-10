@@ -7,7 +7,12 @@
   },
   "http_interface": {
     "root": "./WebContent",
+    "https_port": "8443",
     "http_port": "8080",
-    "interface": "0.0.0.0"
+    "interface": "0.0.0.0",
+    "ssl": {
+      "key": "./key.pem",
+      "cert": "./cert.pem"
+    }
   }
 }
