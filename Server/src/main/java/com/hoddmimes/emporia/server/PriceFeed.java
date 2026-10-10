@@ -11,24 +11,38 @@ import java.util.concurrent.ConcurrentHashMap;
  * Distributes price updates to the trading clients connected on the /ws WebSocket.
  * Each connection only receives updates for instruments in markets its firm is
  * authorized for; the authorized markets are resolved when the client connects.
+ * Clients are tracked by HTTP session so a logout can close the session's sockets.
  */
 public class PriceFeed {
 
     private static final Logger cLog = LogManager.getLogger(PriceFeed.class);
 
     private final InstrumentCache mInstrumentCache;
-    private final ConcurrentHashMap<WsContext, Set<Integer>> mClients = new ConcurrentHashMap<>();
+    private record Client(String httpSessionId, Set<Integer> authorizedMarkets) {}
+
+    private final ConcurrentHashMap<WsContext, Client> mClients = new ConcurrentHashMap<>();
 
     public PriceFeed(InstrumentCache pInstrumentCache) {
         mInstrumentCache = pInstrumentCache;
     }
 
-    public void addClient(WsContext pCtx, Set<Integer> pAuthorizedMarkets) {
-        mClients.put(pCtx, pAuthorizedMarkets);
+    public void addClient(WsContext pCtx, String pHttpSessionId, Set<Integer> pAuthorizedMarkets) {
+        mClients.put(pCtx, new Client(pHttpSessionId, pAuthorizedMarkets));
     }
 
     public void removeClient(WsContext pCtx) {
         mClients.remove(pCtx);
+    }
+
+    /** Closes all WebSocket connections opened from the given HTTP session. */
+    public void closeClients(String pHttpSessionId, String pReason) {
+        mClients.forEach((tCtx, tClient) -> {
+            if (tClient.httpSessionId().equals(pHttpSessionId)) {
+                mClients.remove(tCtx);
+                try { tCtx.closeSession(1000, pReason); }
+                catch (Exception e) { cLog.warn("Failed to close WebSocket {}: {}", tCtx.session.getRemoteAddress(), e.getMessage()); }
+            }
+        });
     }
 
     public int clientCount() {
@@ -43,8 +57,8 @@ public class PriceFeed {
             return;
         }
         String tMessage = pUpdate.toJson().toString();
-        mClients.forEach((tCtx, tMarkets) -> {
-            if (tMarkets.contains(tInstrument.marketId())) send(tCtx, tMessage);
+        mClients.forEach((tCtx, tClient) -> {
+            if (tClient.authorizedMarkets().contains(tInstrument.marketId())) send(tCtx, tMessage);
         });
     }
 

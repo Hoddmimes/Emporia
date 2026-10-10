@@ -4,6 +4,8 @@ import com.hoddmimes.emporia.server.PriceFeed;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
 import io.javalin.http.UnauthorizedResponse;
+import jakarta.servlet.http.HttpSession;
+import org.eclipse.jetty.websocket.server.JettyServerUpgradeRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -11,6 +13,7 @@ import org.apache.logging.log4j.Logger;
  * The /ws WebSocket on which trading clients receive price updates. The upgrade request
  * must belong to an HTTP session with a logged-in trading user (the same session cookie
  * as the REST calls). The client may send "ping" (answered with "pong"); other messages are ignored.
+ * Logging out closes the session's WebSockets (see LogoutEndpoint).
  */
 public class PriceFeedEndpoint implements RestEndpoint {
 
@@ -35,7 +38,9 @@ public class PriceFeedEndpoint implements RestEndpoint {
             ws.onConnect(ctx -> {
                 String tUser = ctx.sessionAttribute(RestApiContext.USER);
                 String tFirm = ctx.sessionAttribute(RestApiContext.FIRM);
-                mCtx.priceFeed.addClient(ctx, mCtx.authorizedMarkets(tFirm));
+                var tUpgradeReq = (JettyServerUpgradeRequest) ctx.session.getUpgradeRequest();
+                String tHttpSessionId = ((HttpSession) tUpgradeReq.getSession()).getId();
+                mCtx.priceFeed.addClient(ctx, tHttpSessionId, mCtx.authorizedMarkets(tFirm));
                 cLog.info("WebSocket connected: user '{}' firm '{}' ({} clients)", tUser, tFirm, mCtx.priceFeed.clientCount());
             });
             ws.onMessage(ctx -> {
