@@ -3,10 +3,14 @@ package com.hoddmimes.emporia.testclient;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.cert.X509Certificate;
@@ -45,11 +49,19 @@ public class TestClient {
             if ("-config".equals(args[i])) tConfigPath = args[i + 1];
         }
         if (tConfigPath == null) {
-            System.err.println("Usage: TestClient -config <file>");
-            System.exit(1);
+            tConfigPath = "./testclient.json";
         }
 
-        JsonObject tConfig = JsonParser.parseString(Files.readString(Path.of(tConfigPath))).getAsJsonObject();
+        JsonObject tConfig;
+        try {
+            tConfig = readConfig(tConfigPath);
+        } catch (Exception e) {
+            // Gson's message reads "... malformed JSON at line L column C path P <troubleshooting link>"
+            String tMsg = String.valueOf(e.getMessage()).replaceAll("(?s).*?(at line \\d+ column \\d+ path \\S+).*", "malformed JSON $1");
+            System.err.println("Invalid config file " + tConfigPath + ": " + tMsg);
+            System.exit(1);
+            return;
+        }
         String  tUrl     = tConfig.get("url").getAsString().replaceAll("/+$", "");
         boolean tVerbose = tConfig.has("verbose") && tConfig.get("verbose").getAsBoolean();
         SSLContext tSslContext = (tConfig.has("trustAllCertificates") && tConfig.get("trustAllCertificates").getAsBoolean())
@@ -70,7 +82,8 @@ public class TestClient {
         }
         for (Thread t : tThreads) t.join();
 
-        System.out.printf("%n%-28s %8s %8s %8s %10s%n", "Session", "Sent", "OK", "Failed", "Avg ms");
+        System.out.printf("%n%-28s %8s %8s %8s %10s %10s %10s %10s%n", "Session", "Sent", "OK", "Failed",
+                "Avg ms", "Median ms", "96% min", "96% max");
         boolean tAllOk = true;
         for (TestSession tSession : tSessions) {
             System.out.println(tSession.summary());
@@ -78,6 +91,19 @@ public class TestClient {
         }
         System.out.printf("Elapsed %.1f s%n", (System.currentTimeMillis() - tStart) / 1000.0);
         System.exit(tAllOk ? 0 : 2);
+    }
+
+    /**
+     * Parses the config as strict JSON, so mistakes such as a trailing comma are reported with
+     * their position instead of being read as null entries (Gson's default is lenient).
+     */
+    private static JsonObject readConfig(String pPath) throws Exception {
+        try (JsonReader tReader = new JsonReader(new StringReader(Files.readString(Path.of(pPath))))) {
+            tReader.setStrictness(Strictness.STRICT);
+            JsonObject tConfig = JsonParser.parseReader(tReader).getAsJsonObject();
+            if (tReader.peek() != JsonToken.END_DOCUMENT) throw new IllegalStateException("unexpected data after the JSON object");
+            return tConfig;
+        }
     }
 
     /** An SSL context that accepts any certificate; host name verification is disabled too. For testing only. */

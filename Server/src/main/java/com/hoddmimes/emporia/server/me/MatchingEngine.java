@@ -24,7 +24,7 @@ import java.util.Map;
  *
  * An order's account is the firm that owns it; a firm can only see, modify and delete its own orders.
  * Orders are only accepted (added or modified) while the market is OPEN or PREOPEN and the
- * instrument is ACTIVE; deleting an order is always allowed. In PREOPEN orders are only put in
+ * instrument is not SUSPENDED; deleting an order is always allowed. In PREOPEN orders are only put in
  * the book; when the market changes to OPEN its continuous books are uncrossed once at a single
  * clearing price, after which continuous matching applies.
  */
@@ -37,7 +37,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     public static final String MARKET_OPEN       = "OPEN";
     public static final String MARKET_PREOPEN    = "PREOPEN";
-    public static final String INSTRUMENT_ACTIVE = "ACTIVE";
+    public static final String INSTRUMENT_SUSPENDED = "SUSPENDED";
 
     private final InstrumentCache         mInstrumentCache;
     private final PriceFeed               mPriceFeed;
@@ -199,8 +199,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         if (!MARKET_OPEN.equals(tMarket.tradingStatus()) && !MARKET_PREOPEN.equals(tMarket.tradingStatus())) {
             return "Market " + tMarket.name() + " is " + tMarket.tradingStatus() + ", orders are only accepted when it is OPEN or PREOPEN";
         }
-        if (!INSTRUMENT_ACTIVE.equals(tInstrument.tradingStatus())) {
-            return "Instrument " + tInstrument.name() + " is " + tInstrument.tradingStatus() + ", orders are only accepted when it is ACTIVE";
+        if (INSTRUMENT_SUSPENDED.equals(tInstrument.tradingStatus())) {
+            return "Instrument " + tInstrument.name() + " is SUSPENDED, orders are not accepted";
         }
         return null;
     }

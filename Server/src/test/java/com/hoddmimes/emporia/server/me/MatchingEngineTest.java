@@ -178,6 +178,16 @@ class MatchingEngineTest {
     }
 
     @Test
+    void openMarketMatchesOrdersForAnyInstrumentStatusButSuspended() {
+        mCache.putInstrument(instrument(CONT, 1, "Wheat", "OPEN"));   // status used in EmporiaX instrument files
+        assertTrue(add(CONT, Order.Side.BUY, 10.00, 5, "A").inserted());
+        OrderResponse tSell = add(CONT, Order.Side.SELL, 10.00, 5, "B");
+        assertTrue(tSell.success(), tSell.message());
+        assertEquals(5 * S, tSell.matched());
+        assertEquals(1, mEngine.getTradesByFirm("A", 0).size());
+    }
+
+    @Test
     void preopenCollectsOrdersWithoutMatchingAndOpenUncrossesTheBook() {
         mCache.putMarket(market(1, "Cont", "CONTINUOUS", "PREOPEN"));
         OrderResponse tBuy  = add(CONT, Order.Side.BUY,  10.20, 5, "A");

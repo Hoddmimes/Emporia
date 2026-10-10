@@ -79,7 +79,9 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                     long   tLotSize        = Math.round((tInst.has("lotSize")     ? tInst.get("lotSize").getAsDouble()     : 0.0) * 100000);
                     String tIsin           = tInst.has("ISIN") ? tInst.get("ISIN").getAsString()
                                            : tInst.has("isin") ? tInst.get("isin").getAsString() : "";
-                    String tTradingStatus  = tInst.has("tradingStatus")  ? tInst.get("tradingStatus").getAsString()         : "ACTIVE";
+                    // Instruments are ACTIVE or SUSPENDED; other values (EmporiaX files use OPEN) load as ACTIVE
+                    String tTradingStatus  = tInst.has("tradingStatus") && "SUSPENDED".equals(tInst.get("tradingStatus").getAsString())
+                                           ? "SUSPENDED" : "ACTIVE";
                     String tExpirationDate = tInst.has("expirationDate") ? tInst.get("expirationDate").getAsString()        : "";
                     long   tStrikePrice    = Math.round((tInst.has("strikePrice") ? tInst.get("strikePrice").getAsDouble() : 0.0) * 100000);
                     String tUnderlying     = tInst.has("underlying")     ? tInst.get("underlying").getAsString()            : "";

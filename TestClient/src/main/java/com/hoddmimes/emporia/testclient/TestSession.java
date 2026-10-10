@@ -12,7 +12,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -39,7 +42,7 @@ public class TestSession implements Runnable {
     private int     mSent;
     private int     mOk;
     private int     mFailed;
-    private long    mTotalMs;
+    private final List<Double> mTxMs = new ArrayList<>();   // time of each transaction, ms
     private boolean mCompleted;
 
     public TestSession(int pIndex, JsonObject pConfig, String pUrl, SSLContext pSslContext, boolean pVerbose) {
@@ -60,9 +63,24 @@ public class TestSession implements Runnable {
     public int     failed()    { return mFailed; }
     public boolean completed() { return mCompleted; }
 
+    /**
+     * One summary line: counts, then the average and median transaction time and the 96% interval
+     * (2nd and 98th percentile, so 96% of the transactions took between "96% min" and "96% max").
+     */
     public String summary() {
-        return String.format("%-28s %8d %8d %8d %10.1f%s", name(), mSent, mOk, mFailed,
-                mSent > 0 ? (double) mTotalMs / mSent : 0.0, mCompleted ? "" : "   (aborted)");
+        List<Double> tSorted = new ArrayList<>(mTxMs);
+        Collections.sort(tSorted);
+        double tAvg = tSorted.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        return String.format("%-28s %8d %8d %8d %10.1f %10.1f %10.1f %10.1f%s", name(), mSent, mOk, mFailed,
+                tAvg, percentile(tSorted, 50), percentile(tSorted, 2), percentile(tSorted, 98),
+                mCompleted ? "" : "   (aborted)");
+    }
+
+    /** Nearest-rank percentile of sorted values; 0 if there are none. */
+    private static double percentile(List<Double> pSorted, double pPercent) {
+        if (pSorted.isEmpty()) return 0.0;
+        int tRank = (int) Math.ceil(pPercent / 100.0 * pSorted.size());
+        return pSorted.get(Math.max(tRank, 1) - 1);
     }
 
     @Override
@@ -183,9 +201,9 @@ public class TestSession implements Runnable {
 
     /** Runs a request that counts as a transaction. */
     private HttpResponse<String> timed(Call pCall) throws Exception {
-        long tStart = System.currentTimeMillis();
+        long tStart = System.nanoTime();
         HttpResponse<String> tRsp = pCall.call();
-        mTotalMs += System.currentTimeMillis() - tStart;
+        mTxMs.add((System.nanoTime() - tStart) / 1_000_000.0);
         mSent++;
         return tRsp;
     }
