@@ -17,6 +17,7 @@ public class Server {
 
     private JsonObject mConfig;
     private String     mConfigPath;
+    private boolean    mTestMode;
     private Database   mDatabase;
 
     public static void main(String[] args) throws Exception {
@@ -37,18 +38,23 @@ public class Server {
         PriceFeed      tPriceFeed      = new PriceFeed(tInstrumentCache);
         MatchingEngine tMatchingEngine = new MatchingEngine(tInstrumentCache, tPriceFeed);
         new AuctionScheduler(tMatchingEngine, tInstrumentCache).start();
+        new MarketStateScheduler(mDatabase, tInstrumentCache).start(mTestMode);
 
         new RestApi(mDatabase, tInstrumentCache, tPriceFeed, tMatchingEngine, mConfig).start();
     }
 
     private void parseArgs(String[] args) {
         mConfigPath = null;
+        String tMode = "normal";
         for (int i = 0; i < args.length - 1; i++) {
             if ("-config".equals(args[i])) { mConfigPath = args[i + 1]; }
+            if ("-mode".equals(args[i]))   { tMode       = args[i + 1]; }
         }
-        if (mConfigPath == null) {
-            throw new RuntimeException("Usage: Server -config <file>");
+        if (mConfigPath == null || !(tMode.equals("normal") || tMode.equals("test"))) {
+            throw new RuntimeException("Usage: Server -config <file> [-mode normal|test]");
         }
+        // test: all markets are opened at startup and the market hours are not applied
+        mTestMode = tMode.equals("test");
     }
 
     private JsonObject loadConfig(String pConfigPath) throws IOException {

@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReturnDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -268,8 +270,7 @@ public class Database {
                               String pPreOpenTime, String pOpenAuctionTime,
                               String pAuctionInterval, String pRandomAuctionInterval,
                               String pTradingStatus) {
-        Document tFields = new Document("name",                 pName        != null ? pName        : "")
-                .append("description",          pDescription != null ? pDescription : "")
+        Document tFields = new Document("description",          pDescription != null ? pDescription : "")
                 .append("type",                 pType        != null ? pType        : "")
                 .append("open",                 pOpen        != null ? pOpen        : "")
                 .append("close",                pClose       != null ? pClose       : "")
@@ -279,9 +280,19 @@ public class Database {
                 .append("auctionInterval",      pAuctionInterval     != null ? pAuctionInterval     : "")
                 .append("randomAuctionInterval",pRandomAuctionInterval != null ? pRandomAuctionInterval : "")
                 .append("tradingStatus",        pTradingStatus       != null ? pTradingStatus       : "CLOSED");
+        // The admin edit page does not send the name; an empty name keeps the stored one
+        if (pName != null && !pName.isEmpty()) tFields.append("name", pName);
         mDatabase.getCollection("Markets").updateOne(
                 new Document("_id", new ObjectId(pId)),
                 new Document("$set", tFields));
+    }
+
+    /** Sets a market's tradingStatus and returns the updated document (null if no such market). */
+    public Document setMarketStatus(int pMarketId, String pStatus) {
+        return mDatabase.getCollection("Markets").findOneAndUpdate(
+                new Document("marketId", pMarketId),
+                new Document("$set", new Document("tradingStatus", pStatus)),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER));
     }
 
     public void deleteMarket(String pId) {
@@ -357,7 +368,6 @@ public class Database {
                                   String pExpirationDate, long pStrikePrice,
                                   String pUnderlying, String pOptionType) {
         Document tFields = new Document("marketId",       pMarketId)
-                .append("name",          pName          != null ? pName          : "")
                 .append("instType",      pInstType      != null ? pInstType      : "")
                 .append("tickSize",      pTickSize)
                 .append("lotSize",       pLotSize)
@@ -366,6 +376,8 @@ public class Database {
                 .append("strikePrice",   pStrikePrice)
                 .append("underlying",    pUnderlying    != null ? pUnderlying    : "")
                 .append("optionType",    pOptionType    != null ? pOptionType    : "");
+        // The admin edit page does not send the name; an empty name keeps the stored one
+        if (pName != null && !pName.isEmpty()) tFields.append("name", pName);
         mDatabase.getCollection("Instruments").updateOne(
                 new Document("_id", new ObjectId(pId)),
                 new Document("$set", tFields));

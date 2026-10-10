@@ -10,3 +10,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-10 Deleting a market that still has instruments is now refused (409), so a reused marketId can't inherit orphaned instruments.
 * 26-10-10 Added the /ws WebSocket for price updates (PriceFeed): session-authenticated, ping/pong, updates filtered by the firm's authorized markets. No price source exists yet.
 * 26-10-10 Migrated the EmporiaX matching engine (continuous and auction books, auction scheduler) into the server's me package, with REST order entry (/api/orders, /api/trades), book changes published on the /ws price feed and the first unit tests.
+* 26-10-10 Added the MarketStateScheduler: market states follow the market hours (PREOPEN/OPEN/CLOSED) on weekdays and stay CLOSED on weekends; OPEN markets are closed at startup, while -mode test opens all non-suspended markets and disables the scheduler. Also fixed admin edits wiping market and instrument names.
