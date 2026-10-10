@@ -1,0 +1,20 @@
+{
+  "url": "http://localhost:8080",
+  "trustAllCertificates": false,
+  "verbose": false,
+  "sessions": [
+    {
+      "firm": "ThinAir",
+      "user": "Geek",
+      "password": "changeit",
+      "repeat": 10,
+      "txRate": 5,
+      "directives": [
+        { "type": "AddOrder", "ref": "bid", "instrument": "ABB", "side": "BUY", "price": 100.00, "quantity": 10 },
+        { "type": "AddOrder", "ref": "ask", "instrument": "ABB", "side": "SELL", "price": 101.00, "quantity": 10 },
+        { "type": "DeleteOrder", "ref": "bid" },
+        { "type": "DeleteOrder", "ref": "ask" }
+      ]
+    }
+  ]
+}

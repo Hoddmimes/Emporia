@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Emporia is a marketplace system for trading commodities. Its focus is simplicity and pragmatism, so prefer straightforward solutions over elaborate abstractions.
 
-The project is at an early stage. It is a multi-project Gradle build (group `com.hoddmimes`). The root project holds no code; it only aggregates the subprojects declared in `settings.gradle` (currently `Server`), which use the standard `src/main`/`src/test` layout.
+The project is at an early stage. It is a multi-project Gradle build (group `com.hoddmimes`). The root project holds no code; it only aggregates the subprojects declared in `settings.gradle` (currently `Server` and `TestClient`), which use the standard `src/main`/`src/test` layout.
 
 ## Server architecture
 
@@ -24,7 +24,11 @@ The project is at an early stage. It is a multi-project Gradle build (group `com
 
 - `MarketStateScheduler` drives each market's `tradingStatus` from its market hours (server local time): on weekdays PREOPEN at `preOpenTime` (if set), OPEN at `open`, CLOSED at `close`; on Saturdays and Sundays markets stay CLOSED (only the close transition applies). It checks once a second whether a transition time was passed, reading the hours from the cache, so edits and new markets apply without a restart and a manual change in the admin interface stands until the next scheduled time. It writes through `Database.setMarketStatus` and `InstrumentCache.putMarket`, so OPEN triggers the matching engine's opening uncross. SUSPENDED is manual and never changed by the scheduler, in any mode. At startup in normal mode every OPEN market is set to CLOSED and has to be opened manually in the admin interface; `-mode test` overrides the scheduler: every market that is not SUSPENDED is set to OPEN at startup and the market hours are not applied (no transitions). `openAuctionTime` is not used, and the `AuctionScheduler` is independent of it.
 
-Run it with `./gradlew :Server:run`, which uses `Server/` as working directory and `-config emporia.json` (for test mode: `./gradlew :Server:run --args="-config emporia.json -mode test"`); MongoDB must be running on the configured host. Logging is Log4j2 (`src/main/resources/log4j2.xml`), writing to the console and `server.log`.
+Run it with `./gradlew :Server:run`, which uses `Server/` as working directory and `-config emporia.json` (for test mode: `./gradlew :Server:run --args="-config emporia.json -mode test"`); MongoDB must be running on the configured host. Logging is Log4j2, writing to the console and `server.log`: `./gradlew :Server:run` and the IntelliJ `Server` run configuration pass `-Dlog4j2.configurationFile` pointing at `Server/log4j2.xml`; without it (e.g. tests) the built-in `src/main/resources/log4j2.xml` is used.
+
+## Test client
+
+`TestClient` (package `com.hoddmimes.emporia.testclient`) is a load/test program that uses only the REST API (Gson + `java.net.http`, no dependency on `Server`). It reads a JSON file (`-config <file>`, example `TestClient/testclient.json`) with `url`, optional `trustAllCertificates` (accept any HTTPS certificate, for the expired/self-signed ones) and `verbose`, and an array of `sessions`. Each session has `firm`, `user`, `password`, `repeat`, `txRate` (directives per second, 0 = unthrottled) and `directives`: `AddOrder` (`instrument` name or `instrumentId`, `side`, decimal `price`/`quantity` scaled by 100000 for the API, optional `ref`/`userRef`) and `DeleteOrder` (`ref` of an earlier AddOrder). Sessions run concurrently, each with its own HTTP session; a summary per session is printed and the exit code is 2 if anything failed. Run it with `./gradlew :TestClient:run` (uses `TestClient/testclient.json`) or `./gradlew :TestClient:installDist` and `TestClient/build/install/TestClient/bin/TestClient -config <file>`.
 
 ## Build and test
 

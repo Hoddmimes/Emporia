@@ -20,4 +20,6 @@ application {
 run {
     workingDir = projectDir
     args = ['-config', 'emporia.json']
+    // Same logging configuration as the IntelliJ run configuration
+    jvmArgs = ["-Dlog4j2.configurationFile=${file('log4j2.xml')}"]
 }

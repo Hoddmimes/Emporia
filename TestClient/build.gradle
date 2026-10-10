@@ -1,0 +1,17 @@
+// Common settings (Java 21 toolchain, JUnit 5) come from the root build.gradle.
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation 'com.google.code.gson:gson:2.11.0'
+}
+
+application {
+    mainClass = 'com.hoddmimes.emporia.testclient.TestClient'
+}
+
+run {
+    workingDir = projectDir
+    args = ['-config', 'testclient.json']
+}
