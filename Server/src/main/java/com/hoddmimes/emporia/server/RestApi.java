@@ -1,6 +1,8 @@
 package com.hoddmimes.emporia.server;
 
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.bdx.BdxEndpoint;
 import com.hoddmimes.emporia.server.endpoints.*;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
@@ -33,7 +35,7 @@ public class RestApi {
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
 
-    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, PriceFeed pPriceFeed,
+    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, BdxDistributor pBdx,
                    MatchingEngine pMatchingEngine, JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
@@ -45,7 +47,7 @@ public class RestApi {
             cLog.info("Session inactivity timeout: {} seconds", tSessionInactivitySeconds);
         }
 
-        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pPriceFeed, pMatchingEngine,
+        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pBdx, pMatchingEngine,
                 pConfiguration, tSessionInactivitySeconds);
     }
 
@@ -95,11 +97,11 @@ public class RestApi {
                 tIdManager.setSessionHouseKeeper(tHouseKeeper);
                 server.setSessionIdManager(tIdManager);
             });
-            // A session that times out (or is invalidated) takes its price-feed WebSockets with it
+            // A session that times out (or is invalidated) takes its bdx WebSockets with it
             config.jetty.modifyServletContextHandler(handler -> handler.addEventListener(new HttpSessionListener() {
                 @Override
                 public void sessionDestroyed(HttpSessionEvent pEvent) {
-                    mCtx.priceFeed.closeClients(pEvent.getSession().getId(), "Session expired");
+                    mCtx.bdx.closeClients(pEvent.getSession().getId(), "Session expired");
                 }
             }));
             // Javalin refuses to start if an external static file directory is missing
@@ -145,7 +147,7 @@ public class RestApi {
             new LogoutEndpoint(mCtx),
             new MarketEndpoints(mCtx),
             new InstrumentEndpoints(mCtx),
-            new PriceFeedEndpoint(mCtx),
+            new BdxEndpoint(mCtx),
             new OrderEndpoints(mCtx),
             new TradeEndpoints(mCtx),
             new AdminSessionEndpoint(mCtx),

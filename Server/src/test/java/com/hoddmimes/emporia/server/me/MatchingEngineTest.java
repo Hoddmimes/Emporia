@@ -3,7 +3,7 @@ package com.hoddmimes.emporia.server.me;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache;
-import com.hoddmimes.emporia.server.PriceFeed;
+import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class MatchingEngineTest {
         mCache.putMarket(market(2, "Auct", "AUCTION", "OPEN"));
         mCache.putInstrument(instrument(CONT, 1, "Wheat", "ACTIVE"));
         mCache.putInstrument(instrument(AUCTION, 2, "Corn", "ACTIVE"));
-        mEngine = new MatchingEngine(mCache, new PriceFeed(mCache));
+        mEngine = new MatchingEngine(mCache, new BdxDistributor(mCache));
     }
 
     private static Document market(int pMarketId, String pName, String pType, String pStatus) {
@@ -178,6 +178,31 @@ class MatchingEngineTest {
     }
 
     @Test
+    void ordersCanBeDeletedInEveryMarketStateExceptClosed() {
+        for (String tStatus : new String[] { "OPEN", "PREOPEN", "SUSPENDED", "CLOSED" }) {
+            mCache.putMarket(market(1, "Cont", "CONTINUOUS", "OPEN"));
+            String tOrderId = add(CONT, Order.Side.BUY, 10.00, 5, "A").orderId();
+            mCache.putMarket(market(1, "Cont", "CONTINUOUS", tStatus));
+
+            OrderResponse tRsp = mEngine.deleteOrder("A", tOrderId);
+            if ("CLOSED".equals(tStatus)) {
+                assertFalse(tRsp.success());
+                assertTrue(tRsp.message().contains("CLOSED"), tRsp.message());
+                assertEquals(1, orders("A").size());
+            } else {
+                assertTrue(tRsp.success(), tStatus + ": " + tRsp.message());
+                assertEquals(0, orders("A").size(), tStatus);
+            }
+        }
+
+        // Another firm's order is not found
+        mCache.putMarket(market(1, "Cont", "CONTINUOUS", "OPEN"));
+        String tOrderId = orders("A").get(0).getAsJsonObject().get("orderId").getAsString();
+        assertFalse(mEngine.deleteOrder("B", tOrderId).success());
+        assertTrue(mEngine.deleteOrder("A", tOrderId).success());
+    }
+
+    @Test
     void openMarketMatchesOrdersForAnyInstrumentStatusButSuspended() {
         mCache.putInstrument(instrument(CONT, 1, "Wheat", "OPEN"));   // status used in EmporiaX instrument files
         assertTrue(add(CONT, Order.Side.BUY, 10.00, 5, "A").inserted());
@@ -185,6 +210,79 @@ class MatchingEngineTest {
         assertTrue(tSell.success(), tSell.message());
         assertEquals(5 * S, tSell.matched());
         assertEquals(1, mEngine.getTradesByFirm("A", 0).size());
+    }
+
+    private OrderResponse addWithRef(Order.Side pSide, double pPrice, long pQty, String pUserRef) {
+        return mEngine.addOrder(new AddOrderRequest(CONT, pSide, Math.round(pPrice * S), pQty * S, "A", pUserRef));
+    }
+
+    private JsonObject onlyOrder(String pFirm) {
+        JsonArray tOrders = orders(pFirm);
+        assertEquals(1, tOrders.size());
+        return tOrders.get(0).getAsJsonObject();
+    }
+
+    @Test
+    void modifyInPlaceKeepsOrderIdAndKeepsOrReplacesUserRef() {
+        String tOrderId = addWithRef(Order.Side.BUY, 10.00, 5, "r1").orderId();
+
+        // Lower quantity without userRef: same order, userRef kept
+        OrderResponse tRsp = mEngine.modifyOrder("A", tOrderId, 0, 3 * S, null);
+        assertTrue(tRsp.success(), tRsp.message());
+        assertEquals(tOrderId, tRsp.orderId());
+        assertEquals("r1", tRsp.userRef());
+        assertEquals(3 * S, onlyOrder("A").get("quantity").getAsLong());
+        assertEquals("r1", onlyOrder("A").get("userRef").getAsString());
+
+        // Lower price with a new userRef: same order, userRef replaced
+        tRsp = mEngine.modifyOrder("A", tOrderId, Math.round(9.90 * S), 3 * S, "r2");
+        assertEquals(tOrderId, tRsp.orderId());
+        assertEquals("r2", tRsp.userRef());
+        assertEquals(Math.round(9.90 * S), onlyOrder("A").get("price").getAsLong());
+        assertEquals("r2", onlyOrder("A").get("userRef").getAsString());
+    }
+
+    @Test
+    void modifyThatReplacesTheOrderKeepsOrReplacesUserRef() {
+        String tOrderId = addWithRef(Order.Side.BUY, 10.00, 5, "r1").orderId();
+
+        // Higher quantity without userRef: new order, userRef kept
+        OrderResponse tRsp = mEngine.modifyOrder("A", tOrderId, 0, 8 * S, null);
+        assertTrue(tRsp.success(), tRsp.message());
+        assertNotEquals(tOrderId, tRsp.orderId());
+        assertEquals("r1", tRsp.userRef());
+        assertEquals(tRsp.orderId(), onlyOrder("A").get("orderId").getAsString());
+        assertEquals("r1", onlyOrder("A").get("userRef").getAsString());
+        assertFalse(mEngine.modifyOrder("A", tOrderId, 0, 1 * S, null).success());   // old id is gone
+
+        // Higher quantity with a new userRef: new order, userRef replaced
+        tRsp = mEngine.modifyOrder("A", tRsp.orderId(), 0, 9 * S, "r2");
+        assertEquals("r2", tRsp.userRef());
+        assertEquals("r2", onlyOrder("A").get("userRef").getAsString());
+    }
+
+    @Test
+    void modifyThatCrossesTheBookMatchesAndKeepsUserRef() {
+        add(CONT, Order.Side.SELL, 10.50, 5, "B");
+        String tOrderId = addWithRef(Order.Side.BUY, 10.00, 5, "r1").orderId();
+
+        OrderResponse tRsp = mEngine.modifyOrder("A", tOrderId, Math.round(10.50 * S), 5 * S, null);
+        assertTrue(tRsp.success(), tRsp.message());
+        assertEquals(5 * S, tRsp.matched());
+        assertEquals(0, orders("A").size());
+        JsonArray tTrades = mEngine.getTradesByFirm("A", 0);
+        assertEquals(1, tTrades.size());
+        assertEquals("r1", tTrades.get(0).getAsJsonObject().get("userRef").getAsString());
+    }
+
+    @Test
+    void modifyIsRejectedForAnotherFirmsOrderAndInvalidValues() {
+        String tOrderId = addWithRef(Order.Side.BUY, 10.00, 5, "r1").orderId();
+        assertFalse(mEngine.modifyOrder("B", tOrderId, 0, 3 * S, "x").success());
+        assertFalse(mEngine.modifyOrder("A", tOrderId, 0, 0, null).success());              // zero quantity
+        assertFalse(mEngine.modifyOrder("A", "nothex", 0, 3 * S, null).success());
+        assertEquals(5 * S, onlyOrder("A").get("quantity").getAsLong());
+        assertEquals("r1", onlyOrder("A").get("userRef").getAsString());
     }
 
     @Test

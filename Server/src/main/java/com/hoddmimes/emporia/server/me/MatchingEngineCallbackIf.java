@@ -9,7 +9,7 @@ public interface MatchingEngineCallbackIf {
     /** An order was fully removed from the book (deleted or fully matched). */
     void orderRemoved(Order pOrder, long pSeqNo);
 
-    /** An existing order was modified in place (clean modify). */
+    /** An existing order was changed in place: a clean modify, or a resting order partially filled. */
     void orderModified(Order pOrder, long pSeqNo);
 
     /** A trade was executed between two orders. */

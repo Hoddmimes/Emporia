@@ -21,7 +21,7 @@ public class LogoutEndpoint implements RestEndpoint {
             var tSession = ctx.req().getSession(false);
             if (tSession != null) {
                 cLog.info("User '{}' logged out", tSession.getAttribute(RestApiContext.USER));
-                mCtx.priceFeed.closeClients(tSession.getId(), "Logged out");
+                mCtx.bdx.closeClients(tSession.getId(), "Logged out");
                 RestApiContext.logout(tSession, RestApiContext.USER, RestApiContext.FIRM, RestApiContext.MARKETS);
             }
             ctx.json("{\"success\":true}");

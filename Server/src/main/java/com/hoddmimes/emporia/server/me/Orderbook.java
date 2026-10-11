@@ -207,7 +207,8 @@ public class Orderbook {
     /**
      * Modifies a resting order. A clean modify (quantity not increased and price not
      * worsened) keeps the order in place; otherwise the order is replaced by a new one,
-     * losing its time priority and possibly matching (pMatch as for addOrder). pPrice 0 keeps the current price.
+     * losing its time priority and possibly matching (pMatch as for addOrder). pPrice 0 keeps the
+     * current price and a null pUserRef keeps the current userRef, in both cases.
      */
     public OrderResponse modifyOrder(long pOrderId, long pPrice, long pQuantity, String pUserRef, boolean pMatch) {
         Order tExisting = getOrder(pOrderId);
@@ -215,7 +216,8 @@ public class Orderbook {
             return OrderResponse.error("Order not found: " + Long.toHexString(pOrderId));
         }
 
-        long tNewPrice = pPrice > 0 ? pPrice : tExisting.getPrice();
+        long   tNewPrice   = pPrice > 0 ? pPrice : tExisting.getPrice();
+        String tNewUserRef = pUserRef != null ? pUserRef : tExisting.getUserRef();   // kept unless a new one is given
         String tErr = validateOrder(tNewPrice, pQuantity);
         if (tErr != null) return OrderResponse.error(tErr);
 
@@ -223,6 +225,7 @@ public class Orderbook {
 
         if (tClean) {
             tExisting.setQuantity(pQuantity);
+            tExisting.setUserRef(tNewUserRef);
             if (tExisting.getPrice() != tNewPrice) {
                 tExisting.setPrice(tNewPrice);
                 reshuffleOrder(tExisting);
@@ -230,7 +233,7 @@ public class Orderbook {
             mCallback.orderModified(tExisting, ++mSeqNo);
             mCallback.orderbookChanged(mInstrumentId);
             return new OrderResponse(true, null, Long.toHexString(tExisting.getOrderId()),
-                    true, 0L, tExisting.getQuantity(), pUserRef);
+                    true, 0L, tExisting.getQuantity(), tExisting.getUserRef());
         }
 
         // Full modify: delete existing, add new
@@ -239,7 +242,7 @@ public class Orderbook {
         mCallback.orderbookChanged(mInstrumentId);
 
         return addOrder(new AddOrderRequest(mInstrumentId, tExisting.getSide(), tNewPrice, pQuantity,
-                tExisting.getAccount(), pUserRef), pMatch);
+                tExisting.getAccount(), tNewUserRef), pMatch);
     }
 
     // ── Delete order ──────────────────────────────────────────────────────
@@ -325,6 +328,8 @@ public class Orderbook {
                 if (tBookOrder.getQuantity() == 0) {
                     mCallback.orderRemoved(tBookOrder, ++mSeqNo);
                     tItr.remove();
+                } else {
+                    mCallback.orderModified(tBookOrder, ++mSeqNo);   // partially filled, rests with less quantity
                 }
             } else {
                 tEndOfMatch = true;

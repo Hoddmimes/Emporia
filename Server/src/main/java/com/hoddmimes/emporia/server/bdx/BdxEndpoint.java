@@ -1,7 +1,7 @@
-package com.hoddmimes.emporia.server.endpoints;
+package com.hoddmimes.emporia.server.bdx;
 
-import com.hoddmimes.emporia.server.PriceFeed;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.endpoints.RestEndpoint;
 import io.javalin.Javalin;
 import io.javalin.http.UnauthorizedResponse;
 import jakarta.servlet.http.HttpSession;
@@ -10,18 +10,18 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * The /ws WebSocket on which trading clients receive price updates. The upgrade request
- * must belong to an HTTP session with a logged-in trading user (the same session cookie
+ * The /ws WebSocket on which trading clients receive broadcast (bdx) messages. The upgrade
+ * request must belong to an HTTP session with a logged-in trading user (the same session cookie
  * as the REST calls). The client may send "ping" (answered with "pong"); other messages are ignored.
- * Logging out closes the session's WebSockets (see LogoutEndpoint).
+ * Logging out or the session timing out closes the session's WebSockets.
  */
-public class PriceFeedEndpoint implements RestEndpoint {
+public class BdxEndpoint implements RestEndpoint {
 
-    private static final Logger cLog = LogManager.getLogger(PriceFeedEndpoint.class);
+    private static final Logger cLog = LogManager.getLogger(BdxEndpoint.class);
 
     private final RestApiContext mCtx;
 
-    public PriceFeedEndpoint(RestApiContext ctx) {
+    public BdxEndpoint(RestApiContext ctx) {
         mCtx = ctx;
     }
 
@@ -40,17 +40,17 @@ public class PriceFeedEndpoint implements RestEndpoint {
                 String tFirm = ctx.sessionAttribute(RestApiContext.FIRM);
                 var tUpgradeReq = (JettyServerUpgradeRequest) ctx.session.getUpgradeRequest();
                 String tHttpSessionId = ((HttpSession) tUpgradeReq.getSession()).getId();
-                mCtx.priceFeed.addClient(ctx, tHttpSessionId, mCtx.authorizedMarkets(tFirm));
-                cLog.info("WebSocket connected: user '{}' firm '{}' ({} clients)", tUser, tFirm, mCtx.priceFeed.clientCount());
+                mCtx.bdx.addClient(ctx, tHttpSessionId, tFirm, mCtx.authorizedMarkets(tFirm));
+                cLog.info("WebSocket connected: user '{}' firm '{}' ({} clients)", tUser, tFirm, mCtx.bdx.clientCount());
             });
             ws.onMessage(ctx -> {
-                if ("ping".equals(ctx.message())) PriceFeed.send(ctx, "pong");
+                if ("ping".equals(ctx.message())) BdxDistributor.send(ctx, "pong");
             });
             ws.onClose(ctx -> {
-                mCtx.priceFeed.removeClient(ctx);
-                cLog.info("WebSocket closed ({} clients)", mCtx.priceFeed.clientCount());
+                mCtx.bdx.removeClient(ctx);
+                cLog.info("WebSocket closed ({} clients)", mCtx.bdx.clientCount());
             });
-            ws.onError(ctx -> mCtx.priceFeed.removeClient(ctx));
+            ws.onError(ctx -> mCtx.bdx.removeClient(ctx));
         });
     }
 }

@@ -15,3 +15,10 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-10 Fixed orders being rejected in OPEN markets: the engine required instruments to be ACTIVE, but instruments bulk loaded from EmporiaX files are stored as OPEN. Now only SUSPENDED instruments block orders, and the bulk load stores statuses other than SUSPENDED as ACTIVE.
 * 26-10-10 Added the server util package with Timestamp, which collects nanoTime timestamps at labelled measuring points and reports the execution times between them.
 * 26-10-10 Copied TXIDFactory from EmporiaX common into the server util package.
+* 26-10-11 Orders can no longer be deleted while their market is CLOSED; deleting is allowed in OPEN, PREOPEN and SUSPENDED.
+* 26-10-11 Fixed userRef on order modify: a PATCH without userRef keeps the order's userRef and one with userRef replaces it, both when the order is modified in place and when it is replaced; added modify tests.
+* 26-10-11 Added the bdx package: the /ws WebSocket now broadcasts PriceUpdate, MarketState, anonymous Trade and AddOrder/ModifyOrder/RemoveOrder events to the firms authorized for the market, and private OwnOrder/OwnTrade messages to the owning firm (EmporiaX's topic scheme, without IPMC). BdxDistributor replaces PriceFeed; partial fills of resting orders are now reported as order modifications.
+* 26-10-11 Added Database.saveTrade(InternalTrade), which stores a trade in the new Trades collection.
+* 26-10-11 Added Database.listTradesByDate("yyyy-MM-dd"), which returns the stored trades of a day ordered by trade time.
+* 26-10-11 Added Database.listTradesByFirm(firm, "yyyy-MM-dd" or null for all dates), returning the trades where the firm is buyer or seller.
+* 26-10-11 Added Database.deleteTradeByTradeNo(tradeNo), which deletes the stored trades with that trade number.

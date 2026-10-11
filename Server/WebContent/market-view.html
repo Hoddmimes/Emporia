@@ -221,9 +221,9 @@
         }
 
         function handleWsMessage(raw) {
-            // Price-update bdx (shape TBD on the server). Expected:
+            // Broadcast (bdx) messages: { type, topic, marketId, instrumentId, ... }. Only PriceUpdate is used here:
             //   { type: "PriceUpdate", instrumentId, bidVol, bidPx, askVol, askPx, open, high, last, volume }
-            // Unknown message types are ignored.
+            // Other types (MarketState, Trade, AddOrder/ModifyOrder/RemoveOrder, OwnOrder, OwnTrade) are ignored.
             let msg;
             try { msg = JSON.parse(raw); } catch (_) { return; }
             if (!msg || msg.type !== 'PriceUpdate' || msg.instrumentId == null) return;

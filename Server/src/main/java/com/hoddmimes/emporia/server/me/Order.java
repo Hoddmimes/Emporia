@@ -90,6 +90,7 @@ public class Order implements Comparable<Order> {
 
     public void setQuantity(long pQuantity) { mQuantity = pQuantity; }
     public void setPrice(long pPrice)       { mPrice = pPrice; }
+    public void setUserRef(String pUserRef) { mUserRef = pUserRef; }
     void        setOrderId(long pOrderId)   { mOrderId = pOrderId; }
 
     @Override

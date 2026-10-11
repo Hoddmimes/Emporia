@@ -2,6 +2,7 @@ package com.hoddmimes.emporia.server;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.http.Cookie;
 import jakarta.servlet.http.HttpSession;
@@ -23,20 +24,20 @@ public class RestApiContext {
 
     public final Database        database;
     public final InstrumentCache instrumentCache;
-    public final PriceFeed       priceFeed;
+    public final BdxDistributor  bdx;
     public final MatchingEngine  matchingEngine;
     public final JsonObject      configuration;
     public final int             sessionInactivitySeconds;
 
     public RestApiContext(Database pDatabase,
                           InstrumentCache pInstrumentCache,
-                          PriceFeed pPriceFeed,
+                          BdxDistributor pBdx,
                           MatchingEngine pMatchingEngine,
                           JsonObject pConfiguration,
                           int pSessionInactivitySeconds) {
         database                 = pDatabase;
         instrumentCache          = pInstrumentCache;
-        priceFeed                = pPriceFeed;
+        bdx                      = pBdx;
         matchingEngine           = pMatchingEngine;
         configuration            = pConfiguration;
         sessionInactivitySeconds = pSessionInactivitySeconds;

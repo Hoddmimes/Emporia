@@ -64,7 +64,8 @@ public class OrderEndpoints implements RestEndpoint {
                     tBody.get("quantity").getAsLong(), tUserRef));
         });
 
-        // Deleting is always allowed for the order's own firm, even if its market access was revoked
+        // Deleting is allowed for the order's own firm, even if its market access was revoked, in every
+        // market state except CLOSED (checked by the matching engine)
         app.delete("/api/orders/{orderId}", ctx -> {
             String tFirm    = firm(ctx);
             String tOrderId = ctx.pathParam("orderId");

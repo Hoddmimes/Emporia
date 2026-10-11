@@ -3,8 +3,8 @@ package com.hoddmimes.emporia.server.me;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache;
-import com.hoddmimes.emporia.server.PriceFeed;
-import com.hoddmimes.emporia.server.PriceUpdate;
+import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * Matching Engine — manages a set of orderbooks, one per instrument, created on first use.
  * Implements {@link MatchingEngineCallbackIf} to receive callbacks from the orderbooks and
- * publishes every orderbook change as a {@link PriceUpdate} on the price feed.
+ * broadcasts every orderbook change as bdx messages (see {@link BdxMessage}).
  *
  * Prices and quantities are longs scaled by {@link #SCALE}. Orders, books and trades are
  * held in memory only. The public methods are synchronized: requests arrive concurrently
@@ -24,9 +24,9 @@ import java.util.Map;
  *
  * An order's account is the firm that owns it; a firm can only see, modify and delete its own orders.
  * Orders are only accepted (added or modified) while the market is OPEN or PREOPEN and the
- * instrument is not SUSPENDED; deleting an order is always allowed. In PREOPEN orders are only put in
- * the book; when the market changes to OPEN its continuous books are uncrossed once at a single
- * clearing price, after which continuous matching applies.
+ * instrument is not SUSPENDED; deleting an order is allowed in every market state except CLOSED.
+ * In PREOPEN orders are only put in the book; when the market changes to OPEN its continuous
+ * books are uncrossed once at a single clearing price, after which continuous matching applies.
  */
 public class MatchingEngine implements MatchingEngineCallbackIf {
 
@@ -37,16 +37,17 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     public static final String MARKET_OPEN       = "OPEN";
     public static final String MARKET_PREOPEN    = "PREOPEN";
+    public static final String MARKET_CLOSED     = "CLOSED";
     public static final String INSTRUMENT_SUSPENDED = "SUSPENDED";
 
     private final InstrumentCache         mInstrumentCache;
-    private final PriceFeed               mPriceFeed;
+    private final BdxDistributor          mBdx;
     private final Map<Long, Orderbook>    mOrderbooks;
     private final List<InternalTrade>     mTrades;
 
-    public MatchingEngine(InstrumentCache pInstrumentCache, PriceFeed pPriceFeed) {
+    public MatchingEngine(InstrumentCache pInstrumentCache, BdxDistributor pBdx) {
         mInstrumentCache = pInstrumentCache;
-        mPriceFeed       = pPriceFeed;
+        mBdx             = pBdx;
         mOrderbooks      = new HashMap<>();
         mTrades          = new ArrayList<>();
 
@@ -72,7 +73,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()));
     }
 
-    /** Modifies one of the firm's resting orders; pPrice 0 keeps the current price. */
+    /** Modifies one of the firm's resting orders; pPrice 0 keeps the current price, a null pUserRef the current userRef. */
     public synchronized OrderResponse modifyOrder(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
         Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
         if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
@@ -85,6 +86,11 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     public synchronized OrderResponse deleteOrder(String pFirm, String pOrderId) {
         Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
         if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
+        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(tBook.getInstrumentId());
+        InstrumentCache.MarketEntry tMarket = (tInstrument != null) ? mInstrumentCache.getMarket(tInstrument.marketId()) : null;
+        if (tMarket != null && MARKET_CLOSED.equals(tMarket.tradingStatus())) {
+            return OrderResponse.error("Market " + tMarket.name() + " is CLOSED, orders can not be deleted");
+        }
         return tBook.deleteOrder(Long.parseUnsignedLong(pOrderId, 16));
     }
 
@@ -141,26 +147,41 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     // ── MatchingEngineCallbackIf ───────────────────────────────────────────
+    // Every book change is broadcast: an anonymous order book event (with the book's sequence
+    // number) to all clients authorized for the market, an OwnOrder/OwnTrade to the owning firm,
+    // and a PriceUpdate snapshot after each request.
 
     @Override
     public void orderAdded(Order pOrder, long pSeqNo) {
         cLog.debug("Order added: {}", pOrder);
+        publishOrder(BdxMessage.ADD_ORDER, "ADDED", pOrder, pSeqNo);
     }
 
     @Override
     public void orderRemoved(Order pOrder, long pSeqNo) {
         cLog.debug("Order removed: {}", pOrder);
+        publishOrder(BdxMessage.REMOVE_ORDER, "REMOVED", pOrder, pSeqNo);
     }
 
     @Override
     public void orderModified(Order pOrder, long pSeqNo) {
         cLog.debug("Order modified: {}", pOrder);
+        publishOrder(BdxMessage.MODIFY_ORDER, "MODIFIED", pOrder, pSeqNo);
     }
 
     @Override
     public void trade(InternalTrade pTrade) {
         mTrades.add(pTrade);
         cLog.info("{}", pTrade);
+
+        int tMarketId = marketIdOf(pTrade.getInstrumentId());
+        mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, tMarketId, pTrade.getInstrumentId())
+                .put("price",     unscale(pTrade.getPrice()))
+                .put("quantity",  unscale(pTrade.getQuantity()))
+                .put("tradeNo",   Long.toHexString(pTrade.getTradeNo()))
+                .put("tradeTime", pTrade.getTradeTime()));
+        publishOwnTrade(pTrade, tMarketId, Order.Side.BUY);
+        publishOwnTrade(pTrade, tMarketId, Order.Side.SELL);
     }
 
     @Override
@@ -177,15 +198,51 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         Order tBestSell = tBook.getSellSide().peek();
         boolean tTraded = tBook.getTradedVolume() > 0;
 
-        mPriceFeed.publish(new PriceUpdate(pInstrumentId,
-                tBestBuy  != null ? unscale(tBook.getBestPriceVolume(Order.Side.BUY))  : null,
-                tBestBuy  != null ? unscale(tBestBuy.getPrice())                        : null,
-                tBestSell != null ? unscale(tBook.getBestPriceVolume(Order.Side.SELL)) : null,
-                tBestSell != null ? unscale(tBestSell.getPrice())                       : null,
-                tTraded ? unscale(tBook.getOpenPrice())      : null,
-                tTraded ? unscale(tBook.getHighPrice())      : null,
-                tTraded ? unscale(tBook.getLastTradePrice()) : null,
-                unscale(tBook.getTradedVolume())));
+        // A full snapshot: null (empty book side, no trades yet) clears the client's value
+        mBdx.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, marketIdOf(pInstrumentId), pInstrumentId)
+                .put("bidVol", tBestBuy  != null ? unscale(tBook.getBestPriceVolume(Order.Side.BUY))  : null)
+                .put("bidPx",  tBestBuy  != null ? unscale(tBestBuy.getPrice())                        : null)
+                .put("askVol", tBestSell != null ? unscale(tBook.getBestPriceVolume(Order.Side.SELL)) : null)
+                .put("askPx",  tBestSell != null ? unscale(tBestSell.getPrice())                       : null)
+                .put("open",   tTraded ? unscale(tBook.getOpenPrice())      : null)
+                .put("high",   tTraded ? unscale(tBook.getHighPrice())      : null)
+                .put("last",   tTraded ? unscale(tBook.getLastTradePrice()) : null)
+                .put("volume", unscale(tBook.getTradedVolume())));
+    }
+
+    /** The public order book event and the private OwnOrder to the order's firm. */
+    private void publishOrder(String pType, String pEvent, Order pOrder, long pSeqNo) {
+        int tMarketId = marketIdOf(pOrder.getInstrumentId());
+        mBdx.publish(orderMessage(BdxMessage.instrument(pType, tMarketId, pOrder.getInstrumentId()), pOrder, pSeqNo));
+        mBdx.publish(orderMessage(BdxMessage.forFirm(BdxMessage.OWN_ORDER, tMarketId, pOrder.getInstrumentId(), pOrder.getAccount()), pOrder, pSeqNo)
+                .put("event",   pEvent)
+                .put("userRef", pOrder.getUserRef()));
+    }
+
+    private static BdxMessage orderMessage(BdxMessage pMessage, Order pOrder, long pSeqNo) {
+        return pMessage.put("seqNo",    pSeqNo)
+                       .put("orderId",  Long.toHexString(pOrder.getOrderId()))
+                       .put("side",     pOrder.getSide().name())
+                       .put("price",    unscale(pOrder.getPrice()))
+                       .put("quantity", unscale(pOrder.getQuantity()));   // remaining; 0 when removed fully filled
+    }
+
+    /** The private OwnTrade for one side of a trade, to the firm of that side's order. */
+    private void publishOwnTrade(InternalTrade pTrade, int pMarketId, Order.Side pSide) {
+        Order tOrder = (pSide == Order.Side.BUY) ? pTrade.getBuyOrder() : pTrade.getSellOrder();
+        mBdx.publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, pMarketId, pTrade.getInstrumentId(), tOrder.getAccount())
+                .put("side",      pSide.name())
+                .put("price",     unscale(pTrade.getPrice()))
+                .put("quantity",  unscale(pTrade.getQuantity()))
+                .put("tradeNo",   Long.toHexString(pTrade.getTradeNo()))
+                .put("tradeTime", pTrade.getTradeTime())
+                .put("orderId",   Long.toHexString(tOrder.getOrderId()))
+                .put("userRef",   tOrder.getUserRef()));
+    }
+
+    private int marketIdOf(long pInstrumentId) {
+        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(pInstrumentId);
+        return (tInstrument != null) ? tInstrument.marketId() : (int) (pInstrumentId >>> 32);
     }
 
     // ── Internals ──────────────────────────────────────────────────────────

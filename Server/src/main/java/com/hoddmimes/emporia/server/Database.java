@@ -6,6 +6,8 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.hoddmimes.emporia.server.me.InternalTrade;
+import com.hoddmimes.emporia.server.me.Order;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -15,6 +17,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -22,6 +29,10 @@ import java.util.List;
 public class Database {
 
     private static final Logger cLog = LogManager.getLogger(Database.class);
+
+    /** Format of the trade time stored in Trades (server local time). */
+    private static final DateTimeFormatter TRADE_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
     private MongoClient mMongoClient;
     private MongoDatabase mDatabase;
@@ -148,18 +159,6 @@ public class Database {
                 new Document("_id", new ObjectId(pId)));
     }
 
-    public JsonObject firmToJson(Document pDoc) {
-        JsonObject tJson = new JsonObject();
-        tJson.addProperty("id",      pDoc.getObjectId("_id").toHexString());
-        tJson.addProperty("name",    str(pDoc, "name"));
-        tJson.addProperty("status",  str(pDoc, "status"));
-        tJson.addProperty("address", str(pDoc, "address"));
-        tJson.addProperty("phone",   str(pDoc, "phone"));
-        tJson.addProperty("contact", str(pDoc, "contact"));
-        tJson.addProperty("mail",    str(pDoc, "mail"));
-        return tJson;
-    }
-
     // ── User CRUD ────────────────────────────────────────────────────────
 
     public List<Document> listUsers() {
@@ -208,24 +207,6 @@ public class Database {
     public void deleteUser(String pId) {
         mDatabase.getCollection("User").deleteOne(
                 new Document("_id", new ObjectId(pId)));
-    }
-
-    public JsonObject userToJson(Document pDoc) {
-        JsonObject tJson = new JsonObject();
-        tJson.addProperty("mongoId",   pDoc.getObjectId("_id").toHexString());
-        tJson.addProperty("id",        str(pDoc, "userId"));
-        tJson.addProperty("firm",      str(pDoc, "firm"));
-        tJson.addProperty("password",  str(pDoc, "password"));
-        tJson.addProperty("name",   str(pDoc, "name"));
-        tJson.addProperty("mail",   str(pDoc, "mail"));
-        tJson.addProperty("phone",  str(pDoc, "phone"));
-        tJson.addProperty("status", str(pDoc, "status"));
-        return tJson;
-    }
-
-    private String str(Document pDoc, String pField) {
-        String tVal = pDoc.getString(pField);
-        return tVal != null ? tVal : "";
     }
 
     // ── Market CRUD ──────────────────────────────────────────────────────
@@ -298,26 +279,6 @@ public class Database {
     public void deleteMarket(String pId) {
         mDatabase.getCollection("Markets").deleteOne(
                 new Document("_id", new ObjectId(pId)));
-    }
-
-    public JsonObject marketToJson(Document pDoc) {
-        JsonObject tJson = new JsonObject();
-        tJson.addProperty("mongoId",              pDoc.getObjectId("_id").toHexString());
-        Integer tMarketId = pDoc.getInteger("marketId");
-        tJson.addProperty("id",                   tMarketId != null ? tMarketId : 0);
-        tJson.addProperty("name",                 str(pDoc, "name"));
-        tJson.addProperty("description",          str(pDoc, "description"));
-        tJson.addProperty("type",                 str(pDoc, "type"));
-        tJson.addProperty("open",                 str(pDoc, "open"));
-        tJson.addProperty("close",                str(pDoc, "close"));
-        Boolean tInverse = pDoc.getBoolean("inverse");
-        tJson.addProperty("inverse",              tInverse != null ? tInverse : false);
-        tJson.addProperty("preOpenTime",          str(pDoc, "preOpenTime"));
-        tJson.addProperty("openAuctionTime",      str(pDoc, "openAuctionTime"));
-        tJson.addProperty("auctionInterval",      str(pDoc, "auctionInterval"));
-        tJson.addProperty("randomAuctionInterval",str(pDoc, "randomAuctionInterval"));
-        tJson.addProperty("tradingStatus",        str(pDoc, "tradingStatus"));
-        return tJson;
     }
 
     // ── Instrument CRUD ──────────────────────────────────────────────────
@@ -394,31 +355,6 @@ public class Database {
                 new Document("_id", new ObjectId(pId)));
     }
 
-    public JsonObject instrumentToJson(Document pDoc) {
-        JsonObject tJson = new JsonObject();
-        tJson.addProperty("mongoId",       pDoc.getObjectId("_id").toHexString());
-        String tInstrIdStr = str(pDoc, "instrumentId");
-        long tInstrIdLong = 0L;
-        try { if (!tInstrIdStr.isEmpty()) tInstrIdLong = Long.parseLong(tInstrIdStr); } catch (NumberFormatException ignored) {}
-        tJson.addProperty("id",            tInstrIdLong);
-        Integer tInstrMarketId = pDoc.getInteger("marketId");
-        tJson.addProperty("marketId",      tInstrMarketId != null ? tInstrMarketId : 0);
-        tJson.addProperty("name",          str(pDoc, "name"));
-        tJson.addProperty("instType",      str(pDoc, "instType"));
-        Long tTickSize = pDoc.getLong("tickSize");
-        tJson.addProperty("tickSize",      tTickSize  != null ? tTickSize  : 0L);
-        Long tLotSize  = pDoc.getLong("lotSize");
-        tJson.addProperty("lotSize",       tLotSize   != null ? tLotSize   : 0L);
-        tJson.addProperty("tradingStatus", str(pDoc, "tradingStatus"));
-        tJson.addProperty("isin",          str(pDoc, "isin"));
-        tJson.addProperty("expirationDate",str(pDoc, "expirationDate"));
-        Long tStrike   = pDoc.getLong("strikePrice");
-        tJson.addProperty("strikePrice",   tStrike    != null ? tStrike    : 0L);
-        tJson.addProperty("underlying",    str(pDoc, "underlying"));
-        tJson.addProperty("optionType",    str(pDoc, "optionType"));
-        return tJson;
-    }
-
     // ── Authorization CRUD ───────────────────────────────────────────────
 
     public List<Document> listAuthorizationsByFirm(String pFirm) {
@@ -446,14 +382,6 @@ public class Database {
     public void deleteAuthorization(String pId) {
         mDatabase.getCollection("Authorization").deleteOne(
                 new Document("_id", new ObjectId(pId)));
-    }
-
-    public JsonObject authorizationToJson(Document pDoc) {
-        JsonObject tJson = new JsonObject();
-        tJson.addProperty("mongoId", pDoc.getObjectId("_id").toHexString());
-        tJson.addProperty("firm",    str(pDoc, "firm"));
-        tJson.addProperty("market",  str(pDoc, "market"));
-        return tJson;
     }
 
     // ── User login validation ─────────────────────────────────────────────
@@ -510,6 +438,84 @@ public class Database {
         return tObj;
     }
 
+    // ── Trades ───────────────────────────────────────────────────────────
+
+    /**
+     * Stores a trade in the Trades collection and returns its MongoDB id. Ids are stored as in the
+     * REST API (trade and order ids as hex strings, the instrumentId as a string like in Instruments),
+     * prices and quantities as longs scaled by MatchingEngine.SCALE, and the trade time as the string
+     * "yyyy-MM-dd HH:mm:ss.SSS" (server local time).
+     */
+    public String saveTrade(InternalTrade pTrade) {
+        Order tBuy  = pTrade.getBuyOrder();
+        Order tSell = pTrade.getSellOrder();
+        Document tDoc = new Document("tradeNo",       Long.toHexString(pTrade.getTradeNo()))
+                .append("marketId",      (int) (pTrade.getInstrumentId() >>> 32))
+                .append("instrumentId",  String.valueOf(pTrade.getInstrumentId()))
+                .append("price",         pTrade.getPrice())
+                .append("quantity",      pTrade.getQuantity())
+                .append("tradeTime",     TRADE_TIME_FORMAT.format(Instant.ofEpochMilli(pTrade.getTradeTime())))
+                .append("buyOrderId",    Long.toHexString(tBuy.getOrderId()))
+                .append("buyAccount",    tBuy.getAccount())
+                .append("buyUserRef",    tBuy.getUserRef())
+                .append("sellOrderId",   Long.toHexString(tSell.getOrderId()))
+                .append("sellAccount",   tSell.getAccount())
+                .append("sellUserRef",   tSell.getUserRef());
+        mDatabase.getCollection("Trades").insertOne(tDoc);
+        return tDoc.getObjectId("_id").toHexString();
+    }
+
+    /**
+     * The trades stored for a date given as "yyyy-MM-dd", ordered by trade time. The trade time is
+     * stored as "yyyy-MM-dd HH:mm:ss.SSS", so the day is a string range on it.
+     *
+     * @throws IllegalArgumentException if the date is not a valid "yyyy-MM-dd" date
+     */
+    public List<Document> listTradesByDate(String pDate) {
+        return findTrades(new Document("tradeTime", tradeDay(pDate)));
+    }
+
+    /**
+     * The trades stored where the firm is the buyer or the seller, for a date given as "yyyy-MM-dd"
+     * or, if the date is null, for all dates; ordered by trade time.
+     *
+     * @throws IllegalArgumentException if the date is not null and not a valid "yyyy-MM-dd" date
+     */
+    public List<Document> listTradesByFirm(String pFirm, String pDate) {
+        Document tFilter = new Document("$or", List.of(new Document("buyAccount", pFirm), new Document("sellAccount", pFirm)));
+        if (pDate != null) tFilter.append("tradeTime", tradeDay(pDate));
+        return findTrades(tFilter);
+    }
+
+    /**
+     * Deletes the stored trades with the trade number (InternalTrade.getTradeNo(), stored as hex) and
+     * returns how many were deleted. Trade numbers restart at 1 when the server restarts, so trades
+     * from different server runs can share a number; all of them are deleted.
+     */
+    public long deleteTradeByTradeNo(long pTradeNo) {
+        return mDatabase.getCollection("Trades")
+                .deleteMany(new Document("tradeNo", Long.toHexString(pTradeNo)))
+                .getDeletedCount();
+    }
+
+    private List<Document> findTrades(Document pFilter) {
+        List<Document> tResult = new ArrayList<>();
+        for (Document tDoc : mDatabase.getCollection("Trades").find(pFilter).sort(new Document("tradeTime", 1))) {
+            tResult.add(tDoc);
+        }
+        return tResult;
+    }
+
+    /** A tradeTime condition matching the whole day of a "yyyy-MM-dd" date. */
+    private static Document tradeDay(String pDate) {
+        try {
+            LocalDate.parse(pDate);   // ISO format, i.e. yyyy-MM-dd
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("Invalid date '" + pDate + "', expected yyyy-MM-dd");
+        }
+        return new Document("$gte", pDate + " 00:00:00.000").append("$lte", pDate + " 23:59:59.999");
+    }
+
     // ── Utilities ────────────────────────────────────────────────────────
 
     public MongoDatabase getDatabase() {
@@ -528,5 +534,90 @@ public class Database {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-512 not available", e);
         }
+    }
+
+    // ── JSON conversion ──────────────────────────────────────────────────
+
+    public JsonObject firmToJson(Document pDoc) {
+        JsonObject tJson = new JsonObject();
+        tJson.addProperty("id",      pDoc.getObjectId("_id").toHexString());
+        tJson.addProperty("name",    str(pDoc, "name"));
+        tJson.addProperty("status",  str(pDoc, "status"));
+        tJson.addProperty("address", str(pDoc, "address"));
+        tJson.addProperty("phone",   str(pDoc, "phone"));
+        tJson.addProperty("contact", str(pDoc, "contact"));
+        tJson.addProperty("mail",    str(pDoc, "mail"));
+        return tJson;
+    }
+
+    public JsonObject userToJson(Document pDoc) {
+        JsonObject tJson = new JsonObject();
+        tJson.addProperty("mongoId",   pDoc.getObjectId("_id").toHexString());
+        tJson.addProperty("id",        str(pDoc, "userId"));
+        tJson.addProperty("firm",      str(pDoc, "firm"));
+        tJson.addProperty("password",  str(pDoc, "password"));
+        tJson.addProperty("name",   str(pDoc, "name"));
+        tJson.addProperty("mail",   str(pDoc, "mail"));
+        tJson.addProperty("phone",  str(pDoc, "phone"));
+        tJson.addProperty("status", str(pDoc, "status"));
+        return tJson;
+    }
+
+    public JsonObject marketToJson(Document pDoc) {
+        JsonObject tJson = new JsonObject();
+        tJson.addProperty("mongoId",              pDoc.getObjectId("_id").toHexString());
+        Integer tMarketId = pDoc.getInteger("marketId");
+        tJson.addProperty("id",                   tMarketId != null ? tMarketId : 0);
+        tJson.addProperty("name",                 str(pDoc, "name"));
+        tJson.addProperty("description",          str(pDoc, "description"));
+        tJson.addProperty("type",                 str(pDoc, "type"));
+        tJson.addProperty("open",                 str(pDoc, "open"));
+        tJson.addProperty("close",                str(pDoc, "close"));
+        Boolean tInverse = pDoc.getBoolean("inverse");
+        tJson.addProperty("inverse",              tInverse != null ? tInverse : false);
+        tJson.addProperty("preOpenTime",          str(pDoc, "preOpenTime"));
+        tJson.addProperty("openAuctionTime",      str(pDoc, "openAuctionTime"));
+        tJson.addProperty("auctionInterval",      str(pDoc, "auctionInterval"));
+        tJson.addProperty("randomAuctionInterval",str(pDoc, "randomAuctionInterval"));
+        tJson.addProperty("tradingStatus",        str(pDoc, "tradingStatus"));
+        return tJson;
+    }
+
+    public JsonObject instrumentToJson(Document pDoc) {
+        JsonObject tJson = new JsonObject();
+        tJson.addProperty("mongoId",       pDoc.getObjectId("_id").toHexString());
+        String tInstrIdStr = str(pDoc, "instrumentId");
+        long tInstrIdLong = 0L;
+        try { if (!tInstrIdStr.isEmpty()) tInstrIdLong = Long.parseLong(tInstrIdStr); } catch (NumberFormatException ignored) {}
+        tJson.addProperty("id",            tInstrIdLong);
+        Integer tInstrMarketId = pDoc.getInteger("marketId");
+        tJson.addProperty("marketId",      tInstrMarketId != null ? tInstrMarketId : 0);
+        tJson.addProperty("name",          str(pDoc, "name"));
+        tJson.addProperty("instType",      str(pDoc, "instType"));
+        Long tTickSize = pDoc.getLong("tickSize");
+        tJson.addProperty("tickSize",      tTickSize  != null ? tTickSize  : 0L);
+        Long tLotSize  = pDoc.getLong("lotSize");
+        tJson.addProperty("lotSize",       tLotSize   != null ? tLotSize   : 0L);
+        tJson.addProperty("tradingStatus", str(pDoc, "tradingStatus"));
+        tJson.addProperty("isin",          str(pDoc, "isin"));
+        tJson.addProperty("expirationDate",str(pDoc, "expirationDate"));
+        Long tStrike   = pDoc.getLong("strikePrice");
+        tJson.addProperty("strikePrice",   tStrike    != null ? tStrike    : 0L);
+        tJson.addProperty("underlying",    str(pDoc, "underlying"));
+        tJson.addProperty("optionType",    str(pDoc, "optionType"));
+        return tJson;
+    }
+
+    public JsonObject authorizationToJson(Document pDoc) {
+        JsonObject tJson = new JsonObject();
+        tJson.addProperty("mongoId", pDoc.getObjectId("_id").toHexString());
+        tJson.addProperty("firm",    str(pDoc, "firm"));
+        tJson.addProperty("market",  str(pDoc, "market"));
+        return tJson;
+    }
+
+    private String str(Document pDoc, String pField) {
+        String tVal = pDoc.getString(pField);
+        return tVal != null ? tVal : "";
     }
 }
