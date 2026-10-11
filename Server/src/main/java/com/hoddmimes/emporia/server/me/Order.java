@@ -50,6 +50,19 @@ public class Order implements Comparable<Order> {
         mOrderId      = OrderId.get(mSide);
     }
 
+    /** An order with a known order id, e.g. one side of a trade read back from the database. */
+    Order(long pOrderId, long pInstrumentId, long pPrice, long pQuantity, Side pSide,
+          String pAccount, String pUserRef, long pCreationTime) {
+        mOrderId      = pOrderId;
+        mInstrumentId = pInstrumentId;
+        mPrice        = pPrice;
+        mQuantity     = pQuantity;
+        mSide         = pSide;
+        mAccount      = pAccount;
+        mUserRef      = pUserRef;
+        mCreationTime = pCreationTime;
+    }
+
     // ── Comparable ────────────────────────────────────────────────────────
 
     @Override

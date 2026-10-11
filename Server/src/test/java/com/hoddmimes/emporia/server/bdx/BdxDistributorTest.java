@@ -46,7 +46,7 @@ class BdxDistributorTest {
         mCache.putInstrument(instrument(INST1, 1, "Wheat"));
         mCache.putInstrument(instrument(INST2, 2, "Corn"));
         mBdx    = new BdxDistributor(mCache);
-        mEngine = new MatchingEngine(mCache, mBdx);
+        mEngine = new MatchingEngine(mCache, null, mBdx);
     }
 
     private static Document market(int pMarketId, String pName, String pStatus) {
@@ -61,6 +61,7 @@ class BdxDistributorTest {
     }
 
     private TestClient connect(String pHttpSessionId, String pFirm, Integer... pMarkets) {
+        mBdx.dispatchQueued();
         TestClient tClient = new TestClient();
         mBdx.addClient(tClient, pHttpSessionId, pFirm, Set.of(pMarkets),
                 tJson -> tClient.received.add(JsonParser.parseString(tJson).getAsJsonObject()),
@@ -70,6 +71,13 @@ class BdxDistributorTest {
 
     private void add(long pInstrumentId, Order.Side pSide, double pPrice, long pQty, String pFirm, String pUserRef) {
         assertTrue(mEngine.addOrder(new AddOrderRequest(pInstrumentId, pSide, Math.round(pPrice * S), pQty * S, pFirm, pUserRef)).success());
+        mBdx.dispatchQueued();
+    }
+
+    /** Publishes and sends the message on the test thread (the distributor thread is not started). */
+    private void publish(BdxMessage pMessage) {
+        mBdx.publish(pMessage);
+        mBdx.dispatchQueued();
     }
 
     @Test
@@ -78,8 +86,8 @@ class BdxDistributorTest {
         TestClient tB = connect("s2", "FirmB", 1, 2);
         TestClient tC = connect("s3", "FirmC", 2);
 
-        mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1).put("price", 10.0));
-        mBdx.publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, 2, INST2, "FirmA").put("price", 11.0));
+        publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1).put("price", 10.0));
+        publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, 2, INST2, "FirmA").put("price", 11.0));
 
         assertEquals(List.of(BdxMessage.TRADE, BdxMessage.OWN_TRADE), tA.types());   // private regardless of market
         assertEquals(List.of(BdxMessage.TRADE), tB.types());
@@ -93,10 +101,10 @@ class BdxDistributorTest {
 
     @Test
     void newClientGetsTheLatestPriceUpdateAndMarketStateButNoEvents() {
-        mBdx.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 1, INST1).put("last", 9.0));
-        mBdx.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 1, INST1).put("last", 10.0));
-        mBdx.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 2, INST2).put("last", 20.0));
-        mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1).put("price", 10.0));
+        publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 1, INST1).put("last", 9.0));
+        publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 1, INST1).put("last", 10.0));
+        publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 2, INST2).put("last", 20.0));
+        publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1).put("price", 10.0));
         mCache.putMarket(market(1, "M1", "CLOSED"));                      // MarketState from the cache
 
         TestClient tA = connect("s1", "FirmA", 1);
@@ -120,7 +128,7 @@ class BdxDistributorTest {
         assertNull(tB.closedReason);
         assertEquals(1, mBdx.clientCount());
 
-        mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1));
+        publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1));
         assertEquals(0, tA1.received.size());
         assertEquals(1, tB.received.size());
     }
@@ -192,6 +200,7 @@ class BdxDistributorTest {
         tA.received.clear();
 
         assertTrue(mEngine.deleteOrder("FirmA", tOrderId).success());
+        mBdx.dispatchQueued();
         assertEquals(List.of(BdxMessage.REMOVE_ORDER, BdxMessage.OWN_ORDER, BdxMessage.PRICE_UPDATE), tA.types());
         assertEquals("REMOVED", tA.ofType(BdxMessage.OWN_ORDER).get(0).get("event").getAsString());
         assertTrue(tA.ofType(BdxMessage.PRICE_UPDATE).get(0).get("askPx").isJsonNull());

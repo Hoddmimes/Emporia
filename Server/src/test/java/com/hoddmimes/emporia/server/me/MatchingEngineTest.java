@@ -26,7 +26,7 @@ class MatchingEngineTest {
         mCache.putMarket(market(2, "Auct", "AUCTION", "OPEN"));
         mCache.putInstrument(instrument(CONT, 1, "Wheat", "ACTIVE"));
         mCache.putInstrument(instrument(AUCTION, 2, "Corn", "ACTIVE"));
-        mEngine = new MatchingEngine(mCache, new BdxDistributor(mCache));
+        mEngine = new MatchingEngine(mCache, null, new BdxDistributor(mCache));
     }
 
     private static Document market(int pMarketId, String pName, String pType, String pStatus) {

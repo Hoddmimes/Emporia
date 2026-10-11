@@ -20,6 +20,7 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -447,9 +448,16 @@ public class Database {
      * "yyyy-MM-dd HH:mm:ss.SSS" (server local time).
      */
     public String saveTrade(InternalTrade pTrade) {
+        Document tDoc = toTradeDocument(pTrade);
+        mDatabase.getCollection("Trades").insertOne(tDoc);
+        return tDoc.getObjectId("_id").toHexString();
+    }
+
+    /** The Trades document for a trade, as stored by saveTrade (without the MongoDB _id). */
+    static Document toTradeDocument(InternalTrade pTrade) {
         Order tBuy  = pTrade.getBuyOrder();
         Order tSell = pTrade.getSellOrder();
-        Document tDoc = new Document("tradeNo",       Long.toHexString(pTrade.getTradeNo()))
+        return new Document("tradeNo",       Long.toHexString(pTrade.getTradeNo()))
                 .append("marketId",      (int) (pTrade.getInstrumentId() >>> 32))
                 .append("instrumentId",  String.valueOf(pTrade.getInstrumentId()))
                 .append("price",         pTrade.getPrice())
@@ -461,12 +469,30 @@ public class Database {
                 .append("sellOrderId",   Long.toHexString(tSell.getOrderId()))
                 .append("sellAccount",   tSell.getAccount())
                 .append("sellUserRef",   tSell.getUserRef());
-        mDatabase.getCollection("Trades").insertOne(tDoc);
-        return tDoc.getObjectId("_id").toHexString();
     }
 
     /**
-     * The trades stored for a date given as "yyyy-MM-dd", ordered by trade time. The trade time is
+     * Converts a Trades document (as stored by saveTrade) back to an InternalTrade, with its stored
+     * trade number and time. The document holds only the order ids, accounts and user refs of the
+     * two orders, so the trade's buy and sell orders are stand-ins (see InternalTrade).
+     */
+    public static InternalTrade fromTradeDocument(Document pDoc) {
+        return new InternalTrade(
+                Long.parseUnsignedLong(pDoc.getString("tradeNo"), 16),
+                ZonedDateTime.parse(pDoc.getString("tradeTime"), TRADE_TIME_FORMAT).toInstant().toEpochMilli(),
+                Long.parseLong(pDoc.getString("instrumentId")),
+                pDoc.getLong("price"),
+                pDoc.getLong("quantity"),
+                Long.parseUnsignedLong(pDoc.getString("buyOrderId"), 16),
+                pDoc.getString("buyAccount"),
+                pDoc.getString("buyUserRef"),
+                Long.parseUnsignedLong(pDoc.getString("sellOrderId"), 16),
+                pDoc.getString("sellAccount"),
+                pDoc.getString("sellUserRef"));
+    }
+
+    /**
+     * The trades stored for a date given as "yyyy-MM-dd", latest first. The trade time is
      * stored as "yyyy-MM-dd HH:mm:ss.SSS", so the day is a string range on it.
      *
      * @throws IllegalArgumentException if the date is not a valid "yyyy-MM-dd" date
@@ -477,7 +503,7 @@ public class Database {
 
     /**
      * The trades stored where the firm is the buyer or the seller, for a date given as "yyyy-MM-dd"
-     * or, if the date is null, for all dates; ordered by trade time.
+     * or, if the date is null, for all dates; latest first.
      *
      * @throws IllegalArgumentException if the date is not null and not a valid "yyyy-MM-dd" date
      */
@@ -499,8 +525,9 @@ public class Database {
     }
 
     private List<Document> findTrades(Document pFilter) {
+        // Latest first; _id (increasing on insert) orders trades stored within the same millisecond
         List<Document> tResult = new ArrayList<>();
-        for (Document tDoc : mDatabase.getCollection("Trades").find(pFilter).sort(new Document("tradeTime", 1))) {
+        for (Document tDoc : mDatabase.getCollection("Trades").find(pFilter).sort(new Document("tradeTime", -1).append("_id", -1))) {
             tResult.add(tDoc);
         }
         return tResult;

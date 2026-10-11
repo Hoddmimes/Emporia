@@ -27,6 +27,26 @@ public class InternalTrade {
         mSellOrder    = (pOrder1.getSide() == Order.Side.SELL) ? pOrder1 : pOrder2;
     }
 
+    /**
+     * A trade with known values, e.g. read back from the database; the trade number counter is not
+     * used. Only the order ids, accounts and user refs of the two orders are known, so the buy and
+     * sell orders are stand-ins carrying the trade's price and quantity and the trade time as their
+     * creation time, not the original orders' values.
+     */
+    public InternalTrade(long pTradeNo, long pTradeTime, long pInstrumentId, long pPrice, long pQuantity,
+                         long pBuyOrderId,  String pBuyAccount,  String pBuyUserRef,
+                         long pSellOrderId, String pSellAccount, String pSellUserRef) {
+        mInstrumentId = pInstrumentId;
+        mPrice        = pPrice;
+        mQuantity     = pQuantity;
+        mTradeTime    = pTradeTime;
+        mTradeNo      = pTradeNo;
+        mBuyOrder     = new Order(pBuyOrderId,  pInstrumentId, pPrice, pQuantity, Order.Side.BUY,
+                                  pBuyAccount,  pBuyUserRef,  pTradeTime);
+        mSellOrder    = new Order(pSellOrderId, pInstrumentId, pPrice, pQuantity, Order.Side.SELL,
+                                  pSellAccount, pSellUserRef, pTradeTime);
+    }
+
     public long  getInstrumentId() { return mInstrumentId; }
     public long  getPrice()        { return mPrice; }
     public long  getQuantity()     { return mQuantity; }

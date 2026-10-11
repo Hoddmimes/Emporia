@@ -2,16 +2,16 @@ package com.hoddmimes.emporia.server.me;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bson.Document;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 /**
  * Matching Engine — manages a set of orderbooks, one per instrument, created on first use.
@@ -44,10 +44,12 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     private final BdxDistributor          mBdx;
     private final Map<Long, Orderbook>    mOrderbooks;
     private final List<InternalTrade>     mTrades;
+    private final Database mDB;
 
-    public MatchingEngine(InstrumentCache pInstrumentCache, BdxDistributor pBdx) {
+    public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx) {
         mInstrumentCache = pInstrumentCache;
         mBdx             = pBdx;
+        mDB              = pDB;
         mOrderbooks      = new HashMap<>();
         mTrades          = new ArrayList<>();
 
@@ -59,6 +61,15 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             @Override public void marketAdded(JsonObject pMarket)   {}
             @Override public void marketUpdated(JsonObject pMarket) {}
         });
+
+        // Without a database (unit tests) trades are neither reloaded nor stored
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        List<Document> tTradeDocs = (mDB != null) ? mDB.listTradesByDate( simpleDateFormat.format(new Date())) : null;
+        if (tTradeDocs != null) {
+            for( Document tDoc : tTradeDocs) {
+                mTrades.add(Database.fromTradeDocument(tDoc ));
+            }
+        }
     }
 
     // ── Public order operations ────────────────────────────────────────────
@@ -175,6 +186,10 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         cLog.info("{}", pTrade);
 
         int tMarketId = marketIdOf(pTrade.getInstrumentId());
+
+        // Trade to database
+        if (mDB != null) mDB.saveTrade(pTrade);
+
         mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, tMarketId, pTrade.getInstrumentId())
                 .put("price",     unscale(pTrade.getPrice()))
                 .put("quantity",  unscale(pTrade.getQuantity()))
@@ -182,6 +197,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
                 .put("tradeTime", pTrade.getTradeTime()));
         publishOwnTrade(pTrade, tMarketId, Order.Side.BUY);
         publishOwnTrade(pTrade, tMarketId, Order.Side.SELL);
+
     }
 
     @Override

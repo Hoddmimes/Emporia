@@ -19,6 +19,9 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-11 Fixed userRef on order modify: a PATCH without userRef keeps the order's userRef and one with userRef replaces it, both when the order is modified in place and when it is replaced; added modify tests.
 * 26-10-11 Added the bdx package: the /ws WebSocket now broadcasts PriceUpdate, MarketState, anonymous Trade and AddOrder/ModifyOrder/RemoveOrder events to the firms authorized for the market, and private OwnOrder/OwnTrade messages to the owning firm (EmporiaX's topic scheme, without IPMC). BdxDistributor replaces PriceFeed; partial fills of resting orders are now reported as order modifications.
 * 26-10-11 Added Database.saveTrade(InternalTrade), which stores a trade in the new Trades collection.
-* 26-10-11 Added Database.listTradesByDate("yyyy-MM-dd"), which returns the stored trades of a day ordered by trade time.
-* 26-10-11 Added Database.listTradesByFirm(firm, "yyyy-MM-dd" or null for all dates), returning the trades where the firm is buyer or seller.
+* 26-10-11 Added Database.listTradesByDate("yyyy-MM-dd"), which returns the stored trades of a day, latest first.
+* 26-10-11 Added Database.listTradesByFirm(firm, "yyyy-MM-dd" or null for all dates), returning the trades where the firm is buyer or seller, latest first.
 * 26-10-11 Added Database.deleteTradeByTradeNo(tradeNo), which deletes the stored trades with that trade number.
+* 26-10-11 The matching engine stores each trade in the database (Database.saveTrade) and reloads today's trades at startup; the tc package (TradeCapture) was removed.
+* 26-10-11 BdxDistributor sends asynchronously: publish() queues the message for the distributor's WsPublisher thread and the WebSocket sends are async, with a client more than 10000 messages behind disconnected; removed the per-WsContext send lock, which did not serialize sends.
+* 26-10-11 Added Database.fromTradeDocument(Document), converting a stored trade back to an InternalTrade (new InternalTrade constructor taking the stored values, with stand-in buy/sell orders).
