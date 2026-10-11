@@ -14,4 +14,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-10 Added the TestClient subproject: a REST test program that runs concurrent trading sessions with AddOrder/DeleteOrder directives from a JSON file, repeated at a given txRate.
 * 26-10-10 Fixed orders being rejected in OPEN markets: the engine required instruments to be ACTIVE, but instruments bulk loaded from EmporiaX files are stored as OPEN. Now only SUSPENDED instruments block orders, and the bulk load stores statuses other than SUSPENDED as ACTIVE.
 * 26-10-10 Added the server util package with Timestamp, which collects nanoTime timestamps at labelled measuring points and reports the execution times between them.
-* 26-10-10 Copied TXIDFactory and Aux from EmporiaX common into the server util package.
+* 26-10-10 Copied TXIDFactory from EmporiaX common into the server util package.
