@@ -108,6 +108,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('create-instrument');
@@ -136,9 +137,9 @@
 
         async function loadMarkets() {
             try {
-                const response = await fetch('/api/admin/markets');
-                if (!response.ok) return;
-                const markets = await response.json();
+                const r = await cdApi.request('/api/admin/markets');
+                if (!r.ok) { cdApi.showError('error-msg', 'Failed to load markets: ' + r.error); return; }
+                const markets = r.data;
                 const select  = document.getElementById('f-marketId');
                 markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
                     const opt = document.createElement('option');
@@ -170,23 +171,14 @@
                 optionType:     document.getElementById('f-optionType').value
             };
 
-            try {
-                const response = await fetch('/api/admin/instruments', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    errorMsg.textContent = data.error || 'Failed to create instrument.';
-                    errorMsg.classList.remove('alert-hidden');
-                    return;
-                }
-                window.location.href = `/admin/instrument.html?id=${data.mongoId}`;
-            } catch (e) {
-                errorMsg.textContent = 'Connection error. Please try again.';
+            const r = await cdApi.request('/api/admin/instruments', cdApi.json('POST', body));
+            if (!r.ok) {
+                errorMsg.textContent = 'Failed to create instrument: ' + r.error;
                 errorMsg.classList.remove('alert-hidden');
+                return;
             }
+            const data = r.data;
+            window.location.href = `/admin/instrument.html?id=${data.mongoId}`;
         }
 
         loadMarkets();

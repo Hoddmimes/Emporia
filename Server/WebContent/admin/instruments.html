@@ -56,6 +56,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-instruments');
@@ -78,9 +79,14 @@
 
         async function loadMarkets() {
             try {
-                const response = await fetch('/api/admin/markets');
-                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
-                const markets = await response.json();
+                const r = await cdApi.request('/api/admin/markets');
+                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                if (!r.ok) {
+                    document.getElementById('inst-body').innerHTML =
+                        `<tr class="empty-row"><td colspan="7">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
+                    return;
+                }
+                const markets = r.data;
                 const select  = document.getElementById('market-select');
                 markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
                     const opt = document.createElement('option');
@@ -103,9 +109,13 @@
             }
             sessionStorage.setItem('inst-market', marketId);
             try {
-                const response = await fetch(`/api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
-                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
-                const instruments = await response.json();
+                const r = await cdApi.request(`/api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
+                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                if (!r.ok) {
+                    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Failed to load instruments: ${escHtml(r.error)}</td></tr>`;
+                    return;
+                }
+                const instruments = r.data;
                 if (instruments.length === 0) {
                     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No instruments in this market.</td></tr>';
                     return;
@@ -134,14 +144,10 @@
         }
 
         async function setStatus(mongoId, status) {
-            try {
-                await fetch(`/api/admin/instruments/${mongoId}/status`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tradingStatus: status })
-                });
-                loadInstruments();
-            } catch (e) { /* ignore */ }
+            const r = await cdApi.request(`/api/admin/instruments/${mongoId}/status`,
+                    cdApi.json('PATCH', { tradingStatus: status }));
+            if (!r.ok) alert('Failed to update trading status: ' + r.error);
+            loadInstruments();
         }
 
         loadMarkets();

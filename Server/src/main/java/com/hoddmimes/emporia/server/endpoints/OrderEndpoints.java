@@ -91,11 +91,14 @@ public class OrderEndpoints implements RestEndpoint {
             respond(ctx, 200, mCtx.matchingEngine.deleteOrder(tFirm, tOrderId));
         });
 
+        // The firm's resting orders, optionally only for one market (?marketId=) and/or instrument (?instrumentId=)
         app.get("/api/orders", ctx -> {
+            Integer tMarketId = marketIdParam(ctx);
+            if (tMarketId == null) return;
             Long tInstrumentId = instrumentIdParam(ctx);
             if (tInstrumentId == null) return;
             JsonObject tOut = new JsonObject();
-            tOut.add("orders", mCtx.matchingEngine.getOrdersByFirm(firm(ctx), tInstrumentId));
+            tOut.add("orders", mCtx.matchingEngine.getOrdersByFirm(firm(ctx), tMarketId, tInstrumentId));
             ctx.json(tOut.toString());
         });
     }
@@ -118,6 +121,14 @@ public class OrderEndpoints implements RestEndpoint {
         if (tParam == null || tParam.isBlank()) return 0L;
         try { return Long.parseLong(tParam); }
         catch (NumberFormatException e) { error(ctx, 400, "instrumentId must be an integer"); return null; }
+    }
+
+    /** The optional marketId query parameter (0 if absent); null after replying 400 if invalid. */
+    static Integer marketIdParam(Context ctx) {
+        String tParam = ctx.queryParam("marketId");
+        if (tParam == null || tParam.isBlank()) return 0;
+        try { return Integer.parseInt(tParam); }
+        catch (NumberFormatException e) { error(ctx, 400, "marketId must be an integer"); return null; }
     }
 
     private static JsonObject parseBody(Context ctx) {

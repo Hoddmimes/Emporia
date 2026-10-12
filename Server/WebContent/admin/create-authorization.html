@@ -57,6 +57,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('create-authorization');
@@ -64,9 +65,9 @@
 
         async function loadFirms() {
             try {
-                const response = await fetch('/api/admin/firms');
-                if (!response.ok) return;
-                const firms = await response.json();
+                const r = await cdApi.request('/api/admin/firms');
+                if (!r.ok) { cdApi.showError('error-msg', 'Failed to load firms: ' + r.error); return; }
+                const firms = r.data;
                 const select = document.getElementById('f-firm');
                 firms.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
                     const opt = document.createElement('option');
@@ -79,9 +80,12 @@
 
         async function loadMarkets() {
             try {
-                const response = await fetch('/api/admin/markets');
-                if (!response.ok) return;
-                const markets = await response.json();
+                const [rm, rb] = await Promise.all(
+                    ['/api/admin/markets', '/api/admin/bulletin-markets'].map(url => cdApi.request(url)));
+                const failed = [rm, rb].find(r => !r.ok);
+                if (failed) { cdApi.showError('error-msg', 'Failed to load markets: ' + failed.error); return; }
+                const [markets, bulletinMarkets] = [rm.data, rb.data];
+                bulletinMarkets.forEach(m => markets.push({ ...m, name: m.name + ' (bulletin)' }));
                 const select = document.getElementById('f-market');
                 markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
                     const opt = document.createElement('option');
@@ -102,27 +106,13 @@
                 market: document.getElementById('f-market').value
             };
 
-            try {
-                const response = await fetch('/api/admin/authorizations', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) {
-                    let errMsg = 'Failed to create authorization. (HTTP ' + response.status + ')';
-                    try {
-                        const data = await response.json();
-                        if (data.error) errMsg = data.error;
-                    } catch (_) {}
-                    errorMsg.textContent = errMsg;
-                    errorMsg.classList.remove('alert-hidden');
-                    return;
-                }
-                window.location.href = '/admin/authorizations.html';
-            } catch (e) {
-                errorMsg.textContent = 'Connection error: ' + (e.message || String(e));
+            const r = await cdApi.request('/api/admin/authorizations', cdApi.json('POST', body));
+            if (!r.ok) {
+                errorMsg.textContent = 'Failed to create authorization: ' + r.error;
                 errorMsg.classList.remove('alert-hidden');
+                return;
             }
+            window.location.href = '/admin/authorizations.html';
         }
 
         loadFirms();

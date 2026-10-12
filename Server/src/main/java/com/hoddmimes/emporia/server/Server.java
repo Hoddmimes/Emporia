@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.me.AuctionScheduler;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import org.apache.logging.log4j.LogManager;
@@ -42,9 +43,11 @@ public class Server {
 
         MatchingEngine tMatchingEngine = new MatchingEngine(tInstrumentCache, mDatabase, tBdx);
         new AuctionScheduler(tMatchingEngine, tInstrumentCache).start();
-        new MarketStateScheduler(mDatabase, tInstrumentCache).start(mTestMode);
+        BulletinBoard  tBulletinBoard  = new BulletinBoard(mDatabase, tBdx::publish);
+        tBulletinBoard.load();
+        new MarketStateScheduler(mDatabase, tInstrumentCache, tBulletinBoard).start(mTestMode);
 
-        new RestApi(mDatabase, tInstrumentCache, tBdx, tMatchingEngine, mConfig).start();
+        new RestApi(mDatabase, tInstrumentCache, tBdx, tMatchingEngine, tBulletinBoard, mConfig).start();
     }
 
     private void parseArgs(String[] args) {

@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.http.Cookie;
 import jakarta.servlet.http.HttpSession;
@@ -26,6 +27,7 @@ public class RestApiContext {
     public final InstrumentCache instrumentCache;
     public final BdxDistributor  bdx;
     public final MatchingEngine  matchingEngine;
+    public final BulletinBoard   bulletinBoard;
     public final JsonObject      configuration;
     public final int             sessionInactivitySeconds;
 
@@ -33,12 +35,14 @@ public class RestApiContext {
                           InstrumentCache pInstrumentCache,
                           BdxDistributor pBdx,
                           MatchingEngine pMatchingEngine,
+                          BulletinBoard pBulletinBoard,
                           JsonObject pConfiguration,
                           int pSessionInactivitySeconds) {
         database                 = pDatabase;
         instrumentCache          = pInstrumentCache;
         bdx                      = pBdx;
         matchingEngine           = pMatchingEngine;
+        bulletinBoard            = pBulletinBoard;
         configuration            = pConfiguration;
         sessionInactivitySeconds = pSessionInactivitySeconds;
     }
@@ -76,7 +80,8 @@ public class RestApiContext {
 
     /**
      * Market ids the firm is authorized for. Authorizations are read from the
-     * database on each call; a "*" authorization expands to all cached markets.
+     * database on each call; a "*" authorization expands to all cached markets
+     * and all bulletin markets.
      */
     public Set<Integer> authorizedMarkets(String pFirm) {
         Set<Integer> tMarkets = new TreeSet<>();
@@ -84,11 +89,25 @@ public class RestApiContext {
             String tMarket = tDoc.getString("market");
             if ("*".equals(tMarket)) {
                 instrumentCache.getAllMarkets().forEach(m -> tMarkets.add(m.marketId()));
+                bulletinBoard.getMarkets().forEach(m -> tMarkets.add(m.marketId()));
             } else {
                 try { tMarkets.add(Integer.parseInt(tMarket)); } catch (NumberFormatException ignored) {}
             }
         }
         return tMarkets;
+    }
+
+    /** True if a market (continuous/auction or bulletin) has the id. */
+    public boolean marketExists(int pMarketId) {
+        return instrumentCache.getMarket(pMarketId) != null || bulletinBoard.getMarket(pMarketId) != null;
+    }
+
+    /**
+     * A new market's marketId: the highest id of all markets, bulletin markets included, + 1.
+     * Both kinds share one sequence, so an authorization or a bdx topic names one market.
+     */
+    public int nextMarketId() {
+        return Math.max(instrumentCache.nextMarketId(), bulletinBoard.nextMarketId());
     }
 
     public JsonArray authorizedMarketsAsJson(String pFirm) {

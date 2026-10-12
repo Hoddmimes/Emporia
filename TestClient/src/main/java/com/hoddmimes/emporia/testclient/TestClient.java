@@ -1,5 +1,6 @@
 package com.hoddmimes.emporia.testclient;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Test program that logs in to the Emporia server through the REST API and sends orders,
@@ -41,16 +43,31 @@ import java.util.List;
  * are decimals. The orderId in an AddOrder's response is remembered under its "userRef";
  * DeleteOrder deletes the order last added with the same "userRef", by that orderId. Sessions run
  * concurrently, each with its own HTTP session.
+ *
+ * Command line: -config file (default ./testclient.json) and -bdx true|false (default true). With
+ * -bdx true each session opens a WebSocket to the server's /ws after logging in and prints every
+ * broadcast (bdx) message it receives; the server sends all messages for the firm's authorized
+ * markets and the firm's own orders and trades, so there is nothing to subscribe to. No session
+ * sends a transaction before every session has logged in and its WebSocket is registered by the
+ * server.
  */
 public class TestClient {
 
     public static void main(String[] args) throws Exception {
-        String tConfigPath = null;
+        String  tConfigPath = null;
+        boolean tBdx        = true;
         for (int i = 0; i < args.length - 1; i++) {
             if ("-config".equals(args[i])) tConfigPath = args[i + 1];
+            if ("-bdx".equals(args[i])) {
+                if (!args[i + 1].equals("true") && !args[i + 1].equals("false")) {
+                    System.err.println("Invalid -bdx value '" + args[i + 1] + "', expected true or false");
+                    System.exit(1);
+                }
+                tBdx = Boolean.parseBoolean(args[i + 1]);
+            }
         }
         if (tConfigPath == null) {
-            tConfigPath = "./testclient.json";
+            tConfigPath = "./tests/testclient.json";
         }
 
         JsonObject tConfig;
@@ -69,9 +86,11 @@ public class TestClient {
                 ? trustAllContext() : SSLContext.getDefault();
 
         List<TestSession> tSessions = new ArrayList<>();
+        JsonArray tSessionConfigs = tConfig.getAsJsonArray("sessions");
+        CountDownLatch tAllReady = new CountDownLatch(tSessionConfigs.size());   // all logged in and connected
         int tIndex = 0;
-        for (JsonElement tSession : tConfig.getAsJsonArray("sessions")) {
-            tSessions.add(new TestSession(++tIndex, tSession.getAsJsonObject(), tUrl, tSslContext, tVerbose));
+        for (JsonElement tSession : tSessionConfigs) {
+            tSessions.add(new TestSession(++tIndex, tSession.getAsJsonObject(), tUrl, tSslContext, tVerbose, tBdx, tAllReady));
         }
 
         long tStart = System.currentTimeMillis();

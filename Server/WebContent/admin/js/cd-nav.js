@@ -8,6 +8,7 @@
  *
  * Active item IDs: 'dashboard', 'list-firms', 'create-firm', 'list-users', 'create-user',
  *                  'list-markets', 'create-market',
+ *                  'list-bulletin-markets', 'create-bulletin-market',
  *                  'list-instruments', 'create-instrument', 'load-instruments',
  *                  'list-authorizations', 'create-authorization', 'settings'
  */
@@ -25,6 +26,9 @@ const cdNav = (() => {
         { type: 'section', label: 'Markets' },
         { type: 'link', id: 'list-markets',      label: 'List Markets',      href: '/admin/markets.html' },
         { type: 'link', id: 'create-market',     label: 'Create Market',     href: '/admin/create-market.html' },
+        { type: 'section', label: 'Bulletin Markets' },
+        { type: 'link', id: 'list-bulletin-markets',  label: 'List Bulletin Markets',  href: '/admin/bulletin-markets.html' },
+        { type: 'link', id: 'create-bulletin-market', label: 'Create Bulletin Market', href: '/admin/create-bulletin-market.html' },
         { type: 'section', label: 'Instruments' },
         { type: 'link', id: 'list-instruments',  label: 'List Instruments',  href: '/admin/instruments.html' },
         { type: 'link', id: 'create-instrument', label: 'Create Instrument', href: '/admin/create-instrument.html' },

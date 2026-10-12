@@ -71,4 +71,16 @@ class MarketStateSchedulerTest {
         assertNull(transitionBetween(tMarket, at(FRI, "23:59:59"), at(SAT, "09:00")));     // Friday night into Saturday
         assertEquals(OPEN, transitionBetween(tMarket, at(SUN, "23:00"), at(MON, "09:00"))); // Monday opens again
     }
+
+    @Test
+    void bulletinMarketHoursWithoutPreOpen() {
+        // Bulletin markets have open and close times only (pre-open null)
+        assertTrue(hasValidHours("8:00", "17:00"));
+        assertFalse(hasValidHours("8:00", ""));
+        assertTrue(isValidTime("08:00:30"));
+        assertFalse(isValidTime("25:00"));
+        assertEquals(OPEN,   transitionBetween("8:00", "17:00", null, at(MON, "07:59:59"), at(MON, "08:00")));
+        assertEquals(CLOSED, transitionBetween("8:00", "17:00", null, at(MON, "16:59:59"), at(MON, "17:00")));
+        assertNull(transitionBetween("8:00", "17:00", null, at(SAT, "07:59:59"), at(SAT, "08:00")));
+    }
 }

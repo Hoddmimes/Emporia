@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Create Bulletin Market</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Create Bulletin Market</h2>
+                <a href="/admin/bulletin-markets.html" class="btn btn-outline btn-sm">&larr; Back to Bulletin Markets</a>
+            </div>
+
+            <div class="card" style="max-width:620px;">
+                <div id="error-msg" class="alert alert-error alert-hidden"></div>
+                <form id="create-form" onsubmit="createMarket(event)">
+
+                    <div class="form-group">
+                        <label for="f-name">Name <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-name" placeholder="Market name (e.g. OTC-Machinery)" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-description">Description</label>
+                        <input type="text" id="f-description" placeholder="Market description">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-tradingStatus">Trading Status</label>
+                        <select id="f-tradingStatus" style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="CLOSED" selected>CLOSED</option>
+                            <option value="OPEN">OPEN</option>
+                            <option value="SUSPENDED">SUSPENDED</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-open">Open <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-open" placeholder="HH:MM" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-close">Close <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-close" placeholder="HH:MM" required>
+                        <div class="form-hint">The market is opened at Open and closed at Close on weekdays (server local time).</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-instruments">Instruments <span style="color:var(--error)">*</span></label>
+                        <textarea id="f-instruments" rows="6" placeholder="Old tractor&#10;/Brent.*/"></textarea>
+                        <div class="form-hint">One per line. A name is matched exactly; an entry between slashes,
+                            such as <code>/Brent.*/</code>, is a regular expression that must match the whole instrument.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="f-maxOrderTime">Max Order Time (hh:mm) <span style="color:var(--error)">*</span></label>
+                        <input type="text" id="f-maxOrderTime" placeholder="hh:mm, e.g. 168:00 = 7 days" required>
+                        <div class="form-hint">A bulletin is removed when it has been in the book this long.</div>
+                    </div>
+
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button type="submit" class="btn btn-primary">Create Bulletin Market</button>
+                        <a href="/admin/bulletin-markets.html" class="btn btn-outline">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('create-bulletin-market');
+        cdSession.guard('user-info');
+
+        async function createMarket(event) {
+            event.preventDefault();
+            const errorMsg = document.getElementById('error-msg');
+            errorMsg.classList.add('alert-hidden');
+
+            const body = {
+                name:          document.getElementById('f-name').value.trim(),
+                description:   document.getElementById('f-description').value.trim(),
+                tradingStatus: document.getElementById('f-tradingStatus').value,
+                open:          document.getElementById('f-open').value.trim(),
+                close:         document.getElementById('f-close').value.trim(),
+                instruments:   document.getElementById('f-instruments').value
+                                   .split('\n').map(s => s.trim()).filter(s => s),
+                maxOrderTime:  document.getElementById('f-maxOrderTime').value.trim()
+            };
+
+            const r = await cdApi.request('/api/admin/bulletin-markets', cdApi.json('POST', body));
+            if (!r.ok) {
+                errorMsg.textContent = 'Failed to create bulletin market: ' + r.error;
+                errorMsg.classList.remove('alert-hidden');
+                return;
+            }
+            window.location.href = `/admin/bulletin-market.html?id=${r.data.mongoId}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('f-name').focus();
+        });
+    </script>
+</body>
+</html>

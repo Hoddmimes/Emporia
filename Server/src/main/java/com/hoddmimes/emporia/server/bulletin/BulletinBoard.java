@@ -1,0 +1,463 @@
+package com.hoddmimes.emporia.server.bulletin;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.Database;
+import com.hoddmimes.emporia.server.bdx.BdxMessage;
+import com.hoddmimes.emporia.server.me.MatchingEngine;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.bson.Document;
+
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+/**
+ * The bulletin board: informal OTC bulletins in the bulletin markets (ported from EmporiaX's
+ * BulletinBoard/BulletinManager, without IPMC). The bulletin markets (see BulletinMarket) are kept
+ * apart from the continuous and auction markets of the InstrumentCache; the board holds them and is
+ * updated by the admin endpoints after each database write, like the cache. A bulletin names its
+ * tradable item with a free text {@code instrument}, which must be one of the market's instruments
+ * (a literal name or a /regex/), has a side and an optional price and quantity, and is never matched.
+ * Another firm makes an offer on it; the owner's firm accepts or rejects the offer, or the offer
+ * expires. An accepted offer is a trade at the offer's price and quantity. A bulletin holds at most
+ * one pending offer.
+ *
+ * Bulletins can stay in the book for more than a trading day: they are stored in the Bulletins
+ * collection and reloaded at startup, and removed (state EXPIRED) when the market's maxOrderTime
+ * has passed since they were added. A pending offer is not stored and is lost on restart. Bulletin
+ * trades are not stored. Accounts are firms, as for orders: any user of the owner's firm may withdraw
+ * the bulletin or answer an offer, and a firm can't make an offer on its own bulletin. Adding a
+ * bulletin, making an offer and accepting one require the market to be OPEN; withdrawing and
+ * rejecting are always allowed.
+ *
+ * Every change is published as bdx messages (market topics, prices and quantities in display units):
+ * a public, anonymous {@code Bulletin} (event ADDED/UPDATED/REMOVED) and a private {@code OwnBulletin}
+ * to the owner's firm; a private {@code BulletinOffer} (event OFFERED/ACCEPTED/REJECTED/EXPIRED) to both
+ * the owner's and the offering firm; and for a trade a public, anonymous {@code BulletinTrade} and a
+ * private {@code OwnBulletinTrade} to each side's firm. The firms never learn who the other side is.
+ * A public {@code MarketState} is published for each bulletin market at load and on each status change.
+ *
+ * Prices and quantities in the requests and the REST replies are longs scaled by MatchingEngine.SCALE.
+ */
+public class BulletinBoard {
+
+    private static final Logger cLog = LogManager.getLogger(BulletinBoard.class);
+
+    public static final long   DEFAULT_OFFER_VALID_SECONDS = 60;
+
+    private static final String EVENT_ADDED   = "ADDED";
+    private static final String EVENT_UPDATED = "UPDATED";
+    private static final String EVENT_REMOVED = "REMOVED";
+
+    /** The outcome of a request: the HTTP status and either the reply body or an error message. */
+    public record Result(int status, JsonObject body, String error) {
+        static Result ok(int pStatus, JsonObject pBody) { return new Result(pStatus, pBody, null); }
+        static Result error(int pStatus, String pError) { return new Result(pStatus, null, pError); }
+        public boolean success() { return error == null; }
+    }
+
+    private final Database                 mDatabase;   // null in the unit tests: nothing is stored
+    private final Consumer<BdxMessage>     mPublisher;
+    private final Map<Integer, BulletinMarket> mMarkets   = new ConcurrentHashMap<>();
+    private final Map<String, BulletinEntry>   mBulletins = new LinkedHashMap<>();   // bulletinId -> bulletin, oldest first
+    private final ScheduledExecutorService mExpiryTimer;
+    private final long mIdBase = (System.currentTimeMillis() / 1000L) << 32;
+    private long mNextId    = 1;
+    private long mNextTrade = 1;
+
+    public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher) {
+        mDatabase        = pDatabase;
+        mPublisher       = pPublisher;
+        mExpiryTimer     = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "BulletinExpiry");
+            t.setDaemon(true);
+            return t;
+        });
+    }
+
+    // ── Markets ───────────────────────────────────────────────────────────
+
+    /** Loads the bulletin markets and the stored bulletins from the database. Called once at startup. */
+    public synchronized void load() {
+        for (Document tDoc : mDatabase.listBulletinMarkets()) putMarket(tDoc);
+        long tNow = System.currentTimeMillis();
+        int tExpired = 0;
+        for (Document tDoc : mDatabase.listBulletins()) {
+            BulletinEntry tEntry = BulletinEntry.fromDocument(tDoc);
+            mBulletins.put(tEntry.bulletinId, tEntry);
+            if (tEntry.expiresAt <= tNow) {
+                remove(tEntry, BulletinEntry.STATE_EXPIRED);
+                tExpired++;
+            } else {
+                scheduleExpiry(tEntry);
+            }
+        }
+        cLog.info("BulletinBoard: {} bulletin markets and {} bulletins loaded ({} expired while the server was down)",
+                mMarkets.size(), mBulletins.size(), tExpired);
+    }
+
+    /**
+     * Adds or replaces a bulletin market from its BulletinMarkets document (call after the database
+     * write). A MarketState is published for a new market and when the status changes. A changed
+     * maxOrderTime applies to bulletins added after the change.
+     */
+    public synchronized void putMarket(Document pDoc) {
+        BulletinMarket tMarket = (pDoc != null) ? BulletinMarket.fromDocument(pDoc) : null;
+        if (tMarket == null) return;
+        BulletinMarket tPrev = mMarkets.put(tMarket.marketId(), tMarket);
+        if (tPrev == null || !tPrev.tradingStatus().equals(tMarket.tradingStatus())) {
+            mPublisher.accept(BdxMessage.market(BdxMessage.MARKET_STATE, tMarket.marketId())
+                    .put("marketName", tMarket.name()).put("tradingStatus", tMarket.tradingStatus()));
+        }
+    }
+
+    /** Removes a bulletin market (call after the database delete; the admin first checks that it has no bulletins). */
+    public synchronized void removeMarket(int pMarketId) {
+        mMarkets.remove(pMarketId);
+    }
+
+    /**
+     * Admin: deletes every bulletin in the market, of all firms and in any market state (state DELETED,
+     * also removed from the database); a pending offer is cancelled (BulletinOffer event CANCELLED).
+     * Returns the number of bulletins deleted.
+     */
+    public synchronized int deleteAllBulletins(int pMarketId) {
+        List<BulletinEntry> tEntries = mBulletins.values().stream().filter(b -> b.marketId == pMarketId).toList();
+        for (BulletinEntry tEntry : tEntries) {
+            if (BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) publishOffer("CANCELLED", tEntry);
+            remove(tEntry, BulletinEntry.STATE_DELETED);
+        }
+        cLog.info("Admin deleted all bulletins in market {}: {} bulletin(s)", pMarketId, tEntries.size());
+        return tEntries.size();
+    }
+
+    public BulletinMarket getMarket(int pMarketId) {
+        return mMarkets.get(pMarketId);
+    }
+
+    public Collection<BulletinMarket> getMarkets() {
+        return mMarkets.values();
+    }
+
+    /** The highest bulletin marketId + 1 (see RestApiContext.nextMarketId). */
+    public int nextMarketId() {
+        return mMarkets.keySet().stream().mapToInt(Integer::intValue).max().orElse(0) + 1;
+    }
+
+    /** The number of bulletins in the market. */
+    public synchronized int bulletinCount(int pMarketId) {
+        return (int) mBulletins.values().stream().filter(b -> b.marketId == pMarketId).count();
+    }
+
+    // ── Requests ──────────────────────────────────────────────────────────
+
+    public synchronized Result addBulletin(String pFirm, String pUser, int pMarketId, String pInstrument,
+                                           String pSide, long pPrice, long pQuantity, String pUserRef) {
+        String tErr = checkMarketOpen(pMarketId);
+        if (tErr != null) return Result.error(400, tErr);
+        if (pInstrument == null || pInstrument.isBlank()) return Result.error(400, "instrument is required");
+        BulletinMarket tMarket = mMarkets.get(pMarketId);
+        if (!tMarket.allows(pInstrument.trim())) {
+            return Result.error(400, "Instrument '" + pInstrument.trim() + "' is not traded in bulletin market " + tMarket.name());
+        }
+        if (!"BUY".equals(pSide) && !"SELL".equals(pSide)) return Result.error(400, "side must be BUY or SELL");
+        if (pPrice < 0)    return Result.error(400, "price must not be negative");
+        if (pQuantity < 0) return Result.error(400, "quantity must not be negative");
+
+        long tNow = System.currentTimeMillis();
+        BulletinEntry tEntry = new BulletinEntry(Long.toHexString(mIdBase + mNextId++), pMarketId, pInstrument.trim(),
+                pSide, pPrice, pQuantity, pQuantity, pFirm, pUser, pUserRef, tNow, tNow + tMarket.maxOrderTimeMillis());
+        store(tEntry);
+        mBulletins.put(tEntry.bulletinId, tEntry);
+        scheduleExpiry(tEntry);
+        publishBulletin(EVENT_ADDED, tEntry);
+        cLog.info("Bulletin {} added by {}/{}: market {} {} '{}' {}@{}", tEntry.bulletinId, pFirm, pUser,
+                pMarketId, pSide, tEntry.instrument, unscale(pQuantity), unscale(pPrice));
+
+        JsonObject tOut = new JsonObject();
+        tOut.addProperty("bulletinId", tEntry.bulletinId);
+        tOut.addProperty("state",      tEntry.state);
+        tOut.addProperty("expiresAt",  tEntry.expiresAt);
+        if (pUserRef != null) tOut.addProperty("userRef", pUserRef);
+        return Result.ok(201, tOut);
+    }
+
+    /** Withdraws a bulletin of the firm; not while an offer is pending. */
+    public synchronized Result withdrawBulletin(String pFirm, String pBulletinId) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null || !tEntry.ownerFirm.equals(pFirm)) return notFound(pBulletinId);
+        if (!BulletinEntry.STATE_ACTIVE.equals(tEntry.state)) {
+            return Result.error(400, "Bulletin " + pBulletinId + " has a pending offer; answer it before withdrawing");
+        }
+        remove(tEntry, BulletinEntry.STATE_WITHDRAWN);
+        cLog.info("Bulletin {} withdrawn by {}", pBulletinId, pFirm);
+        return Result.ok(200, idAndState(tEntry));
+    }
+
+    /**
+     * An offer from another firm, at the given price and quantity, valid for pValidSeconds
+     * (DEFAULT_OFFER_VALID_SECONDS if 0). The quantity can't exceed the bulletin's remaining quantity.
+     */
+    public synchronized Result makeOffer(String pFirm, String pUser, String pBulletinId, long pPrice, long pQuantity,
+                                         String pOfferRef, long pValidSeconds) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null) return notFound(pBulletinId);
+        String tErr = checkMarketOpen(tEntry.marketId);
+        if (tErr != null) return Result.error(400, tErr);
+        if (tEntry.ownerFirm.equals(pFirm)) return Result.error(400, "A firm can't make an offer on its own bulletin");
+        if (!BulletinEntry.STATE_ACTIVE.equals(tEntry.state)) {
+            return Result.error(400, "Bulletin " + pBulletinId + " already has a pending offer");
+        }
+        if (pPrice <= 0)    return Result.error(400, "price must be greater than zero");
+        if (pQuantity <= 0) return Result.error(400, "quantity must be greater than zero");
+        if (tEntry.quantity > 0 && pQuantity > tEntry.remainingQuantity) {
+            return Result.error(400, "quantity exceeds the bulletin's remaining quantity " + tEntry.remainingQuantity);
+        }
+        if (pValidSeconds < 0) return Result.error(400, "validTime must not be negative");
+
+        long tValidSeconds = (pValidSeconds > 0) ? pValidSeconds : DEFAULT_OFFER_VALID_SECONDS;
+        long tOfferSeq     = ++tEntry.offerSeq;
+        tEntry.state          = BulletinEntry.STATE_OFFER_PENDING;
+        tEntry.offerFirm      = pFirm;
+        tEntry.offerUser      = pUser;
+        tEntry.offerPrice     = pPrice;
+        tEntry.offerQuantity  = pQuantity;
+        tEntry.offerRef       = pOfferRef;
+        tEntry.offerExpiresAt = System.currentTimeMillis() + tValidSeconds * 1000L;
+        tEntry.offerExpiry    = mExpiryTimer.schedule(() -> expireOffer(pBulletinId, tOfferSeq),
+                                                      tValidSeconds, TimeUnit.SECONDS);
+
+        publishBulletin(EVENT_UPDATED, tEntry);
+        publishOffer("OFFERED", tEntry);
+        cLog.info("Offer on bulletin {} by {}/{}: {}@{}, valid {} s", pBulletinId, pFirm, pUser,
+                unscale(pQuantity), unscale(pPrice), tValidSeconds);
+        return Result.ok(200, idAndState(tEntry));
+    }
+
+    /** The owner's firm accepts (a trade) or rejects the pending offer. */
+    public synchronized Result answerOffer(String pFirm, String pBulletinId, boolean pAccept) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null || !tEntry.ownerFirm.equals(pFirm)) return notFound(pBulletinId);
+        if (!BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) {
+            return Result.error(400, "Bulletin " + pBulletinId + " has no pending offer");
+        }
+        if (!pAccept) {
+            publishOffer("REJECTED", tEntry);
+            cLog.info("Offer on bulletin {} rejected by {}", pBulletinId, pFirm);
+            reopen(tEntry);
+            return Result.ok(200, idAndState(tEntry));
+        }
+
+        String tErr = checkMarketOpen(tEntry.marketId);
+        if (tErr != null) return Result.error(400, tErr);
+        publishOffer("ACCEPTED", tEntry);
+        trade(tEntry);
+        if (tEntry.quantity > 0) tEntry.remainingQuantity -= tEntry.offerQuantity;
+        if (tEntry.quantity == 0 || tEntry.remainingQuantity <= 0) {
+            // Fully traded; a bulletin without a quantity is done after its first trade
+            remove(tEntry, BulletinEntry.STATE_TRADED);
+        } else {
+            store(tEntry);
+            reopen(tEntry);
+        }
+        return Result.ok(200, idAndState(tEntry));
+    }
+
+    /**
+     * The bulletins in the given markets, oldest first. Everyone sees the public fields; the owner's
+     * firm also sees userRef, user and a pending offer, the offering firm its own offer.
+     */
+    public synchronized JsonArray getBulletins(String pFirm, Set<Integer> pMarketIds) {
+        JsonArray tOut = new JsonArray();
+        for (BulletinEntry tEntry : mBulletins.values()) {
+            if (!pMarketIds.contains(tEntry.marketId)) continue;
+            JsonObject tJson = new JsonObject();
+            tJson.addProperty("bulletinId",        tEntry.bulletinId);
+            tJson.addProperty("marketId",          tEntry.marketId);
+            tJson.addProperty("instrument",        tEntry.instrument);
+            tJson.addProperty("side",              tEntry.side);
+            tJson.addProperty("price",             tEntry.price);
+            tJson.addProperty("quantity",          tEntry.quantity);
+            tJson.addProperty("remainingQuantity", tEntry.remainingQuantity);
+            tJson.addProperty("state",             tEntry.state);
+            tJson.addProperty("createTime",        tEntry.createTime);
+            tJson.addProperty("expiresAt",         tEntry.expiresAt);
+            boolean tOwner = tEntry.ownerFirm.equals(pFirm);
+            tJson.addProperty("own", tOwner);
+            if (tOwner) {
+                tJson.addProperty("user", tEntry.ownerUser);
+                if (tEntry.userRef != null) tJson.addProperty("userRef", tEntry.userRef);
+            }
+            boolean tOfferer = pFirm.equals(tEntry.offerFirm);
+            if ((tOwner || tOfferer) && BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) {
+                JsonObject tOffer = new JsonObject();
+                tOffer.addProperty("price",     tEntry.offerPrice);
+                tOffer.addProperty("quantity",  tEntry.offerQuantity);
+                tOffer.addProperty("expiresAt", tEntry.offerExpiresAt);
+                tOffer.addProperty("own",       tOfferer);
+                if (tOfferer && tEntry.offerRef != null) tOffer.addProperty("offerRef", tEntry.offerRef);
+                tJson.add("offer", tOffer);
+            }
+            tOut.add(tJson);
+        }
+        return tOut;
+    }
+
+    /** The market id of a bulletin, or 0 if it doesn't exist. */
+    public synchronized int getMarketId(String pBulletinId) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        return (tEntry != null) ? tEntry.marketId : 0;
+    }
+
+    // ── Internals ─────────────────────────────────────────────────────────
+
+    /** Rejects the offer if it is still the pending one when its time is up. */
+    private synchronized void expireOffer(String pBulletinId, long pOfferSeq) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null || tEntry.offerSeq != pOfferSeq
+                || !BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) return;
+        publishOffer("EXPIRED", tEntry);
+        cLog.info("Offer on bulletin {} expired", pBulletinId);
+        reopen(tEntry);
+    }
+
+    /** Removes the bulletin when the market's maxOrderTime has passed; a pending offer expires with it. */
+    private synchronized void expireBulletin(String pBulletinId) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null) return;
+        if (BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) publishOffer("EXPIRED", tEntry);
+        remove(tEntry, BulletinEntry.STATE_EXPIRED);
+        cLog.info("Bulletin {} expired (max order time of market {})", pBulletinId, tEntry.marketId);
+    }
+
+    private void scheduleExpiry(BulletinEntry pEntry) {
+        long tDelay = Math.max(0, pEntry.expiresAt - System.currentTimeMillis());
+        pEntry.expiry = mExpiryTimer.schedule(() -> expireBulletin(pEntry.bulletinId), tDelay, TimeUnit.MILLISECONDS);
+    }
+
+    /** Takes the bulletin off the board and out of the database, in its final state. */
+    private void remove(BulletinEntry pEntry, String pState) {
+        if (pEntry.expiry != null) pEntry.expiry.cancel(false);
+        pEntry.clearOffer();
+        pEntry.state = pState;
+        mBulletins.remove(pEntry.bulletinId);
+        if (mDatabase != null) mDatabase.deleteBulletin(pEntry.bulletinId);
+        publishBulletin(EVENT_REMOVED, pEntry);
+    }
+
+    private void store(BulletinEntry pEntry) {
+        if (mDatabase != null) mDatabase.saveBulletin(pEntry.toDocument());
+    }
+
+    /** Clears the pending offer and opens the bulletin for offers again. */
+    private void reopen(BulletinEntry pEntry) {
+        pEntry.clearOffer();
+        pEntry.state = BulletinEntry.STATE_ACTIVE;
+        publishBulletin(EVENT_UPDATED, pEntry);
+    }
+
+    private void trade(BulletinEntry pEntry) {
+        String tTradeNo   = Long.toHexString(mIdBase + mNextTrade++);
+        long   tTradeTime = System.currentTimeMillis();
+        mPublisher.accept(BdxMessage.market(BdxMessage.BULLETIN_TRADE, pEntry.marketId)
+                .put("bulletinId", pEntry.bulletinId)
+                .put("instrument", pEntry.instrument)
+                .put("price",      unscale(pEntry.offerPrice))
+                .put("quantity",   unscale(pEntry.offerQuantity))
+                .put("tradeNo",    tTradeNo)
+                .put("tradeTime",  tTradeTime));
+        publishOwnTrade(pEntry, pEntry.ownerFirm, pEntry.side,         "userRef",  pEntry.userRef,  tTradeNo, tTradeTime);
+        publishOwnTrade(pEntry, pEntry.offerFirm, pEntry.offerSide(),  "offerRef", pEntry.offerRef, tTradeNo, tTradeTime);
+        cLog.info("Bulletin {} traded {}@{}: {} {} / {} {}", pEntry.bulletinId,
+                unscale(pEntry.offerQuantity), unscale(pEntry.offerPrice),
+                pEntry.ownerFirm, pEntry.side, pEntry.offerFirm, pEntry.offerSide());
+    }
+
+    private void publishOwnTrade(BulletinEntry pEntry, String pFirm, String pSide, String pRefName, String pRef,
+                                 String pTradeNo, long pTradeTime) {
+        mPublisher.accept(BdxMessage.forFirm(BdxMessage.OWN_BULLETIN_TRADE, pEntry.marketId, pFirm)
+                .put("bulletinId", pEntry.bulletinId)
+                .put("instrument", pEntry.instrument)
+                .put("side",       pSide)
+                .put("price",      unscale(pEntry.offerPrice))
+                .put("quantity",   unscale(pEntry.offerQuantity))
+                .put("tradeNo",    pTradeNo)
+                .put("tradeTime",  pTradeTime)
+                .put(pRefName,     pRef));
+    }
+
+    /** The public Bulletin and the private OwnBulletin to the owner's firm. */
+    private void publishBulletin(String pEvent, BulletinEntry pEntry) {
+        mPublisher.accept(bulletinMessage(BdxMessage.market(BdxMessage.BULLETIN, pEntry.marketId), pEvent, pEntry));
+        mPublisher.accept(bulletinMessage(BdxMessage.forFirm(BdxMessage.OWN_BULLETIN, pEntry.marketId, pEntry.ownerFirm), pEvent, pEntry)
+                .put("user",    pEntry.ownerUser)
+                .put("userRef", pEntry.userRef));
+    }
+
+    private static BdxMessage bulletinMessage(BdxMessage pMessage, String pEvent, BulletinEntry pEntry) {
+        return pMessage.put("event",             pEvent)
+                       .put("bulletinId",        pEntry.bulletinId)
+                       .put("instrument",        pEntry.instrument)
+                       .put("side",              pEntry.side)
+                       .put("price",             (pEntry.price    > 0) ? unscale(pEntry.price)    : null)
+                       .put("quantity",          (pEntry.quantity > 0) ? unscale(pEntry.quantity) : null)
+                       .put("remainingQuantity", (pEntry.quantity > 0) ? unscale(pEntry.remainingQuantity) : null)
+                       .put("state",             pEntry.state)
+                       .put("expiresAt",         pEntry.expiresAt);
+    }
+
+    /** The pending offer's BulletinOffer, to the owner's firm (role OWNER) and to the offering firm (role OFFERER). */
+    private void publishOffer(String pEvent, BulletinEntry pEntry) {
+        mPublisher.accept(offerMessage(pEntry.ownerFirm, "OWNER", pEvent, pEntry)
+                .put("userRef",  pEntry.userRef));
+        mPublisher.accept(offerMessage(pEntry.offerFirm, "OFFERER", pEvent, pEntry)
+                .put("offerRef", pEntry.offerRef));
+    }
+
+    private static BdxMessage offerMessage(String pFirm, String pRole, String pEvent, BulletinEntry pEntry) {
+        return BdxMessage.forFirm(BdxMessage.BULLETIN_OFFER, pEntry.marketId, pFirm)
+                .put("event",      pEvent)
+                .put("role",       pRole)
+                .put("bulletinId", pEntry.bulletinId)
+                .put("instrument", pEntry.instrument)
+                .put("side",       pEntry.offerSide())   // the offer's side
+                .put("price",      unscale(pEntry.offerPrice))
+                .put("quantity",   unscale(pEntry.offerQuantity))
+                .put("expiresAt",  pEntry.offerExpiresAt);
+    }
+
+    /** Null if the bulletin market exists and is OPEN, otherwise why not. */
+    private String checkMarketOpen(int pMarketId) {
+        BulletinMarket tMarket = mMarkets.get(pMarketId);
+        if (tMarket == null) return "Bulletin market not found: " + pMarketId;
+        if (!tMarket.isOpen()) {
+            return "Market " + tMarket.name() + " is " + tMarket.tradingStatus() + ", bulletins are only traded when it is OPEN";
+        }
+        return null;
+    }
+
+    private static Result notFound(String pBulletinId) {
+        return Result.error(404, "Bulletin not found: " + pBulletinId);
+    }
+
+    private static JsonObject idAndState(BulletinEntry pEntry) {
+        JsonObject tOut = new JsonObject();
+        tOut.addProperty("bulletinId",        pEntry.bulletinId);
+        tOut.addProperty("state",             pEntry.state);
+        tOut.addProperty("remainingQuantity", pEntry.remainingQuantity);
+        return tOut;
+    }
+
+    private static double unscale(long pValue) {
+        return (double) pValue / MatchingEngine.SCALE;
+    }
+}

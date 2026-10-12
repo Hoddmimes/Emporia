@@ -98,6 +98,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-firms');
@@ -125,10 +126,10 @@
         async function loadFirm() {
             if (!firmId) { window.location.href = '/admin/firms.html'; return; }
             try {
-                const response = await fetch(`/api/admin/firms/${firmId}`);
-                if (response.status === 404) { window.location.href = '/admin/firms.html'; return; }
-                if (!response.ok) { showError('Failed to load firm.'); return; }
-                const f = await response.json();
+                const r = await cdApi.request(`/api/admin/firms/${firmId}`);
+                if (r.status === 404) { window.location.href = '/admin/firms.html'; return; }
+                if (!r.ok) { showError('Failed to load firm: ' + r.error); return; }
+                const f = r.data;
 
                 document.getElementById('page-title').textContent = f.name;
                 document.getElementById('d-name').textContent     = f.name;
@@ -146,7 +147,7 @@
                     mail:    f.mail    || ''
                 };
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -160,12 +161,8 @@
                 mail:    document.getElementById('d-mail').value.trim()
             };
             try {
-                const response = await fetch(`/api/admin/firms/${firmId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) { showError('Failed to save changes.'); return; }
+                const r = await cdApi.request(`/api/admin/firms/${firmId}`, cdApi.json('PATCH', body));
+                if (!r.ok) { showError('Failed to save changes: ' + r.error); return; }
 
                 originalValues = { ...body };
                 const btn = document.getElementById('save-btn');
@@ -173,7 +170,7 @@
                 btn.textContent = 'Saved';
                 setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -190,11 +187,11 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const response = await fetch(`/api/admin/firms/${firmId}`, { method: 'DELETE' });
-                if (!response.ok) { showError('Failed to delete firm.'); return; }
+                const r = await cdApi.request(`/api/admin/firms/${firmId}`, { method: 'DELETE' });
+                if (!r.ok) { showError('Failed to delete firm: ' + r.error); return; }
                 window.location.href = '/admin/firms.html';
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 

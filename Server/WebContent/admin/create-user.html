@@ -73,6 +73,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('create-user');
@@ -80,8 +81,9 @@
 
         async function loadFirms() {
             try {
-                const response = await fetch('/api/admin/firms');
-                const firms = await response.json();
+                const r = await cdApi.request('/api/admin/firms');
+                if (!r.ok) { cdApi.showError('error-msg', 'Failed to load firms: ' + r.error); return; }
+                const firms = r.data;
                 const select = document.getElementById('f-firm');
                 firms.forEach(f => {
                     const opt = document.createElement('option');
@@ -107,23 +109,14 @@
                 status:   document.getElementById('f-status').value
             };
 
-            try {
-                const response = await fetch('/api/admin/users', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    errorMsg.textContent = data.error || 'Failed to create user.';
-                    errorMsg.classList.remove('alert-hidden');
-                    return;
-                }
-                window.location.href = `/admin/user.html?id=${data.mongoId}`;
-            } catch (e) {
-                errorMsg.textContent = 'Connection error. Please try again.';
+            const r = await cdApi.request('/api/admin/users', cdApi.json('POST', body));
+            if (!r.ok) {
+                errorMsg.textContent = 'Failed to create user: ' + r.error;
                 errorMsg.classList.remove('alert-hidden');
+                return;
             }
+            const data = r.data;
+            window.location.href = `/admin/user.html?id=${data.mongoId}`;
         }
 
         loadFirms();

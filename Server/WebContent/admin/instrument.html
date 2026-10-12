@@ -152,6 +152,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-instruments');
@@ -213,8 +214,9 @@
         }
 
         async function loadMarkets(selectedMarketId) {
-            const response = await fetch('/api/admin/markets');
-            const markets  = await response.json();
+            const r = await cdApi.request('/api/admin/markets');
+            if (!r.ok) { showError('Failed to load markets: ' + r.error); return; }
+            const markets  = r.data;
             const select   = document.getElementById('d-marketId');
             markets.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
                 const opt = document.createElement('option');
@@ -228,10 +230,10 @@
         async function loadInstrument() {
             if (!mongoId) { window.location.href = '/admin/instruments.html'; return; }
             try {
-                const response = await fetch(`/api/admin/instruments/${mongoId}`);
-                if (response.status === 404) { window.location.href = '/admin/instruments.html'; return; }
-                if (!response.ok) { showError('Failed to load instrument.'); return; }
-                const inst = await response.json();
+                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`);
+                if (r.status === 404) { window.location.href = '/admin/instruments.html'; return; }
+                if (!r.ok) { showError('Failed to load instrument: ' + r.error); return; }
+                const inst = r.data;
 
                 document.getElementById('page-title').textContent  = inst.name;
                 document.getElementById('d-id').textContent        = inst.name;
@@ -264,7 +266,7 @@
                     optionType:        inst.optionType     || ''
                 };
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -282,14 +284,9 @@
                 optionType:     document.getElementById('d-optionType').value
             };
             try {
-                const response = await fetch(`/api/admin/instruments/${mongoId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) {
-                    const data = await response.json();
-                    showError(data.error || 'Failed to save changes.');
+                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`, cdApi.json('PATCH', body));
+                if (!r.ok) {
+                    showError('Failed to save changes: ' + r.error);
                     return;
                 }
                 originalValues = {
@@ -308,21 +305,17 @@
                 btn.textContent = 'Saved';
                 setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
         async function setStatus(status) {
             try {
-                const response = await fetch(`/api/admin/instruments/${mongoId}/status`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tradingStatus: status })
-                });
-                if (!response.ok) { showError('Failed to update trading status.'); return; }
+                const r = await cdApi.request(`/api/admin/instruments/${mongoId}/status`, cdApi.json('PATCH', { tradingStatus: status }));
+                if (!r.ok) { showError('Failed to update trading status: ' + r.error); return; }
                 updateStatusUI(status);
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -339,11 +332,11 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const response = await fetch(`/api/admin/instruments/${mongoId}`, { method: 'DELETE' });
-                if (!response.ok) { showError('Failed to delete instrument.'); return; }
+                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`, { method: 'DELETE' });
+                if (!r.ok) { showError('Failed to delete instrument: ' + r.error); return; }
                 window.location.href = '/admin/instruments.html';
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 

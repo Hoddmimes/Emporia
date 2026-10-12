@@ -31,7 +31,10 @@
             <div class="card">
                 <div class="card-header">
                     <h3>Market Details</h3>
-                    <button class="btn btn-danger btn-sm" onclick="showDeleteModal()">Delete Market</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-outline btn-sm" onclick="deleteAllOrders()">Delete All Orders</button>
+                        <button class="btn btn-danger btn-sm" onclick="showDeleteModal()">Delete Market</button>
+                    </div>
                 </div>
 
                 <div class="detail-grid">
@@ -52,8 +55,7 @@
                                     onchange="onTypeChange(); checkChanged();">
                                 <option value="CONTINUOUS">CONTINUOUS</option>
                                 <option value="AUCTION">AUCTION</option>
-                                <option value="BULLETIN">BULLETIN</option>
-                            </select>
+                                </select>
                         </span>
                     </div>
                     <div class="detail-row">
@@ -142,6 +144,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-markets');
@@ -195,10 +198,10 @@
         async function loadMarket() {
             if (!mongoId) { window.location.href = '/admin/markets.html'; return; }
             try {
-                const response = await fetch(`/api/admin/markets/${mongoId}`);
-                if (response.status === 404) { window.location.href = '/admin/markets.html'; return; }
-                if (!response.ok) { showError('Failed to load market.'); return; }
-                const m = await response.json();
+                const r = await cdApi.request(`/api/admin/markets/${mongoId}`);
+                if (r.status === 404) { window.location.href = '/admin/markets.html'; return; }
+                if (!r.ok) { showError('Failed to load market: ' + r.error); return; }
+                const m = r.data;
 
                 document.getElementById('page-title').textContent     = m.name;
                 document.getElementById('d-id').textContent           = m.name;
@@ -228,7 +231,7 @@
                     randomAuctionInterval:m.randomAuctionInterval || ''
                 };
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -247,14 +250,9 @@
                 randomAuctionInterval:document.getElementById('d-randomAuctionInterval').value.trim()
             };
             try {
-                const response = await fetch(`/api/admin/markets/${mongoId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) {
-                    const data = await response.json();
-                    showError(data.error || 'Failed to save changes.');
+                const r = await cdApi.request(`/api/admin/markets/${mongoId}`, cdApi.json('PATCH', body));
+                if (!r.ok) {
+                    showError('Failed to save changes: ' + r.error);
                     return;
                 }
                 originalValues = {
@@ -274,7 +272,20 @@
                 btn.textContent = 'Saved';
                 setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
+            }
+        }
+
+        async function deleteAllOrders() {
+            const name = document.getElementById('d-id').textContent;
+            if (!confirm(`Delete ALL orders in ${name}, of every firm? This cannot be undone.`)) return;
+            document.getElementById('error-banner').classList.add('alert-hidden');
+            try {
+                const r = await cdApi.request(`/api/admin/markets/${mongoId}/orders`, { method: 'DELETE' });
+                if (!r.ok) { showError('Failed to delete orders: ' + r.error); return; }
+                alert(`${r.data.ordersDeleted} order(s) deleted.`);
+            } catch (e) {
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -291,15 +302,14 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const response = await fetch(`/api/admin/markets/${mongoId}`, { method: 'DELETE' });
-                if (!response.ok) {
-                    const data = await response.json().catch(() => ({}));
-                    showError(data.error || 'Failed to delete market.');
+                const r = await cdApi.request(`/api/admin/markets/${mongoId}`, { method: 'DELETE' });
+                if (!r.ok) {
+                    showError('Failed to delete market: ' + r.error);
                     return;
                 }
                 window.location.href = '/admin/markets.html';
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 

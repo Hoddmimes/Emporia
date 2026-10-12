@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Bulletin Markets</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Bulletin Markets</h2>
+                <a href="/admin/create-bulletin-market.html" class="btn btn-primary btn-sm">+ Create Bulletin Market</a>
+            </div>
+
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>ID</th>
+                            <th>Description</th>
+                            <th>Hours</th>
+                            <th>Instruments</th>
+                            <th>Max Order Time</th>
+                            <th>Trading Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="markets-body">
+                        <tr class="empty-row"><td colspan="7">Loading&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-bulletin-markets');
+        cdSession.guard('user-info');
+
+        async function loadMarkets() {
+            const tbody = document.getElementById('markets-body');
+            try {
+                const r = await cdApi.request('/api/admin/bulletin-markets');
+                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                if (!r.ok) {
+                    document.getElementById('markets-body').innerHTML =
+                        `<tr class="empty-row"><td colspan="7">Failed to load bulletin markets: ${escHtml(r.error)}</td></tr>`;
+                    return;
+                }
+                const markets = r.data;
+
+                if (markets.length === 0) {
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No bulletin markets defined yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = markets
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(m =>
+                        `<tr class="row-link" onclick="window.location='/admin/bulletin-market.html?id=${m.mongoId}'">
+                            <td>${escHtml(m.name)}</td>
+                            <td>${m.id}</td>
+                            <td>${escHtml(m.description)}</td>
+                            <td>${escHtml(m.open)}&ndash;${escHtml(m.close)}</td>
+                            <td>${escHtml((m.instruments || []).join(', '))}</td>
+                            <td>${escHtml(m.maxOrderTime)}</td>
+                            <td>${statusBadge(m.tradingStatus)}</td>
+                        </tr>`
+                    ).join('');
+            } catch (e) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load bulletin markets.</td></tr>';
+            }
+        }
+
+        function statusBadge(status) {
+            const map = { OPEN: 'badge-active', CLOSED: 'badge-inactive', SUSPENDED: 'badge-suspended' };
+            const cls = map[status] || 'badge-inactive';
+            return `<span class="badge ${cls}">${status || ''}</span>`;
+        }
+
+        function escHtml(s) {
+            return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        loadMarkets();
+    </script>
+</body>
+</html>

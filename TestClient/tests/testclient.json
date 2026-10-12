@@ -7,7 +7,7 @@
       "firm": "ThinAir",
       "user": "Geek",
       "password": "changeit",
-      "repeat": 1000,
+      "repeat": 1,
       "txRate": 30,
       "directives": [
         { "type": "AddOrder", "instrument": "ABB", "side": "BUY", "price": 101.00, "quantity": 10, "userRef": "bidOrder" },

@@ -46,7 +46,6 @@
                             <option value="">— select type —</option>
                             <option value="CONTINUOUS">CONTINUOUS</option>
                             <option value="AUCTION">AUCTION</option>
-                            <option value="BULLETIN">BULLETIN</option>
                         </select>
                     </div>
 
@@ -106,6 +105,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('create-market');
@@ -119,8 +119,7 @@
             const type = document.getElementById('f-type').value;
             const isContinuous = type === 'CONTINUOUS';
             const isAuction    = type === 'AUCTION';
-            const isBulletin   = type === 'BULLETIN';
-            const hasType      = isContinuous || isAuction || isBulletin;
+            const hasType      = isContinuous || isAuction;
 
             showRow('row-open',                  hasType);
             showRow('row-close',                 hasType);
@@ -155,23 +154,14 @@
                 randomAuctionInterval:document.getElementById('f-randomAuctionInterval').value.trim()
             };
 
-            try {
-                const response = await fetch('/api/admin/markets', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    errorMsg.textContent = data.error || 'Failed to create market.';
-                    errorMsg.classList.remove('alert-hidden');
-                    return;
-                }
-                window.location.href = `/admin/market.html?id=${data.mongoId}`;
-            } catch (e) {
-                errorMsg.textContent = 'Connection error. Please try again.';
+            const r = await cdApi.request('/api/admin/markets', cdApi.json('POST', body));
+            if (!r.ok) {
+                errorMsg.textContent = 'Failed to create market: ' + r.error;
                 errorMsg.classList.remove('alert-hidden');
+                return;
             }
+            const data = r.data;
+            window.location.href = `/admin/market.html?id=${data.mongoId}`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {

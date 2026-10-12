@@ -68,6 +68,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-authorizations');
@@ -78,9 +79,12 @@
 
         async function loadMarkets() {
             try {
-                const response = await fetch('/api/admin/markets');
-                if (!response.ok) return;
-                const markets = await response.json();
+                const [rm, rb] = await Promise.all(
+                    ['/api/admin/markets', '/api/admin/bulletin-markets'].map(url => cdApi.request(url)));
+                const failed = [rm, rb].find(r => !r.ok);
+                if (failed) { cdApi.showError('error-banner', 'Failed to load markets: ' + failed.error); return; }
+                const [markets, bulletinMarkets] = [rm.data, rb.data];
+                bulletinMarkets.forEach(m => markets.push({ ...m, name: m.name + ' (bulletin)' }));
                 markets.forEach(m => marketNameById.set(String(m.id), m.name));
             } catch (e) { /* ignore */ }
         }
@@ -93,9 +97,9 @@
 
         async function loadFirms() {
             try {
-                const response = await fetch('/api/admin/firms');
-                if (!response.ok) return;
-                const firms = await response.json();
+                const r = await cdApi.request('/api/admin/firms');
+                if (!r.ok) { cdApi.showError('error-banner', 'Failed to load firms: ' + r.error); return; }
+                const firms = r.data;
                 const select = document.getElementById('firm-select');
                 firms.sort((a, b) => a.name.localeCompare(b.name)).forEach(f => {
                     const opt = document.createElement('option');
@@ -114,12 +118,13 @@
                 return;
             }
             try {
-                const response = await fetch(`/api/admin/authorizations?firm=${encodeURIComponent(firm)}`);
-                if (!response.ok) {
+                const r = await cdApi.request(`/api/admin/authorizations?firm=${encodeURIComponent(firm)}`);
+                if (!r.ok) {
                     tbody.innerHTML = '<tr><td colspan="2" class="empty-state">Failed to load authorizations.</td></tr>';
+                    cdApi.showError('error-banner', 'Failed to load authorizations: ' + r.error);
                     return;
                 }
-                const auths = await response.json();
+                const auths = r.data;
                 if (auths.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No authorizations found for this firm.</td></tr>';
                     return;
@@ -135,7 +140,8 @@
                         </td>
                     </tr>`).join('');
             } catch (e) {
-                tbody.innerHTML = '<tr><td colspan="2" class="empty-state">Connection error.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="2" class="empty-state">Failed to load authorizations.</td></tr>';
+                cdApi.showError('error-banner', 'Unexpected error: ' + e.message);
             }
         }
 
@@ -162,20 +168,9 @@
             if (!pendingDeleteId) return;
             const idToDelete = pendingDeleteId;
             closeDeleteModal();
-            try {
-                const response = await fetch(`/api/admin/authorizations/${idToDelete}`, { method: 'DELETE' });
-                if (!response.ok) {
-                    const el = document.getElementById('error-banner');
-                    el.textContent = 'Failed to delete authorization.';
-                    el.classList.remove('alert-hidden');
-                    return;
-                }
-                loadAuthorizations();
-            } catch (e) {
-                const el = document.getElementById('error-banner');
-                el.textContent = 'Connection error.';
-                el.classList.remove('alert-hidden');
-            }
+            const r = await cdApi.request(`/api/admin/authorizations/${idToDelete}`, { method: 'DELETE' });
+            if (!r.ok) { cdApi.showError('error-banner', 'Failed to delete authorization: ' + r.error); return; }
+            loadAuthorizations();
         }
 
         loadMarkets().then(loadFirms);

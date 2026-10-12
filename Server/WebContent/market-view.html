@@ -113,6 +113,33 @@
             document.getElementById('mv-market-meta').textContent =
                 (market.type || '') + (market.tradingStatus ? '  ·  ' + market.tradingStatus : '');
             await loadInstruments(market.id);
+            await loadPrices(market.id);
+        }
+
+        // The market's price snapshot over REST, so the table is filled also when the WebSocket's
+        // snapshot is not there (yet). REST prices and volumes are scaled longs; the PriceUpdate
+        // messages use display units. An instrument that already has WebSocket prices keeps them,
+        // since those are live.
+        const SCALE = 100000;
+        async function loadPrices(marketId) {
+            try {
+                const r = await fetch('/api/markets/' + encodeURIComponent(marketId) + '/prices');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                const unscale = (v) => (v == null) ? null : v / SCALE;
+                (data.prices || []).forEach(p => {
+                    if (priceState.has(p.instrumentId)) return;
+                    priceState.set(p.instrumentId, {
+                        bidVol: unscale(p.bidVol), bidPx: unscale(p.bidPx),
+                        askVol: unscale(p.askVol), askPx: unscale(p.askPx),
+                        open:   unscale(p.open),   high:  unscale(p.high),
+                        last:   unscale(p.last),   volume: unscale(p.volume)
+                    });
+                    updateRow(p.instrumentId, priceState.get(p.instrumentId));
+                });
+            } catch (e) {
+                console.error('Failed to load prices', e);
+            }
         }
 
         // ── Instruments / price table ─────────────────────────────────────

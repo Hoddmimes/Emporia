@@ -66,10 +66,34 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd");
         List<Document> tTradeDocs = (mDB != null) ? mDB.listTradesByDate( simpleDateFormat.format(new Date())) : null;
         if (tTradeDocs != null) {
+            List<InternalTrade> tTrades = new ArrayList<>();
             for( Document tDoc : tTradeDocs) {
-                mTrades.add(Database.fromTradeDocument(tDoc ));
+                tTrades.add(Database.fromTradeDocument(tDoc ));
             }
+            restoreTrades(tTrades);
         }
+    }
+
+    /**
+     * Takes over today's trades reloaded at startup: adds them to the trade list and replays them,
+     * oldest first, into the statistics (open, high, last, volume) of their instruments' order books
+     * (creating the books), then publishes a PriceUpdate per instrument so the bdx snapshot and
+     * getPrices show the day's prices before the first new order. The order books themselves are
+     * empty, since orders are not stored.
+     */
+    synchronized void restoreTrades(List<InternalTrade> pTrades) {
+        mTrades.addAll(pTrades);
+        List<InternalTrade> tOldestFirst = new ArrayList<>(pTrades);
+        tOldestFirst.sort(Comparator.comparingLong(InternalTrade::getTradeTime));
+        Set<Long> tInstruments = new LinkedHashSet<>();
+        for (InternalTrade tTrade : tOldestFirst) {
+            Orderbook tBook = getOrCreateOrderbook(tTrade.getInstrumentId());
+            if (tBook == null) continue;   // the instrument no longer exists
+            tBook.restoreTrade(tTrade.getPrice(), tTrade.getQuantity());
+            tInstruments.add(tTrade.getInstrumentId());
+        }
+        tInstruments.forEach(this::orderbookChanged);
+        cLog.info("{} trade(s) of today reloaded, prices restored for {} instrument(s)", pTrades.size(), tInstruments.size());
     }
 
     // ── Public order operations ────────────────────────────────────────────
@@ -105,6 +129,36 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         return tBook.deleteOrder(Long.parseUnsignedLong(pOrderId, 16));
     }
 
+    /**
+     * Admin: deletes every resting order in the market's order books, of all firms and in any market
+     * state (no authorization or trading status checks). Each removal is published like a normal
+     * delete. Returns the number of orders deleted.
+     */
+    public synchronized int deleteAllOrders(int pMarketId) {
+        int tDeleted = 0;
+        for (Orderbook tBook : mOrderbooks.values()) {
+            if (marketIdOf(tBook.getInstrumentId()) != pMarketId) continue;
+            List<Order> tOrders = new ArrayList<>(tBook.getBuySide().getOrders());
+            tOrders.addAll(tBook.getSellSide().getOrders());
+            for (Order tOrder : tOrders) {
+                if (tBook.deleteOrder(tOrder.getOrderId()).success()) tDeleted++;
+            }
+        }
+        cLog.info("Admin deleted all orders in market {}: {} order(s)", pMarketId, tDeleted);
+        return tDeleted;
+    }
+
+    /** The number of resting orders in the market's order books. */
+    public synchronized int orderCount(int pMarketId) {
+        int tCount = 0;
+        for (Orderbook tBook : mOrderbooks.values()) {
+            if (marketIdOf(tBook.getInstrumentId()) == pMarketId) {
+                tCount += tBook.getBuySideDepth() + tBook.getSellSideDepth();
+            }
+        }
+        return tCount;
+    }
+
     /** The instrument an order belongs to, if it is one of the firm's resting orders; 0 otherwise. */
     public synchronized long getOrderInstrumentId(String pFirm, String pOrderId) {
         Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
@@ -129,9 +183,15 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     /** The firm's resting orders, for one instrument or (pInstrumentId 0) all instruments. */
     public synchronized JsonArray getOrdersByFirm(String pFirm, long pInstrumentId) {
+        return getOrdersByFirm(pFirm, 0, pInstrumentId);
+    }
+
+    /** The firm's resting orders, optionally only for one market and/or one instrument (0 = all). */
+    public synchronized JsonArray getOrdersByFirm(String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
         for (Map.Entry<Long, Orderbook> tEntry : mOrderbooks.entrySet()) {
             if (pInstrumentId != 0 && tEntry.getKey() != pInstrumentId) continue;
+            if (pMarketId != 0 && marketIdOf(tEntry.getKey()) != pMarketId) continue;
             Orderbook tBook = tEntry.getValue();
             for (Order tOrder : tBook.getBuySide().getOrders()) {
                 if (pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
@@ -145,14 +205,68 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     /** The firm's trades, for one instrument or (pInstrumentId 0) all instruments. */
     public synchronized JsonArray getTradesByFirm(String pFirm, long pInstrumentId) {
+        return getTradesByFirm(pFirm, 0, pInstrumentId);
+    }
+
+    /** The firm's trades, oldest first, optionally only for one market and/or one instrument (0 = all). */
+    public synchronized JsonArray getTradesByFirm(String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
         for (InternalTrade tTrade : mTrades) {
             if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
+            if (pMarketId != 0 && marketIdOf(tTrade.getInstrumentId()) != pMarketId) continue;
             boolean tIsBuyer  = pFirm.equals(tTrade.getBuyOrder().getAccount());
             boolean tIsSeller = pFirm.equals(tTrade.getSellOrder().getAccount());
             // A firm trading with itself sees both sides
             if (tIsBuyer)  tResult.add(tradeToJsonForFirm(tTrade, Order.Side.BUY));
             if (tIsSeller) tResult.add(tradeToJsonForFirm(tTrade, Order.Side.SELL));
+        }
+        return tResult;
+    }
+
+    /**
+     * The market's trades, oldest first, optionally for one instrument (0 = all): anonymous, without
+     * firms, order ids or userRefs.
+     */
+    public synchronized JsonArray getPublicTrades(int pMarketId, long pInstrumentId) {
+        JsonArray tResult = new JsonArray();
+        for (InternalTrade tTrade : mTrades) {
+            if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
+            if (marketIdOf(tTrade.getInstrumentId()) != pMarketId) continue;
+            JsonObject tJson = instrumentJson(tTrade.getInstrumentId());
+            tJson.addProperty("price",     tTrade.getPrice());
+            tJson.addProperty("quantity",  tTrade.getQuantity());
+            tJson.addProperty("tradeNo",   Long.toHexString(tTrade.getTradeNo()));
+            tJson.addProperty("tradeTime", tTrade.getTradeTime());
+            tResult.add(tJson);
+        }
+        return tResult;
+    }
+
+    /**
+     * A price snapshot of every instrument in the market, sorted by name, with the same fields as the
+     * PriceUpdate bdx message but scaled like the rest of the REST API: best bid/ask price and volume,
+     * open, high, last and traded volume. A value is JSON null when there is none (empty book side, no
+     * trades yet, or no order book yet).
+     */
+    public synchronized JsonArray getPrices(int pMarketId) {
+        List<InstrumentCache.InstrumentEntry> tInstruments = new ArrayList<>(mInstrumentCache.getInstrumentsByMarket(pMarketId));
+        tInstruments.sort(Comparator.comparing(InstrumentCache.InstrumentEntry::name));
+        JsonArray tResult = new JsonArray();
+        for (InstrumentCache.InstrumentEntry tInstrument : tInstruments) {
+            Orderbook tBook     = mOrderbooks.get(tInstrument.instrumentId());
+            Order     tBestBuy  = (tBook != null) ? tBook.getBuySide().peek()  : null;
+            Order     tBestSell = (tBook != null) ? tBook.getSellSide().peek() : null;
+            boolean   tTraded   = tBook != null && tBook.getTradedVolume() > 0;
+            JsonObject tJson = instrumentJson(tInstrument.instrumentId());
+            tJson.addProperty("bidVol", tBestBuy  != null ? tBook.getBestPriceVolume(Order.Side.BUY)  : null);
+            tJson.addProperty("bidPx",  tBestBuy  != null ? tBestBuy.getPrice()                       : null);
+            tJson.addProperty("askVol", tBestSell != null ? tBook.getBestPriceVolume(Order.Side.SELL) : null);
+            tJson.addProperty("askPx",  tBestSell != null ? tBestSell.getPrice()                      : null);
+            tJson.addProperty("open",   tTraded ? tBook.getOpenPrice()      : null);
+            tJson.addProperty("high",   tTraded ? tBook.getHighPrice()      : null);
+            tJson.addProperty("last",   tTraded ? tBook.getLastTradePrice() : null);
+            tJson.addProperty("volume", (tBook != null) ? tBook.getTradedVolume() : 0L);
+            tResult.add(tJson);
         }
         return tResult;
     }

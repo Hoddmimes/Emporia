@@ -50,7 +50,7 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
                     catch (NumberFormatException e) {
                         ctx.status(400).json("{\"error\":\"market must be an integer or '*'\"}"); return;
                     }
-                    if (mCtx.instrumentCache.getMarket(tMarketIdInt) == null) {
+                    if (!mCtx.marketExists(tMarketIdInt)) {
                         ctx.status(400).json("{\"error\":\"Market '" + tMarket + "' does not exist\"}"); return;
                     }
                 }

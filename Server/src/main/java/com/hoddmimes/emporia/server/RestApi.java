@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxEndpoint;
+import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.endpoints.*;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
@@ -42,7 +43,7 @@ public class RestApi {
     private final JsonObject     jHttpIfConfig;
 
     public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, BdxDistributor pBdx,
-                   MatchingEngine pMatchingEngine, JsonObject pConfiguration) {
+                   MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
         int tSessionInactivitySeconds = 300;
@@ -53,7 +54,7 @@ public class RestApi {
             cLog.info("Session inactivity timeout: {} seconds", tSessionInactivitySeconds);
         }
 
-        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pBdx, pMatchingEngine,
+        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pBdx, pMatchingEngine, pBulletinBoard,
                 pConfiguration, tSessionInactivitySeconds);
     }
 
@@ -72,6 +73,10 @@ public class RestApi {
         SslPlugin tSslPlugin = new SslPlugin(ssl -> {
             ssl.host         = tInterface;
             ssl.sniHostCheck = false;
+            // No HTTP/2: over HTTP/2 Jetty offers browsers WebSockets over HTTP/2 (RFC 8441, no
+            // Sec-WebSocket-Key header), which Javalin does not recognize as an upgrade, so /ws failed
+            // with 1006 in the browser. With HTTP/1.1 only, the /ws upgrade works on both ports.
+            ssl.http2        = false;
             if (tHttpsEnabled) {
                 ssl.pemFromPath(tCertPath, tKeyPath);
                 ssl.securePort = tHttpsPort;
@@ -206,6 +211,7 @@ public class RestApi {
             new BdxEndpoint(mCtx),
             new OrderEndpoints(mCtx),
             new TradeEndpoints(mCtx),
+            new BulletinEndpoints(mCtx),
             new AdminSessionEndpoint(mCtx),
             new AdminLoginEndpoint(mCtx),
             new AdminLogoutEndpoint(mCtx),
@@ -213,6 +219,7 @@ public class RestApi {
             new AdminFirmEndpoints(mCtx),
             new AdminUserEndpoints(mCtx),
             new AdminMarketEndpoints(mCtx),
+            new AdminBulletinMarketEndpoints(mCtx),
             new AdminInstrumentEndpoints(mCtx),
             new AdminAuthorizationEndpoints(mCtx)
         );

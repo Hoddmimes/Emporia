@@ -23,6 +23,13 @@ public final class BdxMessage {
     public static final String OWN_ORDER    = "OwnOrder";      // private to the order's firm
     public static final String OWN_TRADE    = "OwnTrade";      // private to the firm of one trade side
 
+    // Bulletin board message types (market messages, no instrumentId)
+    public static final String BULLETIN           = "Bulletin";          // public, anonymous bulletin event
+    public static final String OWN_BULLETIN       = "OwnBulletin";       // private to the bulletin owner's firm
+    public static final String BULLETIN_OFFER     = "BulletinOffer";     // private to the owner's and the offering firm
+    public static final String BULLETIN_TRADE     = "BulletinTrade";     // public, anonymous
+    public static final String OWN_BULLETIN_TRADE = "OwnBulletinTrade";  // private to the firm of one trade side
+
     private final String     mType;
     private final String     mTopic;
     private final int        mMarketId;
@@ -53,6 +60,11 @@ public final class BdxMessage {
     /** A private message about an instrument, only sent to the clients of the firm. */
     public static BdxMessage forFirm(String pType, int pMarketId, long pInstrumentId, String pFirm) {
         return new BdxMessage(pType, pMarketId, pInstrumentId, pFirm);
+    }
+
+    /** A private message about a market, only sent to the clients of the firm. */
+    public static BdxMessage forFirm(String pType, int pMarketId, String pFirm) {
+        return new BdxMessage(pType, pMarketId, null, pFirm);
     }
 
     /** Adds a field; a null value is sent as JSON null (the client clears its previous value). */

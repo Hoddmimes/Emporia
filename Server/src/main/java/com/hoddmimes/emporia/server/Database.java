@@ -5,6 +5,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.ReturnDocument;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.Order;
@@ -280,6 +281,85 @@ public class Database {
     public void deleteMarket(String pId) {
         mDatabase.getCollection("Markets").deleteOne(
                 new Document("_id", new ObjectId(pId)));
+    }
+
+    // ── Bulletin market CRUD ─────────────────────────────────────────────
+
+    public List<Document> listBulletinMarkets() {
+        List<Document> tResult = new ArrayList<>();
+        for (Document tDoc : mDatabase.getCollection("BulletinMarkets").find()) {
+            tResult.add(tDoc);
+        }
+        return tResult;
+    }
+
+    public Document getBulletinMarket(String pId) {
+        return mDatabase.getCollection("BulletinMarkets")
+                .find(new Document("_id", new ObjectId(pId)))
+                .first();
+    }
+
+    /** maxOrderTime is "hh:mm". */
+    public String createBulletinMarket(int pMarketId, String pName, String pDescription, String pTradingStatus,
+                                       String pOpen, String pClose, List<String> pInstruments, String pMaxOrderTime) {
+        Document tDoc = new Document("marketId", pMarketId)
+                .append("name",          pName)
+                .append("description",   pDescription)
+                .append("tradingStatus", pTradingStatus)
+                .append("open",          pOpen)
+                .append("close",         pClose)
+                .append("instruments",   pInstruments)
+                .append("maxOrderTime",  pMaxOrderTime);
+        mDatabase.getCollection("BulletinMarkets").insertOne(tDoc);
+        return tDoc.getObjectId("_id").toHexString();
+    }
+
+    /** The name is not changed. */
+    public void updateBulletinMarket(String pId, String pDescription, String pTradingStatus,
+                                     String pOpen, String pClose, List<String> pInstruments, String pMaxOrderTime) {
+        mDatabase.getCollection("BulletinMarkets").updateOne(
+                new Document("_id", new ObjectId(pId)),
+                new Document("$set", new Document("description", pDescription)
+                        .append("tradingStatus", pTradingStatus)
+                        .append("open",          pOpen)
+                        .append("close",         pClose)
+                        .append("instruments",   pInstruments)
+                        .append("maxOrderTime",  pMaxOrderTime)));
+    }
+
+    /** Sets a bulletin market's tradingStatus and returns the updated document (null if no such market). */
+    public Document setBulletinMarketStatus(int pMarketId, String pStatus) {
+        return mDatabase.getCollection("BulletinMarkets").findOneAndUpdate(
+                new Document("marketId", pMarketId),
+                new Document("$set", new Document("tradingStatus", pStatus)),
+                new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER));
+    }
+
+    public void deleteBulletinMarket(String pId) {
+        mDatabase.getCollection("BulletinMarkets").deleteOne(
+                new Document("_id", new ObjectId(pId)));
+    }
+
+    // ── Bulletins ────────────────────────────────────────────────────────
+
+    /** Inserts or replaces the bulletin with the document's bulletinId (see BulletinBoard). */
+    public void saveBulletin(Document pDoc) {
+        mDatabase.getCollection("Bulletins").replaceOne(
+                new Document("bulletinId", pDoc.getString("bulletinId")), pDoc,
+                new ReplaceOptions().upsert(true));
+    }
+
+    public void deleteBulletin(String pBulletinId) {
+        mDatabase.getCollection("Bulletins").deleteOne(new Document("bulletinId", pBulletinId));
+    }
+
+    /** All stored bulletins, oldest first. */
+    public List<Document> listBulletins() {
+        List<Document> tResult = new ArrayList<>();
+        for (Document tDoc : mDatabase.getCollection("Bulletins").find().sort(new Document("createTime", 1))) {
+            tResult.add(tDoc);
+        }
+        return tResult;
     }
 
     // ── Instrument CRUD ──────────────────────────────────────────────────

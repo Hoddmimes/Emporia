@@ -1,5 +1,7 @@
 package com.hoddmimes.emporia.server;
 
+import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
+import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bson.Document;
@@ -29,6 +31,9 @@ import java.util.concurrent.TimeUnit;
  * At startup (normal mode) a market that is OPEN is set to CLOSED and has to be opened manually.
  * Test mode overrides the scheduler: every market that is not SUSPENDED is set to OPEN at
  * startup and no market hours are applied.
+ *
+ * The bulletin markets (held by the BulletinBoard, not the cache) follow the same rules with their
+ * open and close times (they have no pre-open); a SUSPENDED bulletin market is never changed.
  */
 public class MarketStateScheduler {
 
@@ -44,12 +49,14 @@ public class MarketStateScheduler {
 
     private final Database                 mDatabase;
     private final InstrumentCache          mInstrumentCache;
+    private final BulletinBoard            mBulletinBoard;
     private final ScheduledExecutorService mScheduler;
     private LocalDateTime                  mLastCheck;
 
-    public MarketStateScheduler(Database pDatabase, InstrumentCache pInstrumentCache) {
+    public MarketStateScheduler(Database pDatabase, InstrumentCache pInstrumentCache, BulletinBoard pBulletinBoard) {
         mDatabase        = pDatabase;
         mInstrumentCache = pInstrumentCache;
+        mBulletinBoard   = pBulletinBoard;
         mScheduler       = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "MarketStateScheduler");
             t.setDaemon(true);
@@ -63,12 +70,24 @@ public class MarketStateScheduler {
             for (InstrumentCache.MarketEntry tMarket : mInstrumentCache.getAllMarkets()) {
                 setStatus(tMarket, OPEN, "test mode");
             }
+            for (BulletinMarket tMarket : mBulletinBoard.getMarkets()) {
+                setStatus(tMarket, OPEN, "test mode");
+            }
             cLog.info("Market state scheduler disabled (test mode): markets set to OPEN (SUSPENDED kept), market hours not applied");
             return;
         }
         for (InstrumentCache.MarketEntry tMarket : mInstrumentCache.getAllMarkets()) {
             if (!hasValidHours(tMarket)) {
                 cLog.warn("Market {} ({}) has no valid market hours (open='{}' close='{}'), its state is not scheduled",
+                        tMarket.marketId(), tMarket.name(), tMarket.open(), tMarket.close());
+            }
+            if (OPEN.equals(tMarket.tradingStatus())) {
+                setStatus(tMarket, CLOSED, "server startup, must be opened manually");
+            }
+        }
+        for (BulletinMarket tMarket : mBulletinBoard.getMarkets()) {
+            if (!hasValidHours(tMarket.open(), tMarket.close())) {
+                cLog.warn("Bulletin market {} ({}) has no valid market hours (open='{}' close='{}'), its state is not scheduled",
                         tMarket.marketId(), tMarket.name(), tMarket.open(), tMarket.close());
             }
             if (OPEN.equals(tMarket.tradingStatus())) {
@@ -85,6 +104,10 @@ public class MarketStateScheduler {
             LocalDateTime tNow = LocalDateTime.now();
             for (InstrumentCache.MarketEntry tMarket : mInstrumentCache.getAllMarkets()) {
                 String tState = transitionBetween(tMarket, mLastCheck, tNow);
+                if (tState != null) setStatus(tMarket, tState, "market hours");
+            }
+            for (BulletinMarket tMarket : mBulletinBoard.getMarkets()) {
+                String tState = transitionBetween(tMarket.open(), tMarket.close(), null, mLastCheck, tNow);
                 if (tState != null) setStatus(tMarket, tState, "market hours");
             }
             mLastCheck = tNow;
@@ -106,10 +129,32 @@ public class MarketStateScheduler {
                 pMarket.tradingStatus(), pState, pReason);
     }
 
+    /**
+     * Writes the status of a bulletin market to the database and the BulletinBoard (which publishes a
+     * MarketState). A SUSPENDED bulletin market is never changed, in any mode.
+     */
+    private void setStatus(BulletinMarket pMarket, String pState, String pReason) {
+        if (BulletinMarket.SUSPENDED.equals(pMarket.tradingStatus()) || pState.equals(pMarket.tradingStatus())) return;
+        Document tDoc = mDatabase.setBulletinMarketStatus(pMarket.marketId(), pState);
+        if (tDoc == null) return;
+        mBulletinBoard.putMarket(tDoc);
+        cLog.info("Bulletin market {} ({}) {} -> {} ({})", pMarket.marketId(), pMarket.name(),
+                pMarket.tradingStatus(), pState, pReason);
+    }
+
     // ── Market hours ──────────────────────────────────────────────────────
 
     static boolean hasValidHours(InstrumentCache.MarketEntry pMarket) {
-        return parseTime(pMarket.open()) != null && parseTime(pMarket.close()) != null;
+        return hasValidHours(pMarket.open(), pMarket.close());
+    }
+
+    static boolean hasValidHours(String pOpen, String pClose) {
+        return parseTime(pOpen) != null && parseTime(pClose) != null;
+    }
+
+    /** True if the time is "H:mm" or "H:mm:ss". */
+    public static boolean isValidTime(String pTime) {
+        return parseTime(pTime) != null;
     }
 
     /**
@@ -117,9 +162,15 @@ public class MarketStateScheduler {
      * no transition time was passed. Handles intervals that cross midnight.
      */
     static String transitionBetween(InstrumentCache.MarketEntry pMarket, LocalDateTime pFrom, LocalDateTime pTo) {
-        LocalTime tOpen    = parseTime(pMarket.open());
-        LocalTime tClose   = parseTime(pMarket.close());
-        LocalTime tPreOpen = parseTime(pMarket.preOpenTime());
+        return transitionBetween(pMarket.open(), pMarket.close(), pMarket.preOpenTime(), pFrom, pTo);
+    }
+
+    /** As above, for the given open, close and (optional, null or empty if none) pre-open times. */
+    static String transitionBetween(String pOpenTime, String pCloseTime, String pPreOpenTime,
+                                    LocalDateTime pFrom, LocalDateTime pTo) {
+        LocalTime tOpen    = parseTime(pOpenTime);
+        LocalTime tClose   = parseTime(pCloseTime);
+        LocalTime tPreOpen = parseTime(pPreOpenTime);
         if (tOpen == null || tClose == null) return null;
 
         Set<LocalDate> tDates = new TreeSet<>(List.of(pFrom.toLocalDate(), pTo.toLocalDate()));

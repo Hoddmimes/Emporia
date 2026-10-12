@@ -312,4 +312,91 @@ class MatchingEngineTest {
         assertEquals(Math.round(10.20 * S),
                 mEngine.getTradesByFirm("B", 0).get(1).getAsJsonObject().get("price").getAsLong());
     }
+
+    @Test
+    void publicTradesArePerMarketAndAnonymous() {
+        add(CONT, Order.Side.SELL, 10.20, 2, "A");
+        add(CONT, Order.Side.BUY,  10.20, 2, "B");
+        add(AUCTION, Order.Side.SELL, 5.00, 1, "A");   // market 2: collected, not traded
+
+        JsonArray tTrades = mEngine.getPublicTrades(1, 0);
+        assertEquals(1, tTrades.size());
+        JsonObject tTrade = tTrades.get(0).getAsJsonObject();
+        assertEquals(CONT, tTrade.get("instrumentId").getAsLong());
+        assertEquals(Math.round(10.20 * S), tTrade.get("price").getAsLong());
+        assertFalse(tTrade.has("account"));
+        assertFalse(tTrade.has("orderId"));
+        assertEquals(0, mEngine.getPublicTrades(2, 0).size());
+        assertEquals(0, mEngine.getPublicTrades(1, AUCTION).size());
+
+        // The firm's own orders and trades filtered by market
+        assertEquals(1, mEngine.getTradesByFirm("A", 1, 0).size());
+        assertEquals(0, mEngine.getTradesByFirm("A", 2, 0).size());
+        assertEquals(1, mEngine.getOrdersByFirm("A", 2, 0).size());
+        assertEquals(0, mEngine.getOrdersByFirm("A", 1, 0).size());
+    }
+
+    @Test
+    void pricesSnapshotCoversEveryInstrumentInTheMarket() {
+        long tBarley = (1L << 32) | 2;
+        mCache.putInstrument(instrument(tBarley, 1, "Barley", "ACTIVE"));   // no order book yet
+        add(CONT, Order.Side.SELL, 10.50, 3, "A");
+        add(CONT, Order.Side.BUY,  10.00, 4, "B");
+        add(CONT, Order.Side.BUY,  10.50, 1, "C");   // trades 1 at 10.50
+
+        JsonArray tPrices = mEngine.getPrices(1);
+        assertEquals(2, tPrices.size());
+        JsonObject tEmpty = tPrices.get(0).getAsJsonObject();   // sorted by name: Barley first
+        assertEquals(tBarley, tEmpty.get("instrumentId").getAsLong());
+        assertTrue(tEmpty.get("bidPx").isJsonNull());
+        assertTrue(tEmpty.get("last").isJsonNull());
+        assertEquals(0, tEmpty.get("volume").getAsLong());
+
+        JsonObject tWheat = tPrices.get(1).getAsJsonObject();
+        assertEquals(Math.round(10.00 * S), tWheat.get("bidPx").getAsLong());
+        assertEquals(4 * S,                 tWheat.get("bidVol").getAsLong());
+        assertEquals(Math.round(10.50 * S), tWheat.get("askPx").getAsLong());
+        assertEquals(2 * S,                 tWheat.get("askVol").getAsLong());
+        assertEquals(Math.round(10.50 * S), tWheat.get("last").getAsLong());
+        assertEquals(1 * S,                 tWheat.get("volume").getAsLong());
+    }
+
+    @Test
+    void adminDeletesAllOrdersOfAMarketInAnyState() {
+        add(CONT, Order.Side.BUY, 10.00, 5, "A");
+        add(CONT, Order.Side.SELL, 10.50, 5, "B");
+        add(AUCTION, Order.Side.BUY, 9.00, 1, "A");
+        assertEquals(2, mEngine.orderCount(1));
+        mCache.putMarket(market(1, "Cont", "CONTINUOUS", "CLOSED"));   // a firm can't delete now, the admin can
+
+        assertEquals(2, mEngine.deleteAllOrders(1));
+        assertEquals(0, mEngine.orderCount(1));
+        assertEquals(0, orders("B").size());
+        assertEquals(1, mEngine.orderCount(2));   // other markets are untouched
+        assertEquals(0, mEngine.deleteAllOrders(1));
+    }
+
+    @Test
+    void reloadedTradesRestoreTheDaysPrices() {
+        // As reloaded from the database: latest first
+        InternalTrade tLater   = new InternalTrade(2, 2000, CONT, 1050 * S / 100, 3 * S, 11, "A", null, 12, "B", null);
+        InternalTrade tEarlier = new InternalTrade(1, 1000, CONT, 1100 * S / 100, 2 * S, 13, "A", null, 14, "B", null);
+        mEngine.restoreTrades(java.util.List.of(tLater, tEarlier));
+
+        JsonObject tPrices = mEngine.getPrices(1).get(0).getAsJsonObject();
+        assertEquals(1100 * S / 100, tPrices.get("open").getAsLong());   // the earliest trade
+        assertEquals(1100 * S / 100, tPrices.get("high").getAsLong());
+        assertEquals(1050 * S / 100, tPrices.get("last").getAsLong());   // the latest trade
+        assertEquals(5 * S,          tPrices.get("volume").getAsLong());
+        assertTrue(tPrices.get("bidPx").isJsonNull());                    // orders are not restored
+        assertEquals(2, mEngine.getPublicTrades(1, 0).size());
+
+        // New trades continue from the restored statistics
+        add(CONT, Order.Side.SELL, 12.00, 1, "B");
+        add(CONT, Order.Side.BUY, 12.00, 1, "A");
+        tPrices = mEngine.getPrices(1).get(0).getAsJsonObject();
+        assertEquals(1100 * S / 100, tPrices.get("open").getAsLong());
+        assertEquals(1200 * S / 100, tPrices.get("high").getAsLong());
+        assertEquals(6 * S,          tPrices.get("volume").getAsLong());
+    }
 }

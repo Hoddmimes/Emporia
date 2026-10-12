@@ -1,0 +1,26 @@
+{
+  "url": "http://localhost:8080",
+  "trustAllCertificates": false,
+  "verbose": false,
+  "sessions": [
+    {
+      "firm": "ThinAir",
+      "user": "Geek",
+      "password": "changeit",
+      "repeat": 1,
+      "txRate": 10,
+      "directives": [
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY",  "price": 97.00, "quantity": 31, "userRef": "b1" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 103.00, "quantity": 28, "userRef": "a1" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY",  "price": 99.00, "quantity": 16, "userRef": "b2" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 101.00, "quantity": 14, "userRef": "a2" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY",  "price": 95.00, "quantity": 42, "userRef": "b3" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 104.00, "quantity": 12, "userRef": "a3" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY",  "price": 98.00, "quantity": 10, "userRef": "b4" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 100.00, "quantity": 38, "userRef": "a4" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY",  "price": 96.00, "quantity": 46, "userRef": "b5" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 102.00, "quantity": 37, "userRef": "a5" }
+      ]
+    }
+  ]
+}

@@ -362,6 +362,11 @@ public class Orderbook {
                 pNewOrder.getQuantity() > 0, tTotMatched, pNewOrder.getQuantity(), pNewOrder.getUserRef());
     }
 
+    /** Restores the statistics (open, high, last, volume) of a trade reloaded at startup. */
+    void restoreTrade(long pPrice, long pQuantity) {
+        recordTrade(pPrice, pQuantity);
+    }
+
     private void recordTrade(long pPrice, long pQuantity) {
         if (mOpenPrice == 0L) mOpenPrice = pPrice;
         mHighPrice      = Math.max(mHighPrice, pPrice);

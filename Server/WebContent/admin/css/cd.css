@@ -170,6 +170,29 @@ body {
     box-shadow: 0 0 0 3px rgba(74,144,217,0.12);
 }
 
+.form-group textarea {
+    width: 100%;
+    padding: 10px 13px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: monospace;
+    color: var(--text);
+    outline: none;
+    resize: vertical;
+}
+
+.form-group textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(74,144,217,0.12);
+}
+
+.form-hint {
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--text-light);
+}
+
 /* ── Admin layout ────────────────────────────────────── */
 .cd-layout {
     display: flex;

@@ -114,6 +114,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-users');
@@ -140,8 +141,9 @@
         }
 
         async function loadFirms(selectedFirm) {
-            const response = await fetch('/api/admin/firms');
-            const firms = await response.json();
+            const r = await cdApi.request('/api/admin/firms');
+            if (!r.ok) { showError('Failed to load firms: ' + r.error); return; }
+            const firms = r.data;
             const select = document.getElementById('d-firm');
             firms.forEach(f => {
                 const opt = document.createElement('option');
@@ -155,10 +157,10 @@
         async function loadUser() {
             if (!mongoId) { window.location.href = '/admin/users.html'; return; }
             try {
-                const response = await fetch(`/api/admin/users/${mongoId}`);
-                if (response.status === 404) { window.location.href = '/admin/users.html'; return; }
-                if (!response.ok) { showError('Failed to load user.'); return; }
-                const u = await response.json();
+                const r = await cdApi.request(`/api/admin/users/${mongoId}`);
+                if (r.status === 404) { window.location.href = '/admin/users.html'; return; }
+                if (!r.ok) { showError('Failed to load user: ' + r.error); return; }
+                const u = r.data;
 
                 document.getElementById('page-title').textContent = u.id;
                 document.getElementById('d-id').textContent       = u.id;
@@ -178,7 +180,7 @@
                     status: u.status
                 };
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -196,20 +198,16 @@
                 body.password = newPassword;
             }
             try {
-                const response = await fetch(`/api/admin/users/${mongoId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) { showError('Failed to save changes.'); return; }
+                const r = await cdApi.request(`/api/admin/users/${mongoId}`, cdApi.json('PATCH', body));
+                if (!r.ok) { showError('Failed to save changes: ' + r.error); return; }
 
                 originalValues = { ...body };
                 document.getElementById('d-password-new').value = '';
                 // Refresh hash display if password was changed
                 if (newPassword !== '') {
-                    const refreshed = await fetch(`/api/admin/users/${mongoId}`);
+                    const refreshed = await cdApi.request(`/api/admin/users/${mongoId}`);
                     if (refreshed.ok) {
-                        const u = await refreshed.json();
+                        const u = refreshed.data;
                         document.getElementById('d-password-hash').textContent = u.password || '(not set)';
                     }
                 }
@@ -218,7 +216,7 @@
                 btn.textContent = 'Saved';
                 setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 
@@ -235,11 +233,11 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const response = await fetch(`/api/admin/users/${mongoId}`, { method: 'DELETE' });
-                if (!response.ok) { showError('Failed to delete user.'); return; }
+                const r = await cdApi.request(`/api/admin/users/${mongoId}`, { method: 'DELETE' });
+                if (!r.ok) { showError('Failed to delete user: ' + r.error); return; }
                 window.location.href = '/admin/users.html';
             } catch (e) {
-                showError('Connection error.');
+                showError('Unexpected error: ' + e.message);
             }
         }
 

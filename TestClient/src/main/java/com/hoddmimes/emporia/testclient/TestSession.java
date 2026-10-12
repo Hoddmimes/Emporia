@@ -17,10 +17,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 /**
- * One trading session: logs in, runs its directives {@code repeat} times at {@code txRate}
- * directives per second, and logs out. Each session has its own HttpClient and cookies, i.e.
+ * One trading session: logs in, opens the broadcast WebSocket (unless -bdx false), waits until
+ * every session has done so, runs its directives {@code repeat} times at {@code txRate} directives
+ * per second, and logs out. Each session has its own HttpClient and cookies, i.e.
  * its own HTTP session on the server.
  */
 public class TestSession implements Runnable {
@@ -28,10 +30,15 @@ public class TestSession implements Runnable {
     /** The server API uses prices and quantities scaled by this factor (MatchingEngine.SCALE). */
     private static final long SCALE = 100000L;
 
+    /** Time to wait for the last broadcasts before the WebSocket is closed. */
+    private static final long BDX_DRAIN_MS = 500L;
+
     private final int        mIndex;
     private final JsonObject mConfig;
     private final String     mUrl;
     private final boolean    mVerbose;
+    private final boolean    mBdx;
+    private final CountDownLatch mAllReady;   // counted down by each session when it is ready to trade
     private final HttpClient mHttp;
     private final String     mFirm;
     private final String     mUser;
@@ -44,12 +51,16 @@ public class TestSession implements Runnable {
     private int     mFailed;
     private final List<Double> mTxMs = new ArrayList<>();   // time of each transaction, ms
     private boolean mCompleted;
+    private BdxConnection mBdxConnection;
 
-    public TestSession(int pIndex, JsonObject pConfig, String pUrl, SSLContext pSslContext, boolean pVerbose) {
+    public TestSession(int pIndex, JsonObject pConfig, String pUrl, SSLContext pSslContext, boolean pVerbose,
+                       boolean pBdx, CountDownLatch pAllReady) {
         mIndex   = pIndex;
         mConfig  = pConfig;
         mUrl     = pUrl;
         mVerbose = pVerbose;
+        mBdx     = pBdx;
+        mAllReady = pAllReady;
         mFirm    = pConfig.get("firm").getAsString();
         mUser    = pConfig.get("user").getAsString();
         mHttp    = HttpClient.newBuilder()
@@ -86,8 +97,19 @@ public class TestSession implements Runnable {
     @Override
     public void run() {
         try {
-            if (!login()) return;
-            loadInstruments();
+            boolean tReady = false;
+            try {
+                if (!login()) return;
+                loadInstruments();
+                if (mBdx) mBdxConnection = BdxConnection.open(mHttp, mUrl, name());
+                tReady = true;
+            } finally {
+                // Counted down also when the setup failed, so the other sessions don't wait forever
+                mAllReady.countDown();
+            }
+            // No session trades before all have logged in and set up their broadcast WebSockets,
+            // so every session sees the broadcasts of all sessions' transactions
+            if (tReady) mAllReady.await();
 
             int        tRepeat     = mConfig.has("repeat") ? mConfig.get("repeat").getAsInt()    : 1;
             double     tTxRate     = mConfig.has("txRate") ? mConfig.get("txRate").getAsDouble() : 0;
@@ -106,10 +128,21 @@ public class TestSession implements Runnable {
                 }
             }
             mCompleted = true;
+            closeBdx();
             post("/api/logout", "{}");
         } catch (Exception e) {
             System.out.println("[" + name() + "] aborted: " + e);
+            closeBdx();
         }
+    }
+
+    /** Waits a moment for the broadcasts caused by the last directives, then closes the WebSocket. */
+    private void closeBdx() {
+        if (mBdxConnection == null) return;
+        try { Thread.sleep(BDX_DRAIN_MS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        mBdxConnection.close();
+        System.out.println("[" + name() + "] bdx: " + mBdxConnection.received() + " messages received");
+        mBdxConnection = null;
     }
 
     // ── Session setup ─────────────────────────────────────────────────────

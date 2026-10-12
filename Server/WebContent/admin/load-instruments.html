@@ -97,6 +97,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('load-instruments');
@@ -177,20 +178,14 @@
             btn.disabled = true;
             btn.textContent = 'Processing…';
 
-            try {
-                const response = await fetch('/api/admin/instruments/load', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(parsedJson)
-                });
-                const data = await response.json();
-                showResults(data.results || []);
-            } catch (e) {
-                alert('Connection error: ' + e.message);
-            } finally {
-                btn.disabled  = false;
-                btn.textContent = 'Process File';
+            const r = await cdApi.request('/api/admin/instruments/load', cdApi.json('POST', parsedJson));
+            if (r.ok) {
+                showResults(r.data.results || []);
+            } else {
+                alert('Failed to load instruments: ' + r.error);
             }
+            btn.disabled  = false;
+            btn.textContent = 'Process File';
         }
 
         function showResults(results) {

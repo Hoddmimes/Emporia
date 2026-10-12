@@ -18,6 +18,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
 
     @Override
     public void register(Javalin app) {
+        registerDeleteAllOrders(app);
         app.get("/api/admin/markets", ctx -> {
             JsonArray tArray = new JsonArray();
             for (var tDoc : mCtx.database.listMarkets()) {
@@ -41,7 +42,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
             String tTradingStatus         = RestApiContext.field(tBody, "tradingStatus",         "CLOSED");
             if (tName.isEmpty())     { ctx.status(400).json("{\"error\":\"name is required\"}"); return; }
             // Auto-assign marketId: max existing + 1, or 1 if none exist
-            int tMarketId = mCtx.instrumentCache.nextMarketId();
+            int tMarketId = mCtx.nextMarketId();
             if (!Set.of("CLOSED","OPEN","SUSPENDED","PREOPEN").contains(tTradingStatus)) {
                 ctx.status(400).json("{\"error\":\"Invalid tradingStatus\"}"); return;
             }
@@ -102,6 +103,11 @@ public class AdminMarketEndpoints implements RestEndpoint {
                 var tDoc = mCtx.database.getMarket(tMongoId);
                 Integer tMarketId = (tDoc != null) ? tDoc.getInteger("marketId") : null;
                 // A new market can reuse a deleted market's id, so a market must be empty before it is deleted
+                int tOrders = (tMarketId != null) ? mCtx.matchingEngine.orderCount(tMarketId) : 0;
+                if (tOrders > 0) {
+                    ctx.status(409).json("{\"error\":\"Market has " + tOrders
+                            + " order(s); delete them (Delete All Orders) before deleting the market\"}"); return;
+                }
                 int tInstruments = (tMarketId != null) ? mCtx.instrumentCache.getInstrumentsByMarket(tMarketId).size() : 0;
                 if (tInstruments > 0) {
                     ctx.status(409).json("{\"error\":\"Market has " + tInstruments
@@ -110,6 +116,20 @@ public class AdminMarketEndpoints implements RestEndpoint {
                 mCtx.database.deleteMarket(tMongoId);
                 if (tMarketId != null) mCtx.instrumentCache.removeMarket(tMarketId);
                 ctx.json("{\"success\":true}");
+            } catch (IllegalArgumentException e) {
+                ctx.status(400).json("{\"error\":\"Invalid market ID\"}");
+            }
+        });
+    }
+
+    private void registerDeleteAllOrders(Javalin app) {
+        // Deletes all orders in the market's order books, of every firm and in any market state
+        app.delete("/api/admin/markets/{id}/orders", ctx -> {
+            try {
+                var tDoc = mCtx.database.getMarket(ctx.pathParam("id"));
+                if (tDoc == null) { ctx.status(404).json("{\"error\":\"Market not found\"}"); return; }
+                int tDeleted = mCtx.matchingEngine.deleteAllOrders(tDoc.getInteger("marketId"));
+                ctx.json("{\"success\":true,\"ordersDeleted\":" + tDeleted + "}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid market ID\"}");
             }
@@ -134,12 +154,9 @@ public class AdminMarketEndpoints implements RestEndpoint {
                 if (pAuctionInterval.isEmpty())       return "auctionInterval is required for AUCTION";
                 if (pRandomAuctionInterval.isEmpty()) return "randomAuctionInterval is required for AUCTION";
                 break;
-            case "BULLETIN":
-                if (pOpen.isEmpty())  return "open is required for BULLETIN";
-                if (pClose.isEmpty()) return "close is required for BULLETIN";
-                break;
             default:
-                return "Invalid type; must be CONTINUOUS, AUCTION or BULLETIN";
+                // Bulletin markets are a separate kind of market, see AdminBulletinMarketEndpoints
+                return "Invalid type; must be CONTINUOUS or AUCTION";
         }
         return null;
     }

@@ -30,6 +30,7 @@
         </div>
     </div>
 
+    <script src="/admin/js/cd-api.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const usernameEl = document.getElementById('username');
@@ -44,25 +45,16 @@
             const errorMsg = document.getElementById('error-msg');
             errorMsg.classList.add('alert-hidden');
 
-            try {
-                const response = await fetch('/api/admin/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await response.json();
-                if (data.success) {
-                    window.location.href = '/admin/admin.html';
-                } else {
-                    errorMsg.textContent = data.message || 'Login failed';
-                    errorMsg.classList.remove('alert-hidden');
-                    document.getElementById('password').value = '';
-                    document.getElementById('password').focus();
-                }
-            } catch (e) {
-                errorMsg.textContent = 'Connection error. Please try again.';
-                errorMsg.classList.remove('alert-hidden');
+            const r = await cdApi.request('/api/admin/login', cdApi.json('POST', { username, password }));
+            if (r.ok && r.data.success) {
+                window.location.href = '/admin/admin.html';
+                return;
             }
+            // A wrong password is a 401 with a message; anything else shows the status and reply
+            errorMsg.textContent = (r.data && r.data.message) || ('Login failed: ' + (r.error || r.text));
+            errorMsg.classList.remove('alert-hidden');
+            document.getElementById('password').value = '';
+            document.getElementById('password').focus();
         }
     </script>
 </body>

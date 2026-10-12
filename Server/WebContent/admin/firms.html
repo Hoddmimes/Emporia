@@ -43,6 +43,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-firms');
@@ -55,9 +56,14 @@
 
         async function loadFirms() {
             try {
-                const response = await fetch('/api/admin/firms');
-                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
-                const firms = await response.json();
+                const r = await cdApi.request('/api/admin/firms');
+                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                if (!r.ok) {
+                    document.getElementById('firms-body').innerHTML =
+                        `<tr class="empty-row"><td colspan="2">Failed to load firms: ${escHtml(r.error)}</td></tr>`;
+                    return;
+                }
+                const firms = r.data;
                 const tbody = document.getElementById('firms-body');
 
                 if (firms.length === 0) {

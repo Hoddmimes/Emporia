@@ -45,6 +45,7 @@
     </div>
 
     <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
     <script src="/admin/js/cd-nav.js"></script>
     <script>
         cdNav.render('list-markets');
@@ -52,9 +53,14 @@
 
         async function loadMarkets() {
             try {
-                const response = await fetch('/api/admin/markets');
-                if (!response.ok) { window.location.href = '/admin/login.html'; return; }
-                const markets = await response.json();
+                const r = await cdApi.request('/api/admin/markets');
+                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                if (!r.ok) {
+                    document.getElementById('markets-body').innerHTML =
+                        `<tr class="empty-row"><td colspan="4">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
+                    return;
+                }
+                const markets = r.data;
                 const tbody = document.getElementById('markets-body');
 
                 if (markets.length === 0) {
@@ -74,7 +80,7 @@
                     ).join('');
             } catch (e) {
                 document.getElementById('markets-body').innerHTML =
-                    '<tr class="empty-row"><td colspan="3">Failed to load markets.</td></tr>';
+                    '<tr class="empty-row"><td colspan="4">Failed to load markets.</td></tr>';
             }
         }
 

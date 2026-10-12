@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Bulletin Market</title>
+    <link rel="stylesheet" href="/admin/css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2 id="page-title">Bulletin Market</h2>
+                <a href="/admin/bulletin-markets.html" class="btn btn-outline btn-sm">&larr; Back to Bulletin Markets</a>
+            </div>
+
+            <div id="error-banner" class="alert alert-error alert-hidden"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Bulletin Market Details</h3>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-outline btn-sm" onclick="deleteAllBulletins()">Delete All Bulletins</button>
+                        <button class="btn btn-danger btn-sm" onclick="showDeleteModal()">Delete Bulletin Market</button>
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <span class="detail-label">Name</span>
+                        <span class="detail-value" id="d-name"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Market ID</span>
+                        <span class="detail-value" id="d-id"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Description</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-description" class="field-input" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Trading Status</span>
+                        <span class="detail-value">
+                            <select id="d-tradingStatus" class="field-input" style="max-width:180px;" onchange="checkChanged()">
+                                <option value="CLOSED">CLOSED</option>
+                                <option value="OPEN">OPEN</option>
+                                <option value="SUSPENDED">SUSPENDED</option>
+                            </select>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Open</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-open" class="field-input" placeholder="HH:MM" style="max-width:180px;" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Close</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-close" class="field-input" placeholder="HH:MM" style="max-width:180px;" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Instruments</span>
+                        <span class="detail-value">
+                            <textarea id="d-instruments" class="field-input" rows="6"
+                                      style="font-family:monospace;resize:vertical;" oninput="checkChanged()"></textarea>
+                            <div class="form-hint">One per line. A name is matched exactly; an entry between slashes,
+                                such as <code>/Brent.*/</code>, is a regular expression that must match the whole instrument.</div>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Max Order Time (hh:mm)</span>
+                        <span class="detail-value">
+                            <input type="text" id="d-maxOrderTime" class="field-input" placeholder="hh:mm" style="max-width:180px;"
+                                   oninput="checkChanged()">
+                            <div class="form-hint">Applies to bulletins added after the change.</div>
+                        </span>
+                    </div>
+                </div>
+
+                <div style="margin-top:20px;">
+                    <button id="save-btn" class="btn btn-primary" onclick="saveMarket()" disabled>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete confirmation modal -->
+    <div id="delete-modal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <h3>Delete Bulletin Market</h3>
+            <p>Are you sure you want to delete bulletin market <strong id="modal-market-name"></strong>?
+               This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/js/cd-session.js"></script>
+    <script src="/admin/js/cd-api.js"></script>
+    <script src="/admin/js/cd-nav.js"></script>
+    <script>
+        cdNav.render('list-bulletin-markets');
+        cdSession.guard('user-info');
+
+        const mongoId = new URLSearchParams(window.location.search).get('id');
+        let originalValues = {};
+
+        function showError(msg) {
+            const el = document.getElementById('error-banner');
+            el.textContent = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        function currentValues() {
+            return {
+                description:   document.getElementById('d-description').value.trim(),
+                tradingStatus: document.getElementById('d-tradingStatus').value,
+                open:          document.getElementById('d-open').value.trim(),
+                close:         document.getElementById('d-close').value.trim(),
+                instruments:   document.getElementById('d-instruments').value
+                                   .split('\n').map(s => s.trim()).filter(s => s),
+                maxOrderTime:  document.getElementById('d-maxOrderTime').value.trim()
+            };
+        }
+
+        function checkChanged() {
+            document.getElementById('save-btn').disabled =
+                JSON.stringify(currentValues()) === JSON.stringify(originalValues);
+        }
+
+        async function loadMarket() {
+            if (!mongoId) { window.location.href = '/admin/bulletin-markets.html'; return; }
+            try {
+                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`);
+                if (r.status === 404) { window.location.href = '/admin/bulletin-markets.html'; return; }
+                if (!r.ok) { showError('Failed to load bulletin market: ' + r.error); return; }
+                const m = r.data;
+
+                document.getElementById('page-title').textContent    = m.name;
+                document.getElementById('d-name').textContent        = m.name;
+                document.getElementById('d-id').textContent          = m.id;
+                document.getElementById('d-description').value       = m.description || '';
+                document.getElementById('d-tradingStatus').value     = m.tradingStatus || 'CLOSED';
+                document.getElementById('d-open').value              = m.open || '';
+                document.getElementById('d-close').value             = m.close || '';
+                document.getElementById('d-instruments').value       = (m.instruments || []).join('\n');
+                document.getElementById('d-maxOrderTime').value      = m.maxOrderTime || '';
+                originalValues = currentValues();
+            } catch (e) {
+                showError('Unexpected error: ' + e.message);
+            }
+        }
+
+        async function saveMarket() {
+            document.getElementById('error-banner').classList.add('alert-hidden');
+            const body = currentValues();
+            try {
+                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`, cdApi.json('PATCH', body));
+                if (!r.ok) {
+                    showError('Failed to save changes: ' + r.error);
+                    return;
+                }
+                originalValues = body;
+                document.getElementById('d-instruments').value = body.instruments.join('\n');
+                const btn = document.getElementById('save-btn');
+                btn.disabled = true;
+                btn.textContent = 'Saved';
+                setTimeout(() => { btn.textContent = 'Save Changes'; }, 1500);
+            } catch (e) {
+                showError('Unexpected error: ' + e.message);
+            }
+        }
+
+        async function deleteAllBulletins() {
+            const name = document.getElementById('d-name').textContent;
+            if (!confirm(`Delete ALL bulletins in ${name}, of every firm? This cannot be undone.`)) return;
+            document.getElementById('error-banner').classList.add('alert-hidden');
+            try {
+                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}/bulletins`, { method: 'DELETE' });
+                if (!r.ok) { showError('Failed to delete bulletins: ' + r.error); return; }
+                alert(`${r.data.bulletinsDeleted} bulletin(s) deleted.`);
+            } catch (e) {
+                showError('Unexpected error: ' + e.message);
+            }
+        }
+
+        function showDeleteModal() {
+            document.getElementById('modal-market-name').textContent =
+                document.getElementById('d-name').textContent;
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+        }
+
+        async function confirmDelete() {
+            closeDeleteModal();
+            try {
+                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`, { method: 'DELETE' });
+                if (!r.ok) {
+                    showError('Failed to delete bulletin market: ' + r.error);
+                    return;
+                }
+                window.location.href = '/admin/bulletin-markets.html';
+            } catch (e) {
+                showError('Unexpected error: ' + e.message);
+            }
+        }
+
+        loadMarket();
+    </script>
+</body>
+</html>
