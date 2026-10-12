@@ -253,19 +253,19 @@ public class Orderbook {
 
     public OrderResponse deleteOrder(long pOrderId) {
         if (!cLog.isTraceEnabled()) {
-            cLog.info("DeleteOrder orderid: " +pOrderId);
+            cLog.info("DeleteOrder orderid: " + Long.toHexString(pOrderId));
         }
         Order tRemoved = removeOrderFromBook(pOrderId);
         if (tRemoved == null) {
             if (!cLog.isTraceEnabled()) {
-                cLog.info("DeleteOrder [failed] orderid: " + pOrderId + "was not found");
+                cLog.info("DeleteOrder [failed] orderid: " + Long.toHexString(pOrderId) + " was not found");
             }
-            return OrderResponse.error("Order not found: " + pOrderId);
+            return OrderResponse.error("Order not found: " + Long.toHexString(pOrderId));
         }
         mCallback.orderRemoved(tRemoved, ++mSeqNo);
         mCallback.orderbookChanged(mInstrumentId);
         if (!cLog.isTraceEnabled()) {
-            cLog.info("DeleteOrder [success] orderid: " + pOrderId + " deleted");
+            cLog.info("DeleteOrder [success] orderid: " + Long.toHexString(pOrderId) + " deleted");
         }
         return new OrderResponse(true, null, Long.toHexString(tRemoved.getOrderId()),
                 false, 0L, tRemoved.getQuantity(), tRemoved.getUserRef());
