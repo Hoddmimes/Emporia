@@ -26,3 +26,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-11 BdxDistributor sends asynchronously: publish() queues the message for the distributor's WsPublisher thread and the WebSocket sends are async, with a client more than 10000 messages behind disconnected; removed the per-WsContext send lock, which did not serialize sends.
 * 26-10-11 Added Database.fromTradeDocument(Document), converting a stored trade back to an InternalTrade (new InternalTrade constructor taking the stored values, with stand-in buy/sell orders).
 * 26-10-11 Added SessionUser (userId, firm), put on the Javalin context by a beforeMatched handler for matched non-admin /api requests; read with SessionUser.of(ctx).
+* 26-10-12 Request ids: every /api request gets an id from a counter (r1, r2, ...), in the Log4j ThreadContext (shown as [%X{rid}] on each log line) and the X-Request-Id response header.

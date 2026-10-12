@@ -33,7 +33,9 @@ public class OrderEndpoints implements RestEndpoint {
     public void register(Javalin app) {
         app.post("/api/orders", ctx -> {
             JsonObject tBody = parseBody(ctx);
-            cLog.trace("{} user: {} rqst: {} ", ctx.path(), SessionUser.of(ctx), tBody );
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} user: {} rqst: {} ", ctx.path(), SessionUser.of(ctx), tBody );
+            }
             if (tBody == null) return;
             String tFirm = firm(ctx);
 
@@ -58,6 +60,9 @@ public class OrderEndpoints implements RestEndpoint {
         app.patch("/api/orders/{orderId}", ctx -> {
             JsonObject tBody = parseBody(ctx);
             if (tBody == null) return;
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} user: {} rqst: {} ", ctx.path(), SessionUser.of(ctx), tBody );
+            }
             String tFirm    = firm(ctx);
             String tOrderId = ctx.pathParam("orderId");
             if (!tBody.has("quantity")) { error(ctx, 400, "quantity is required"); return; }
@@ -77,6 +82,9 @@ public class OrderEndpoints implements RestEndpoint {
         app.delete("/api/orders/{orderId}", ctx -> {
             String tFirm    = firm(ctx);
             String tOrderId = ctx.pathParam("orderId");
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} (delete order) user: {}", ctx.path(), SessionUser.of(ctx) );
+            }
             if (mCtx.matchingEngine.getOrderInstrumentId(tFirm, tOrderId) == 0) {
                 error(ctx, 404, "Order not found: " + tOrderId); return;
             }

@@ -15,11 +15,13 @@ import org.eclipse.jetty.server.session.HouseKeeper;
 import jakarta.servlet.http.HttpSessionListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.ThreadContext;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class RestApi {
 
@@ -31,6 +33,10 @@ public class RestApi {
 
     // Upper bound on how often timed-out HTTP sessions are detected and removed
     private static final int SESSION_SCAVENGE_SECONDS = 30;
+
+    // Request ids: a counter, restarting at 1 when the server restarts
+    public  static final String REQUEST_ID     = "rid";   // Log4j ThreadContext key, %X{rid} in the log pattern
+    private final AtomicLong    mNextRequestId = new AtomicLong(1);
 
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
@@ -112,6 +118,7 @@ public class RestApi {
             }
         });
 
+        declareRequestId(tApp);
         declareAuthFilter(tApp);
         declareEndpoints(tApp);
         declareAfterHandlers(tApp);
@@ -120,6 +127,19 @@ public class RestApi {
 
         if (tHttpsEnabled) cLog.info("HTTPS listening on {}:{}", tInterface, tHttpsPort);
         if (tHttpEnabled)  cLog.info("HTTP  listening on {}:{}", tInterface, tHttpPort);
+    }
+
+    // ── Request id ────────────────────────────────────────────────────────
+
+    // Gives every /api request an id (r1, r2, ...), put in the Log4j ThreadContext so that every line
+    // logged on the request's thread shows it (%X{rid}), and returned in the X-Request-Id header.
+    // Registered first, so it runs before the auth filter; cleared in declareAfterHandlers.
+    private void declareRequestId(Javalin pApp) {
+        pApp.before("/api/*", ctx -> {
+            String tRequestId = "r" + mNextRequestId.getAndIncrement();
+            ThreadContext.put(REQUEST_ID, tRequestId);
+            ctx.header("X-Request-Id", tRequestId);
+        });
     }
 
     // ── Auth filter ───────────────────────────────────────────────────────
@@ -158,8 +178,20 @@ public class RestApi {
         // Runs after every request to exactly /api/orders (GET list, POST add), also when the request
         // failed; /api/orders/{orderId} (PATCH, DELETE) is a different path and not included
         pApp.after("/api/orders", ctx -> {
-            cLog.trace("{} -> {} user: {}",  ctx.path(), ctx.statusCode(), SessionUser.of(ctx));
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} -> {} user: {}",  ctx.path(), ctx.statusCode(), SessionUser.of(ctx));
+            }
         });
+
+        pApp.after("/api/orders/*", ctx -> {
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} -> {} user: {}",  ctx.path(), ctx.statusCode(), SessionUser.of(ctx));
+            }
+        });
+
+        // Registered last, so it runs after the other after handlers: Jetty reuses its threads, so the
+        // request id must not stay in the thread's context for the next request
+        pApp.after("/api/*", ctx -> ThreadContext.remove(REQUEST_ID));
     }
 
     // ── REST endpoints ────────────────────────────────────────────────────
