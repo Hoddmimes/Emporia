@@ -114,6 +114,7 @@ public class RestApi {
 
         declareAuthFilter(tApp);
         declareEndpoints(tApp);
+        declareAfterHandlers(tApp);
 
         tApp.start();
 
@@ -135,6 +136,29 @@ public class RestApi {
                     ? RestApiContext.ADMIN_USER : RestApiContext.USER;
             String tUser = (tSession != null) ? (String) tSession.getAttribute(tAttribute) : null;
             if (tUser == null) throw new UnauthorizedResponse("Not authenticated");
+        });
+
+        // Runs after the auth filter, only for requests that matched an endpoint: puts the trading
+        // user on the context (see SessionUser.of), so endpoints need not read the session
+        pApp.beforeMatched("/api/*", ctx -> {
+            if (ctx.path().startsWith("/api/admin/")) return;
+            var tSession = ctx.req().getSession(false);
+            if (tSession == null) return;
+            String tUser = (String) tSession.getAttribute(RestApiContext.USER);
+            if (tUser != null) {
+                ctx.attribute(SessionUser.CTX_ATTRIBUTE,
+                        new SessionUser(tUser, (String) tSession.getAttribute(RestApiContext.FIRM)));
+            }
+        });
+    }
+
+    // ── After handlers ────────────────────────────────────────────────────
+
+    private void declareAfterHandlers(Javalin pApp) {
+        // Runs after every request to exactly /api/orders (GET list, POST add), also when the request
+        // failed; /api/orders/{orderId} (PATCH, DELETE) is a different path and not included
+        pApp.after("/api/orders", ctx -> {
+            cLog.trace("{} -> {} user: {}",  ctx.path(), ctx.statusCode(), SessionUser.of(ctx));
         });
     }
 

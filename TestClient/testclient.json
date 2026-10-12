@@ -10,9 +10,9 @@
       "repeat": 1000,
       "txRate": 30,
       "directives": [
-        { "type": "AddOrder", "ref": "bid", "instrument": "ABB", "side": "BUY", "price": 100.00, "quantity": 10 },
-        { "type": "AddOrder", "ref": "ask", "instrument": "ABB", "side": "SELL", "price": 101.00, "quantity": 5 },
-        { "type": "DeleteOrder", "ref": "bid" }
+        { "type": "AddOrder", "instrument": "ABB", "side": "BUY", "price": 101.00, "quantity": 10, "userRef": "bidOrder" },
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 100.00, "quantity": 5, "userRef": "askOrder"  },
+        { "type": "DeleteOrder", "userRef": "bidOrder" }
       ]
     }
   ]

@@ -172,9 +172,10 @@ public class TestSession implements Runnable {
         if (pDirective.has("userRef")) tBody.addProperty("userRef", pDirective.get("userRef").getAsString());
 
         HttpResponse<String> tRsp = timed(() -> post("/api/orders", tBody.toString()));
+
         if (tRsp.statusCode() == 201) {
             JsonObject tOrder = JsonParser.parseString(tRsp.body()).getAsJsonObject();
-            if (pDirective.has("ref")) mOrderIds.put(pDirective.get("ref").getAsString(), tOrder.get("orderId").getAsString());
+            if (pDirective.has("userRef")) mOrderIds.put(pDirective.get("userRef").getAsString(), tOrder.get("orderId").getAsString());
             ok("AddOrder", tRsp);
         } else {
             fail("AddOrder " + tRsp.statusCode() + " " + tRsp.body());
@@ -182,9 +183,9 @@ public class TestSession implements Runnable {
     }
 
     private void deleteOrder(JsonObject pDirective) throws Exception {
-        String tRef     = pDirective.get("ref").getAsString();
+        String tRef     = pDirective.get("userRef").getAsString();
         String tOrderId = mOrderIds.remove(tRef);
-        if (tOrderId == null) { fail("DeleteOrder: no order added with ref '" + tRef + "'"); return; }
+        if (tOrderId == null) { fail("DeleteOrder: no order added with userRef '" + tRef + "'"); return; }
 
         HttpResponse<String> tRsp = timed(() -> send(HttpRequest.newBuilder(URI.create(mUrl + "/api/orders/" + tOrderId)).DELETE()));
         if (tRsp.statusCode() == 200) {

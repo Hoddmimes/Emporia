@@ -12,7 +12,8 @@
         <!-- Application logging -->
         <Logger name="com.hoddmimes" level="INFO"/>
         <!-- Set to TRACE to log all inbound requests and outbound responses -->
-        <Logger name="com.hoddmimes.emporia.server.MessageDispatcher" level="TRACE"/>
+        <Logger name="com.hoddmimes.emporia.server.RestApi" level="TRACE"/>
+        <Logger name="com.hoddmimes.emporia.server.endpoints.OrderEndpoints" level="TRACE"/>
 
         <Root level="INFO">
             <AppenderRef ref="Console"/>

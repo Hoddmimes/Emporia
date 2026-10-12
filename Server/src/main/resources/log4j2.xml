@@ -10,6 +10,7 @@
     </Appenders>
     <Loggers>
         <Logger name="com.hoddmimes" level="INFO"/>
+        <Logger name="com.hoddmimes.emporia.server.me.OrderEndpoints" level="TRACE"/>
 
         <Root level="INFO">
             <AppenderRef ref="Console"/>

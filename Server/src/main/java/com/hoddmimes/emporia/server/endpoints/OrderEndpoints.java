@@ -3,11 +3,15 @@ package com.hoddmimes.emporia.server.endpoints;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.SessionUser;
 import com.hoddmimes.emporia.server.me.AddOrderRequest;
+import com.hoddmimes.emporia.server.me.MatchingEngine;
 import com.hoddmimes.emporia.server.me.Order;
 import com.hoddmimes.emporia.server.me.OrderResponse;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * Order entry for trading users. The order's account is always the user's firm, and a firm
@@ -16,6 +20,8 @@ import io.javalin.http.Context;
  * by MatchingEngine.SCALE.
  */
 public class OrderEndpoints implements RestEndpoint {
+
+    private static final Logger cLog = LogManager.getLogger(OrderEndpoints.class);
 
     private final RestApiContext mCtx;
 
@@ -27,8 +33,10 @@ public class OrderEndpoints implements RestEndpoint {
     public void register(Javalin app) {
         app.post("/api/orders", ctx -> {
             JsonObject tBody = parseBody(ctx);
+            cLog.trace("{} user: {} rqst: {} ", ctx.path(), SessionUser.of(ctx), tBody );
             if (tBody == null) return;
             String tFirm = firm(ctx);
+
             if (!tBody.has("instrumentId")) { error(ctx, 400, "instrumentId is required"); return; }
             if (!tBody.has("side"))         { error(ctx, 400, "side is required");         return; }
             if (!tBody.has("price"))        { error(ctx, 400, "price is required");        return; }

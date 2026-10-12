@@ -31,14 +31,15 @@ import java.util.List;
  *       "repeat": 10,                    // times the directives are run (default 1)
  *       "txRate": 5,                     // directives per second, 0 = as fast as possible
  *       "directives": [
- *         { "type": "AddOrder", "ref": "b1", "instrument": "ABB", "side": "BUY",
- *           "price": 101.50, "quantity": 100, "userRef": "optional" },
- *         { "type": "DeleteOrder", "ref": "b1" } ] } ]
+ *         { "type": "AddOrder", "instrument": "ABB", "side": "BUY",
+ *           "price": 101.50, "quantity": 100, "userRef": "b1" },   // userRef is optional
+ *         { "type": "DeleteOrder", "userRef": "b1" } ] } ]
  * }
  * </pre>
  *
  * AddOrder takes the instrument by name ("instrument") or id ("instrumentId"); price and quantity
- * are decimals. DeleteOrder deletes the order last added with the same "ref". Sessions run
+ * are decimals. The orderId in an AddOrder's response is remembered under its "userRef";
+ * DeleteOrder deletes the order last added with the same "userRef", by that orderId. Sessions run
  * concurrently, each with its own HTTP session.
  */
 public class TestClient {
