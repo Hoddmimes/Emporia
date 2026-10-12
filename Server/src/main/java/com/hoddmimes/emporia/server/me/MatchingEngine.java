@@ -185,6 +185,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         mTrades.add(pTrade);
         cLog.info("{}", pTrade);
 
+
+
         int tMarketId = marketIdOf(pTrade.getInstrumentId());
 
         // Trade to database
