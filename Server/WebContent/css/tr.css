@@ -397,6 +397,18 @@ body {
 }
 .mv-order-dialog::backdrop { background: rgba(20,30,50,.35); }
 .mv-order-dialog.bulletin  { border-top-color: var(--bulletin); }
+/* Order book dialog: a snapshot of one instrument's book, bids left and asks right */
+.mv-order-dialog.mv-book-dialog { width: 620px; }
+.mv-book { max-height: 60vh; overflow-y: auto; margin-bottom: 14px; }
+.mv-book-table th, .mv-book-table td,
+.mv-book-table th:first-child, .mv-book-table td:first-child { text-align: right; }
+.mv-book-table thead th { position: sticky; top: 0; }
+.mv-book-cell { cursor: pointer; }
+.mv-book-table tbody tr td[data-side="bid"]:hover,
+.mv-book-table tbody tr td[data-side="ask"]:hover { background: rgba(0,0,0,.06); }
+.mv-book-price { font-weight: 600; }
+.mv-book-table td.mv-book-price.mv-bid { border-right: 1px solid var(--border); }
+.mv-book-own { color: var(--text-light); font-size: 11px; }
 .mv-order-dialog h3 { font-size: 17px; font-weight: 600; margin-bottom: 2px; }
 .mv-order-dialog .mv-order-sub {
     font-size: 12px;
@@ -485,3 +497,34 @@ body {
 .mv-toast-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .mv-toast .btn-primary { background: var(--bulletin); }
 .mv-toast .btn-primary:hover { background: #0b6f73; }
+.mv-price-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
+
+/* ── My Trades: the date toolbar ───────────────────────────────────── */
+.mv-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.mv-toolbar label { font-weight: 600; font-size: 13px; }
+.mv-toolbar input {
+    width: 120px;
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+.mv-toolbar input.invalid { border-color: var(--error); }
+.mv-toolbar-error { color: var(--error); font-size: 12px; }
+.mv-toolbar select {
+    padding: 5px 9px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    background: #fff;
+}
+.mv-toolbar-hint { color: var(--text-light); font-size: 12px; margin-left: 8px; }
+
+/* Build version and date under the login form */
+.login-build {
+    margin-top: 18px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-light);
+}

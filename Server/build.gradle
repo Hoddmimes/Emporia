@@ -1,6 +1,8 @@
 // Common settings (Java 21 toolchain, JUnit 5) come from the root build.gradle.
 plugins {
     id 'application'
+    id 'war'
+    id 'com.gradleup.shadow' version '9.2.2'
 }
 
 dependencies {
@@ -11,6 +13,8 @@ dependencies {
     implementation 'org.apache.logging.log4j:log4j-api:2.23.1'
     runtimeOnly 'org.apache.logging.log4j:log4j-core:2.23.1'
     runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl:2.23.1'
+    // The web application's /ws endpoint (webapp.BdxWebSocket); Tomcat provides it at run time
+    compileOnly 'jakarta.websocket:jakarta.websocket-api:2.0.0'
 }
 
 application {
@@ -22,4 +26,75 @@ run {
     args = ['-config', 'emporia.json']
     // Same logging configuration as the IntelliJ run configuration
     jvmArgs = ["-Dlog4j2.configurationFile=${file('log4j2.xml')}"]
+}
+
+// ── Build version and date ────────────────────────────────────────────────
+// The version is V<version>-<build>, from version.properties: version is the main version (changed by
+// hand), build a number that each Gradle run building the WAR or the fat jar increases by one (so a
+// "./gradlew build", which makes both, counts once). emporia-build.properties on the classpath (read by
+// BuildInfo, shown on the login pages and logged at startup) holds the version and the time of the build;
+// the date changes on every build, so generateBuildInfo always runs.
+def versionFile  = file('version.properties')
+def buildInfoDir = layout.buildDirectory.dir('generated/buildinfo')
+
+def readVersion = {
+    def tProps = new Properties()
+    versionFile.withInputStream { tProps.load(it) }
+    tProps
+}
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.hasTask(':Server:war') || graph.hasTask(':Server:shadowJar')) {
+        def tProps = readVersion()
+        int tBuild = (tProps.getProperty('build') as int) + 1
+        // Rewrite only the build line, so the comments stay
+        versionFile.text = versionFile.text.replaceFirst(/(?m)^build=.*$/, "build=${tBuild}")
+        logger.lifecycle("Emporia build number ${String.format('%03d', tBuild)}")
+    }
+}
+
+tasks.register('generateBuildInfo') {
+    outputs.dir buildInfoDir
+    outputs.upToDateWhen { false }
+    doLast {
+        def tProps   = readVersion()
+        def tVersion = "V${tProps.getProperty('version')}-${String.format('%03d', tProps.getProperty('build') as int)}"
+        def tFile = buildInfoDir.get().file('emporia-build.properties').asFile
+        tFile.parentFile.mkdirs()
+        tFile.text = "version=${tVersion}\nbuildDate=${new Date().format('yyyy-MM-dd HH:mm')}\n"
+    }
+}
+
+sourceSets.main.resources.srcDir(files(buildInfoDir).builtBy('generateBuildInfo'))
+
+// ── Fat jar ───────────────────────────────────────────────────────────────
+// build/libs/Server-<version>-all.jar: the server and all its libraries in one jar, run with
+//   java -jar Server-<version>-all.jar -config emporia.json [-mode test]
+// The service files of the libraries (META-INF/services, used by Jetty and Log4j) are merged.
+shadowJar {
+    mergeServiceFiles()
+    manifest { attributes 'Main-Class': application.mainClass.get() }
+}
+
+// ── WAR for Tomcat ────────────────────────────────────────────────────────
+// build/libs/emporia.war, for Tomcat 10.1 or later (Jakarta EE), deployed at /emporia (webapps/emporia.war;
+// the pages use relative paths, so any context path works). The configuration file is given with the
+// context parameter or system property emporia.config, or EMPORIA_CONFIG (webapp.EmporiaWebApp).
+// The pages (WebContent) are at the root of the WAR; Tomcat provides the servlet and WebSocket APIs. The
+// WAR has its own log4j2.xml (src/war/resources: logs to Tomcat's logs/emporia.log).
+def warResources = layout.buildDirectory.dir('war-resources')
+
+tasks.register('warResources', Sync) {
+    from(processResources) { exclude 'log4j2.xml' }
+    from 'src/war/resources'
+    into warResources
+}
+
+war {
+    archiveFileName = 'emporia.war'
+    from 'WebContent'
+    webInf { from 'src/war/WEB-INF' }
+    def tMainResources = sourceSets.main.output.resourcesDir
+    classpath = classpath.filter { it != tMainResources && !it.name.startsWith('jetty-jakarta-servlet-api') } +
+                files(warResources).builtBy('warResources')
 }

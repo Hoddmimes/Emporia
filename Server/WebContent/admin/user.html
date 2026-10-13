@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; User</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2 id="page-title">User</h2>
-                <a href="/admin/users.html" class="btn btn-outline btn-sm">&larr; Back to Users</a>
+                <a href="users.html" class="btn btn-outline btn-sm">&larr; Back to Users</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -113,9 +113,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-users');
         cdSession.guard('user-info');
@@ -141,7 +141,7 @@
         }
 
         async function loadFirms(selectedFirm) {
-            const r = await cdApi.request('/api/admin/firms');
+            const r = await cdApi.request('../api/admin/firms');
             if (!r.ok) { showError('Failed to load firms: ' + r.error); return; }
             const firms = r.data;
             const select = document.getElementById('d-firm');
@@ -155,10 +155,10 @@
         }
 
         async function loadUser() {
-            if (!mongoId) { window.location.href = '/admin/users.html'; return; }
+            if (!mongoId) { window.location.href = 'users.html'; return; }
             try {
-                const r = await cdApi.request(`/api/admin/users/${mongoId}`);
-                if (r.status === 404) { window.location.href = '/admin/users.html'; return; }
+                const r = await cdApi.request(`../api/admin/users/${mongoId}`);
+                if (r.status === 404) { window.location.href = 'users.html'; return; }
                 if (!r.ok) { showError('Failed to load user: ' + r.error); return; }
                 const u = r.data;
 
@@ -198,14 +198,14 @@
                 body.password = newPassword;
             }
             try {
-                const r = await cdApi.request(`/api/admin/users/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/users/${mongoId}`, cdApi.json('PATCH', body));
                 if (!r.ok) { showError('Failed to save changes: ' + r.error); return; }
 
                 originalValues = { ...body };
                 document.getElementById('d-password-new').value = '';
                 // Refresh hash display if password was changed
                 if (newPassword !== '') {
-                    const refreshed = await cdApi.request(`/api/admin/users/${mongoId}`);
+                    const refreshed = await cdApi.request(`../api/admin/users/${mongoId}`);
                     if (refreshed.ok) {
                         const u = refreshed.data;
                         document.getElementById('d-password-hash').textContent = u.password || '(not set)';
@@ -233,9 +233,9 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`/api/admin/users/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/users/${mongoId}`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete user: ' + r.error); return; }
-                window.location.href = '/admin/users.html';
+                window.location.href = 'users.html';
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
             }

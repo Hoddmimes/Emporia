@@ -10,14 +10,14 @@ const trSession = (() => {
 
     async function guard(elementId) {
         try {
-            const response = await fetch('/api/session');
+            const response = await fetch('api/session');
             if (!response.ok) {
-                window.location.href = '/login.html';
+                window.location.href = 'login.html';
                 return;
             }
             const data = await response.json();
             if (!data.authenticated) {
-                window.location.href = '/login.html';
+                window.location.href = 'login.html';
                 return;
             }
             const el = document.getElementById(elementId);
@@ -27,15 +27,15 @@ const trSession = (() => {
             // Expose session data for the page
             trSession._session = data;
         } catch (e) {
-            window.location.href = '/login.html';
+            window.location.href = 'login.html';
         }
     }
 
     async function logout() {
         try {
-            await fetch('/api/logout', { method: 'POST' });
+            await fetch('api/logout', { method: 'POST' });
         } catch (_) {}
-        window.location.href = '/login.html';
+        window.location.href = 'login.html';
     }
 
     return { guard, logout, _session: null };

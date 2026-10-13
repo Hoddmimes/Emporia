@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Firm</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2 id="page-title">Firm</h2>
-                <a href="/admin/firms.html" class="btn btn-outline btn-sm">&larr; Back to Firms</a>
+                <a href="firms.html" class="btn btn-outline btn-sm">&larr; Back to Firms</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -97,9 +97,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-firms');
         cdSession.guard('user-info');
@@ -124,10 +124,10 @@
         }
 
         async function loadFirm() {
-            if (!firmId) { window.location.href = '/admin/firms.html'; return; }
+            if (!firmId) { window.location.href = 'firms.html'; return; }
             try {
-                const r = await cdApi.request(`/api/admin/firms/${firmId}`);
-                if (r.status === 404) { window.location.href = '/admin/firms.html'; return; }
+                const r = await cdApi.request(`../api/admin/firms/${firmId}`);
+                if (r.status === 404) { window.location.href = 'firms.html'; return; }
                 if (!r.ok) { showError('Failed to load firm: ' + r.error); return; }
                 const f = r.data;
 
@@ -161,7 +161,7 @@
                 mail:    document.getElementById('d-mail').value.trim()
             };
             try {
-                const r = await cdApi.request(`/api/admin/firms/${firmId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/firms/${firmId}`, cdApi.json('PATCH', body));
                 if (!r.ok) { showError('Failed to save changes: ' + r.error); return; }
 
                 originalValues = { ...body };
@@ -187,9 +187,9 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`/api/admin/firms/${firmId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/firms/${firmId}`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete firm: ' + r.error); return; }
-                window.location.href = '/admin/firms.html';
+                window.location.href = 'firms.html';
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
             }

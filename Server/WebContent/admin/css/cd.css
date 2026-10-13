@@ -447,3 +447,11 @@ body {
 }
 
 .page-title-row h2 { margin-bottom: 0; }
+
+/* Build version and date under the login form */
+.login-build {
+    margin-top: 18px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-light);
+}

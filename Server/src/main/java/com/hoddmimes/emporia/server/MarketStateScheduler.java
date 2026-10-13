@@ -64,6 +64,11 @@ public class MarketStateScheduler {
         });
     }
 
+    /** Stops checking the market hours (web application undeploy). */
+    public void stop() {
+        mScheduler.shutdownNow();
+    }
+
     /** Applies the startup rule for the given mode and starts checking the market hours. */
     public void start(boolean pTestMode) {
         if (pTestMode) {

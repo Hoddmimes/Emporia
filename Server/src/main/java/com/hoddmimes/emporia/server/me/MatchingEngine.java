@@ -210,8 +210,16 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     /** The firm's trades, oldest first, optionally only for one market and/or one instrument (0 = all). */
     public synchronized JsonArray getTradesByFirm(String pFirm, int pMarketId, long pInstrumentId) {
+        return tradesForFirm(mTrades, pFirm, pMarketId, pInstrumentId);
+    }
+
+    /**
+     * The firm's side of the given trades, in their order and filtered like getTradesByFirm; used for
+     * the stored trades of a chosen day (Database.fromTradeDocument).
+     */
+    public synchronized JsonArray tradesForFirm(List<InternalTrade> pTrades, String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
-        for (InternalTrade tTrade : mTrades) {
+        for (InternalTrade tTrade : pTrades) {
             if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
             if (pMarketId != 0 && marketIdOf(tTrade.getInstrumentId()) != pMarketId) continue;
             boolean tIsBuyer  = pFirm.equals(tTrade.getBuyOrder().getAccount());
@@ -269,6 +277,52 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             tResult.add(tJson);
         }
         return tResult;
+    }
+
+    /** The instrument's last traded price today (scaled), 0 if it has not traded today. */
+    public synchronized long getLastTradePrice(long pInstrumentId) {
+        Orderbook tBook = mOrderbooks.get(pInstrumentId);
+        return (tBook != null && tBook.getTradedVolume() > 0) ? tBook.getLastTradePrice() : 0L;
+    }
+
+    /**
+     * A snapshot of the instrument's whole order book, anonymous, aggregated per price level: "bids" and
+     * "asks", best price first, each level with price, quantity (total), orders (count) and own (the
+     * quantity of pFirm's orders at the level), plus open, high, last (JSON null if not traded today) and
+     * volume. Prices and quantities scaled. Empty sides if the instrument has no order book yet.
+     */
+    public synchronized JsonObject getOrderbook(long pInstrumentId, String pFirm) {
+        Orderbook tBook   = mOrderbooks.get(pInstrumentId);
+        boolean   tTraded = tBook != null && tBook.getTradedVolume() > 0;
+        JsonObject tJson = instrumentJson(pInstrumentId);
+        tJson.add("bids", priceLevels(tBook != null ? tBook.getBuySide().getOrders()  : List.of(), pFirm));
+        tJson.add("asks", priceLevels(tBook != null ? tBook.getSellSide().getOrders() : List.of(), pFirm));
+        tJson.addProperty("open",   tTraded ? tBook.getOpenPrice()      : null);
+        tJson.addProperty("high",   tTraded ? tBook.getHighPrice()      : null);
+        tJson.addProperty("last",   tTraded ? tBook.getLastTradePrice() : null);
+        tJson.addProperty("volume", (tBook != null) ? tBook.getTradedVolume() : 0L);
+        tJson.addProperty("time",   System.currentTimeMillis());
+        return tJson;
+    }
+
+    /** One side's orders (in priority order, so best price first) aggregated per price. */
+    private static JsonArray priceLevels(List<Order> pOrders, String pFirm) {
+        JsonArray  tLevels = new JsonArray();
+        JsonObject tLevel  = null;
+        for (Order o : pOrders) {
+            if (tLevel == null || tLevel.get("price").getAsLong() != o.getPrice()) {
+                tLevel = new JsonObject();
+                tLevel.addProperty("price",    o.getPrice());
+                tLevel.addProperty("quantity", 0L);
+                tLevel.addProperty("orders",   0);
+                tLevel.addProperty("own",      0L);
+                tLevels.add(tLevel);
+            }
+            tLevel.addProperty("quantity", tLevel.get("quantity").getAsLong() + o.getQuantity());
+            tLevel.addProperty("orders",   tLevel.get("orders").getAsInt() + 1);
+            if (o.getAccount().equals(pFirm)) tLevel.addProperty("own", tLevel.get("own").getAsLong() + o.getQuantity());
+        }
+        return tLevels;
     }
 
     // ── MatchingEngineCallbackIf ───────────────────────────────────────────
@@ -469,6 +523,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tJson.addProperty("price",    pOrder.getPrice());
         tJson.addProperty("quantity", pOrder.getQuantity());
         tJson.addProperty("account",  pOrder.getAccount());
+        tJson.addProperty("orderTime", pOrder.getCreationTime());
         if (pOrder.getUserRef() != null) tJson.addProperty("userRef", pOrder.getUserRef());
         return tJson;
     }

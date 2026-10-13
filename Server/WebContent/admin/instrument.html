@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Instrument</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2 id="page-title">Instrument</h2>
-                <a href="/admin/instruments.html" class="btn btn-outline btn-sm">&larr; Back to Instruments</a>
+                <a href="instruments.html" class="btn btn-outline btn-sm">&larr; Back to Instruments</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -151,9 +151,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-instruments');
         cdSession.guard('user-info');
@@ -214,7 +214,7 @@
         }
 
         async function loadMarkets(selectedMarketId) {
-            const r = await cdApi.request('/api/admin/markets');
+            const r = await cdApi.request('../api/admin/markets');
             if (!r.ok) { showError('Failed to load markets: ' + r.error); return; }
             const markets  = r.data;
             const select   = document.getElementById('d-marketId');
@@ -228,10 +228,10 @@
         }
 
         async function loadInstrument() {
-            if (!mongoId) { window.location.href = '/admin/instruments.html'; return; }
+            if (!mongoId) { window.location.href = 'instruments.html'; return; }
             try {
-                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`);
-                if (r.status === 404) { window.location.href = '/admin/instruments.html'; return; }
+                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`);
+                if (r.status === 404) { window.location.href = 'instruments.html'; return; }
                 if (!r.ok) { showError('Failed to load instrument: ' + r.error); return; }
                 const inst = r.data;
 
@@ -284,7 +284,7 @@
                 optionType:     document.getElementById('d-optionType').value
             };
             try {
-                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -311,7 +311,7 @@
 
         async function setStatus(status) {
             try {
-                const r = await cdApi.request(`/api/admin/instruments/${mongoId}/status`, cdApi.json('PATCH', { tradingStatus: status }));
+                const r = await cdApi.request(`../api/admin/instruments/${mongoId}/status`, cdApi.json('PATCH', { tradingStatus: status }));
                 if (!r.ok) { showError('Failed to update trading status: ' + r.error); return; }
                 updateStatusUI(status);
             } catch (e) {
@@ -332,9 +332,9 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`/api/admin/instruments/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete instrument: ' + r.error); return; }
-                window.location.href = '/admin/instruments.html';
+                window.location.href = 'instruments.html';
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
             }

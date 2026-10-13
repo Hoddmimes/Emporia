@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Logging of the web application (WAR): to Tomcat's console (catalina.out / journal) and to
+     <catalina.base>/logs/emporia.log. Replaces src/main/resources/log4j2.xml in the WAR. -->
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{rid}] %logger{36} - %msg%n"/>
+        </Console>
+        <File name="File" fileName="${sys:catalina.base}/logs/emporia.log" append="true">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{rid}] %logger{36} - %msg%n"/>
+        </File>
+    </Appenders>
+    <Loggers>
+        <Logger name="com.hoddmimes" level="INFO"/>
+
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>

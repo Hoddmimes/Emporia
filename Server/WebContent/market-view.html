@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Market View</title>
-    <link rel="stylesheet" href="/css/tr.css">
+    <link rel="stylesheet" href="css/tr.css">
 </head>
 <body>
     <header class="tr-header">
@@ -22,6 +22,7 @@
         <nav class="mv-actions">
             <button class="btn btn-primary btn-sm" onclick="onEnterOrder()">Enter Order</button>
             <button class="btn btn-outline btn-sm" onclick="onMyOrders()">My Orders</button>
+            <button class="btn btn-outline btn-sm" onclick="onMyTrades()">My Trades</button>
             <button class="btn btn-outline btn-sm" onclick="onMyBulletins()">Bulletin Orders</button>
             <button class="btn btn-outline btn-sm" onclick="onMyPortfolio()">My Portfolio</button>
         </nav>
@@ -171,7 +172,39 @@
         </div>
     </dialog>
 
-    <script src="/js/tr-session.js"></script>
+    <!-- Order book dialog: a click on an instrument in the price table shows a snapshot of its whole
+         order book; a click on a price level opens the Enter Order dialog for it -->
+    <dialog id="book-dialog" class="mv-order-dialog mv-book-dialog">
+        <h3 id="bk-title">Order Book</h3>
+        <div id="bk-sub" class="mv-order-sub"></div>
+        <div id="bk-error" class="alert alert-error alert-hidden"></div>
+        <div id="bk-book" class="mv-book"></div>
+        <div class="mv-order-buttons">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('book-dialog').close()">Cancel</button>
+            <button type="button" id="bk-refresh" class="btn btn-primary" onclick="loadBook()">Refresh</button>
+        </div>
+    </dialog>
+
+    <!-- Delete order dialog: double click on an order in the My Orders view -->
+    <dialog id="delete-order-dialog" class="mv-order-dialog">
+        <h3>Delete Order?</h3>
+        <div id="do-sub" class="mv-order-sub"></div>
+        <div id="do-error" class="alert alert-error alert-hidden"></div>
+
+        <table class="mv-offer-info">
+            <tr><th>Instrument</th><td id="do-instrument"></td></tr>
+            <tr><th>Order</th><td id="do-order"></td></tr>
+            <tr><th>Reference</th><td id="do-userRef"></td></tr>
+            <tr><th>Entered</th><td id="do-time"></td></tr>
+        </table>
+
+        <div class="mv-order-buttons">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('delete-order-dialog').close()">Cancel</button>
+            <button type="button" id="do-delete" class="btn btn-danger" onclick="deleteOrder()">Delete Order</button>
+        </div>
+    </dialog>
+
+    <script src="js/tr-session.js"></script>
     <script>
         trSession.guard('user-info');
 
@@ -182,26 +215,11 @@
         let instruments    = [];                 // current market instruments, sorted by name (none for a bulletin market)
         const priceState   = new Map();          // instrumentId -> { bidVol, bidPx, askVol, askPx, open, high, last, volume }
 
-        // ── Cookie / login lookup ─────────────────────────────────────────
-        function getLoginInfo() {
-            const cookieName = "emporia=";
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const c = cookies[i].trim();
-                if (c.indexOf(cookieName) === 0) {
-                    const value = decodeURIComponent(c.substring(cookieName.length));
-                    const [firm, user, sessionId] = value.split('#');
-                    return { firm, user, sessionId };
-                }
-            }
-            return null;
-        }
-
         // ── Markets sidebar ───────────────────────────────────────────────
         async function loadMarkets() {
             try {
                 // The firm's authorized markets: continuous/auction markets and bulletin markets
-                const [r, rb] = await Promise.all([fetch('/api/markets'), fetch('/api/bulletin-markets')]);
+                const [r, rb] = await Promise.all([fetch('api/markets'), fetch('api/bulletin-markets')]);
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 let bulletinMarkets = [];
@@ -251,6 +269,9 @@
 
         async function selectMarket(market) {
             leaveMyBulletins();
+            ordersView    = false;
+            portfolioView = false;
+            tradesView    = false;
             selectedMarket = market;
             renderMarketList();
             document.getElementById('mv-market-name').textContent = market.name;
@@ -270,7 +291,7 @@
         // longs, 0 = not given); a Bulletin message on the WebSocket reloads the list.
         async function loadBulletins(marketId) {
             try {
-                const r = await fetch('/api/bulletins?marketId=' + encodeURIComponent(marketId));
+                const r = await fetch('api/bulletins?marketId=' + encodeURIComponent(marketId));
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 if (!selectedMarket || selectedMarket.id !== marketId) return;   // another market was selected meanwhile
@@ -322,7 +343,7 @@
         const SCALE = 100000;
         async function loadPrices(marketId) {
             try {
-                const r = await fetch('/api/markets/' + encodeURIComponent(marketId) + '/prices');
+                const r = await fetch('api/markets/' + encodeURIComponent(marketId) + '/prices');
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 const unscale = (v) => (v == null) ? null : v / SCALE;
@@ -344,7 +365,7 @@
         // ── Instruments / price table ─────────────────────────────────────
         async function loadInstruments(marketId) {
             try {
-                const r = await fetch('/api/instruments?marketId=' + encodeURIComponent(marketId));
+                const r = await fetch('api/instruments?marketId=' + encodeURIComponent(marketId));
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 instruments = (data.instruments || []).slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -363,7 +384,7 @@
             }
             const rows = instruments.map(i => {
                 const p = priceState.get(i.id) || {};
-                return '<tr data-instrument-id="' + i.id + '" title="Double click to enter an order">'
+                return '<tr data-instrument-id="' + i.id + '" title="Click for the order book, double click to enter an order">'
                     + '<td class="mv-instr-name">' + escapeHtml(i.name) + '</td>'
                     + '<td class="mv-bid">' + fmtSide(p.bidVol, p.bidPx) + '</td>'
                     + '<td class="mv-ask">' + fmtSide(p.askVol, p.askPx) + '</td>'
@@ -407,52 +428,102 @@
         }
 
         // ── WS / WSS ──────────────────────────────────────────────────────
-        let wss          = null;
-        let wssHeartbeat = null;
+        // The server sends WebSocket ping frames (answered by the browser itself), which keep the connection
+        // open also when the page's timers are throttled in a background tab; the page's own 'ping' is kept
+        // as well. A lost connection is retried after 3 s, and at once when the tab becomes visible again
+        // (a phone suspends background tabs completely). After a reconnect the server sends its snapshot
+        // (prices, market states) again and the page reloads the active view, since the messages sent while
+        // it was disconnected are lost.
+        let wss           = null;
+        let wssHeartbeat  = null;
+        let wssRetry      = null;
+        let wssConnected  = false;           // has been connected before: a new connection is a reconnect
         const HEARTBEAT_MS = 25000;
+        const RETRY_MS     = 3000;
 
         function wssConnect() {
-            const proto = (window.location.protocol === 'https:') ? 'wss://' : 'ws://';
-            wss = new WebSocket(proto + window.location.host + '/ws');
+            clearTimeout(wssRetry);
+            wssRetry = null;
+            // ws next to this page, so it also works when the application is not at the root (Tomcat: /emporia)
+            const url = new URL('ws', window.location.href);
+            url.protocol = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
+            const ws = new WebSocket(url.href);
+            wss = ws;
 
-            wss.onopen = () => {
+            ws.onopen = () => {
                 setWsStatus(true, 'Connected');
+                clearInterval(wssHeartbeat);
                 wssHeartbeat = setInterval(() => {
-                    if (wss && wss.readyState === WebSocket.OPEN) wss.send('ping');
+                    if (ws.readyState === WebSocket.OPEN) ws.send('ping');
                 }, HEARTBEAT_MS);
-
-                const login = getLoginInfo();
-                if (!login || !login.sessionId) {
-                    console.error('No emporia cookie / sessionId — server will drop the WS');
-                    return;
-                }
-                wss.send(JSON.stringify({ sessionId: login.sessionId }));
+                if (wssConnected) refreshAfterReconnect();
+                wssConnected = true;
             };
 
-            wss.onmessage = (evt) => {
+            ws.onmessage = (evt) => {
                 if (evt.data === 'pong') return;
                 handleWsMessage(evt.data);
             };
 
-            wss.onclose = (evt) => {
+            ws.onclose = (evt) => {
+                if (ws !== wss) return;      // an old connection, already replaced
                 clearInterval(wssHeartbeat);
                 setWsStatus(false, 'Disconnected (' + evt.code + ') — retrying…');
-                setTimeout(wssConnect, 3000);
+                clearTimeout(wssRetry);
+                wssRetry = setTimeout(wssConnect, RETRY_MS);
             };
 
-            wss.onerror = () => {
-                clearInterval(wssHeartbeat);
+            ws.onerror = () => {
+                if (ws !== wss) return;
                 setWsStatus(false, 'Connection error');
             };
+        }
+
+        // Back in the foreground: reconnect now instead of waiting for the (throttled) retry timer
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!wss || wss.readyState === WebSocket.CLOSED) wssConnect();
+        });
+
+        // Reload what the missed messages would have updated
+        function refreshAfterReconnect() {
+            if (selectedMarket && selectedMarket.bulletin) loadBulletins(selectedMarket.id);
+            else if (selectedMarket) loadPrices(selectedMarket.id);
+            if (myBulletinsView) loadMyBulletins();
+            if (ordersView) loadOrders();
+            if (portfolioView) loadPortfolio();
+            if (tradesView && tradesDate === todayString()) loadTrades();
+            showMissedOffers();
+        }
+
+        // Popups for the offers on the firm's bulletins that arrived while the page was disconnected
+        async function showMissedOffers() {
+            try {
+                const r = await fetch('api/bulletins');
+                if (!r.ok) return;
+                const data = await r.json();
+                (data.bulletins || []).filter(b => b.own && b.offer && b.offer.expiresAt > Date.now()).forEach(b => {
+                    if (document.querySelector('#mv-toasts [data-bulletin-id="' + CSS.escape(b.bulletinId) + '"]')) return;
+                    showOfferToast({
+                        bulletinId: b.bulletinId, marketId: b.marketId, instrument: b.instrument,
+                        side: (b.side === 'BUY') ? 'SELL' : 'BUY',          // the offer's side
+                        price: b.offer.price / SCALE, quantity: b.offer.quantity / SCALE,
+                        expiresAt: b.offer.expiresAt
+                    });
+                });
+            } catch (e) {
+                console.error('Failed to check for missed offers', e);
+            }
         }
 
         function handleWsMessage(raw) {
             // Broadcast (bdx) messages: { type, topic, marketId, instrumentId, ... }. Only PriceUpdate,
             // MarketState (the market's tradingStatus), Bulletin (reloads the bulletins of the selected
-            // bulletin market or the Bulletin Orders view) and BulletinOffer (a popup for a new offer on an
-            // own bulletin; reloads the Bulletin Orders view) are used here:
+            // bulletin market or the Bulletin Orders view), BulletinOffer (a popup for a new offer on an
+            // own bulletin; reloads the Bulletin Orders view) and, in the portfolio view and today's My Trades,
+            // OwnTrade (reloads them) and, in the My Orders view, OwnOrder (reloads it) are used here:
             //   { type: "PriceUpdate", instrumentId, bidVol, bidPx, askVol, askPx, open, high, last, volume }
-            // Other types (Trade, AddOrder/ModifyOrder/RemoveOrder, OwnOrder, OwnTrade and the other
+            // Other types (Trade, AddOrder/ModifyOrder/RemoveOrder and the other
             // bulletin messages) are ignored.
             let msg;
             try { msg = JSON.parse(raw); } catch (_) { return; }
@@ -474,7 +545,20 @@
                 }
                 return;
             }
+            if (msg && msg.type === 'OwnOrder' && ordersView) {
+                loadOrders();
+                return;
+            }
+            if (msg && msg.type === 'OwnTrade' && portfolioView) {
+                loadPortfolio();
+                return;
+            }
+            if (msg && msg.type === 'OwnTrade' && tradesView && tradesDate === todayString()) {
+                loadTrades();
+                return;
+            }
             if (!msg || msg.type !== 'PriceUpdate' || msg.instrumentId == null) return;
+            if (portfolioView && msg.last != null) updatePortfolioPrice(msg.instrumentId, msg.last);
 
             const prev = priceState.get(msg.instrumentId) || {};
             const next = Object.assign({}, prev, msg);
@@ -595,6 +679,8 @@
         document.getElementById('mv-price-container').addEventListener('dblclick', (e) => {
             const tr = e.target.closest('tr[data-instrument-id]');
             if (!tr || !selectedMarket || selectedMarket.bulletin) return;
+            clearTimeout(bookClickTimer);              // a double click is not a click: no order book
+            bookClickTimer = null;
             const td = e.target.closest('td');
             const instrumentId = Number(tr.dataset.instrumentId);
             const p = priceState.get(instrumentId) || {};
@@ -603,6 +689,116 @@
             if (td === tr.children[2]) Object.assign(prefill, { side: 'BUY',  price: p.askPx, quantity: p.askVol });
             window.getSelection().removeAllRanges();   // a double click selects the cell's text
             onEnterOrder(prefill);
+        });
+
+        // ── Order book dialog ─────────────────────────────────────────────
+        // A click on an instrument in the price table (continuous/auction market) shows a snapshot of its
+        // whole order book, aggregated per price level, best prices at the top
+        // (GET /api/markets/{marketId}/orderbook/{instrumentId}); Refresh takes a new snapshot. A click on
+        // any level opens the Enter Order dialog against that side's best price, like a double click in the
+        // price table: on the bid a SELL at the best bid, on the ask a BUY at the best ask, with the best
+        // level's quantity. The click waits for the double
+        // click time, so a double click on a row only opens the Enter Order dialog.
+        const BOOK_CLICK_DELAY_MS = 250;
+        let bookClickTimer = null;
+        let bookMarket     = null;
+        let bookInstrument = null;               // { id, name }
+        let bookLevels     = { bids: [], asks: [] };
+
+        document.getElementById('mv-price-container').addEventListener('click', (e) => {
+            const tr = e.target.closest('tr[data-instrument-id]');
+            if (!tr || !selectedMarket || selectedMarket.bulletin || e.detail > 1) return;
+            clearTimeout(bookClickTimer);
+            const instrumentId = Number(tr.dataset.instrumentId);
+            bookClickTimer = setTimeout(() => { bookClickTimer = null; openBookDialog(instrumentId); }, BOOK_CLICK_DELAY_MS);
+        });
+
+        function openBookDialog(instrumentId) {
+            const i = instruments.find(x => x.id === instrumentId);
+            bookMarket     = selectedMarket;
+            bookInstrument = { id: instrumentId, name: i ? i.name : String(instrumentId) };
+            bookLevels     = { bids: [], asks: [] };
+            document.getElementById('bk-title').textContent = bookInstrument.name + ' — Order Book';
+            document.getElementById('bk-sub').textContent = bookMarket.name;
+            document.getElementById('bk-book').innerHTML = '<div class="mv-empty">Loading…</div>';
+            document.getElementById('bk-error').classList.add('alert-hidden');
+            document.getElementById('book-dialog').showModal();
+            loadBook();
+        }
+
+        async function loadBook() {
+            if (!bookInstrument) return;
+            const instrumentId = bookInstrument.id;
+            const button = document.getElementById('bk-refresh');
+            const errorEl = document.getElementById('bk-error');
+            button.disabled = true;
+            try {
+                const r = await fetch('api/markets/' + encodeURIComponent(bookMarket.id) + '/orderbook/' + encodeURIComponent(instrumentId));
+                const text = await r.text();
+                let data = null;
+                try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+                if (!r.ok) throw new Error('HTTP ' + r.status + ((data && data.error) ? ': ' + data.error : ''));
+                if (!bookInstrument || bookInstrument.id !== instrumentId) return;   // another book was opened meanwhile
+                errorEl.classList.add('alert-hidden');
+                renderBook(data);
+            } catch (e) {
+                console.error('Failed to load the order book', e);
+                errorEl.textContent = 'Failed to load the order book: ' + e.message;
+                errorEl.classList.remove('alert-hidden');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function renderBook(book) {
+            const unscale = (v) => (v == null) ? null : v / SCALE;
+            const level = (l) => ({ price: unscale(l.price), quantity: unscale(l.quantity), orders: l.orders, own: unscale(l.own) });
+            bookLevels = { bids: (book.bids || []).map(level), asks: (book.asks || []).map(level) };
+            const status = bookMarket.tradingStatus ? '  ·  ' + bookMarket.tradingStatus : '';
+            document.getElementById('bk-sub').textContent = bookMarket.name + status
+                + '  ·  snapshot ' + new Date(book.time).toLocaleTimeString(undefined, { hour12: false })
+                + '  ·  last ' + fmtPx(unscale(book.last)) + '  ·  volume ' + fmtVol(unscale(book.volume));
+            const el = document.getElementById('bk-book');
+            const { bids, asks } = bookLevels;
+            if (bids.length === 0 && asks.length === 0) {
+                el.innerHTML = '<div class="mv-empty">The order book is empty.</div>';
+                return;
+            }
+            // The quantity, with the firm's own part of it when it has orders at the level
+            const qty = (l) => fmtVol(l.quantity) + (l.own > 0 ? ' <span class="mv-book-own" title="Your orders">(' + l.own + ')</span>' : '');
+            const rows = [];
+            for (let i = 0; i < Math.max(bids.length, asks.length); i++) {
+                const b = bids[i], a = asks[i];
+                const bid = b
+                    ? '<td class="mv-book-cell" data-side="bid" data-idx="' + i + '">' + b.orders + '</td>'
+                    + '<td class="mv-book-cell" data-side="bid" data-idx="' + i + '">' + qty(b) + '</td>'
+                    + '<td class="mv-book-cell mv-bid mv-book-price" data-side="bid" data-idx="' + i + '">' + fmtPx(b.price) + '</td>'
+                    : '<td></td><td></td><td></td>';
+                const ask = a
+                    ? '<td class="mv-book-cell mv-ask mv-book-price" data-side="ask" data-idx="' + i + '">' + fmtPx(a.price) + '</td>'
+                    + '<td class="mv-book-cell" data-side="ask" data-idx="' + i + '">' + qty(a) + '</td>'
+                    + '<td class="mv-book-cell" data-side="ask" data-idx="' + i + '">' + a.orders + '</td>'
+                    : '<td></td><td></td><td></td>';
+                rows.push('<tr>' + bid + ask + '</tr>');
+            }
+            el.innerHTML =
+                '<table class="mv-price-table mv-book-table">'
+                +   '<thead><tr><th>Orders</th><th>Bid Qty</th><th>Bid</th><th>Ask</th><th>Ask Qty</th><th>Orders</th></tr></thead>'
+                +   '<tbody>' + rows.join('') + '</tbody>'
+                +   '<tfoot><tr><td colspan="6">' + bids.length + ' bid levels  ·  ' + asks.length + ' ask levels  ·  click a level to enter an order</td></tr></tfoot>'
+                + '</table>';
+        }
+
+        document.getElementById('bk-book').addEventListener('click', (e) => {
+            const td = e.target.closest('td[data-side]');
+            if (!td || !bookInstrument) return;
+            // Any level of a side: the best level of that side, i.e. on the bid a SELL at the best bid
+            // (hits it), on the ask a BUY at the best ask (lifts it), as in the price table
+            const l = (td.dataset.side === 'bid' ? bookLevels.bids : bookLevels.asks)[0];
+            if (!l) return;
+            if (!selectedMarket || selectedMarket.id !== bookMarket.id) return;   // the order dialog uses the selected market
+            onEnterOrder({ instrumentId: bookInstrument.id, side: td.dataset.side === 'bid' ? 'SELL' : 'BUY',
+                           price: l.price, quantity: l.quantity });
         });
 
         // ── Offer dialog ──────────────────────────────────────────────────
@@ -711,7 +907,7 @@
             if (offerRef) body.offerRef = offerRef;
             const button = document.getElementById('od-submit');
             button.disabled = true;
-            const r = await postJson('/api/bulletins/' + encodeURIComponent(b.bulletinId) + '/offer', body);
+            const r = await postJson('api/bulletins/' + encodeURIComponent(b.bulletinId) + '/offer', body);
             if (!r.ok) {
                 button.disabled = false;
                 showOfferAlert('od-error', escapeHtml('Offer rejected: ' + r.error));
@@ -856,7 +1052,7 @@
             const bulletin = !!orderMarket.bulletin;
             const button = document.getElementById('of-submit');
             button.disabled = true;
-            const r = await postJson(bulletin ? '/api/bulletins' : '/api/orders', body);
+            const r = await postJson(bulletin ? 'api/bulletins' : 'api/orders', body);
             button.disabled = false;
             if (!r.ok) {
                 showOrderAlert('of-error', escapeHtml((bulletin ? 'Bulletin' : 'Order') + ' rejected: ' + r.error));
@@ -899,8 +1095,154 @@
         }
         document.querySelectorAll('input[name="of-side"]').forEach(r => r.addEventListener('change', syncSideLabels));
 
-        // ── Top action buttons (placeholders) ─────────────────────────────
-        function onMyOrders()     { console.log('My Orders — TODO'); }
+        // ── My Orders view ────────────────────────────────────────────────
+        // The firm's resting orders, of all its users (GET /api/orders): in all markets, or in the market
+        // selected in the toolbar's market list (?marketId=). Reloaded on
+        // each OwnOrder. A double click on an order asks whether to delete it (DELETE /api/orders/{orderId}).
+        // Selecting a market in the sidebar leaves the view.
+        let ordersView     = false;
+        let ordersMarketId = 0;                 // 0 = all markets
+        let myOrders       = [];
+        let deletingOrder  = null;              // the order in the delete dialog
+
+        async function onMyOrders() {
+            leaveMyBulletins();
+            portfolioView  = false;
+            tradesView     = false;
+            ordersView     = true;
+            ordersMarketId = 0;
+            selectedMarket = null;
+            instruments    = [];
+            renderMarketList();
+            document.getElementById('mv-market-name').textContent = 'My Orders';
+            const options = '<option value="0">All markets</option>'
+                + markets.filter(m => !m.bulletin).map(m =>
+                    '<option value="' + m.id + '"' + (m.id === ordersMarketId ? ' selected' : '') + '>'
+                    + escapeHtml(m.name) + '</option>').join('');
+            document.getElementById('mv-price-container').innerHTML =
+                '<div class="mv-toolbar">'
+                + '<label for="mo-market">Market</label>'
+                + '<select id="mo-market" onchange="setOrdersMarket(Number(this.value))">' + options + '</select>'
+                + '<span class="mv-toolbar-hint">Double click an order to delete it</span>'
+                + '</div>'
+                + '<div id="mo-orders"></div>';
+            setOrdersMeta();
+            await loadOrders();
+        }
+
+        function setOrdersMeta() {
+            const m = markets.find(x => x.id === ordersMarketId);
+            document.getElementById('mv-market-meta').textContent = m ? m.name : 'All markets';
+        }
+
+        function setOrdersMarket(marketId) {
+            ordersMarketId = marketId;
+            setOrdersMeta();
+            loadOrders();
+        }
+
+        async function loadOrders() {
+            const marketId = ordersMarketId;
+            try {
+                const r = await fetch('api/orders' + (marketId ? '?marketId=' + encodeURIComponent(marketId) : ''));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                if (!ordersView || ordersMarketId !== marketId) return;   // another view or market was selected meanwhile
+                // By market and instrument, buys before sells, best price first, then oldest first
+                myOrders = (data.orders || []).slice().sort((a, b) =>
+                    (a.marketName || '').localeCompare(b.marketName || '')
+                    || (a.instrumentName || '').localeCompare(b.instrumentName || '')
+                    || a.side.localeCompare(b.side)
+                    || (a.side === 'BUY' ? b.price - a.price : a.price - b.price)
+                    || a.orderTime - b.orderTime);
+                renderOrders();
+            } catch (e) {
+                console.error('Failed to load orders', e);
+                const el = document.getElementById('mo-orders');
+                if (el) el.innerHTML = '<div class="mv-empty">Failed to load orders: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function renderOrders() {
+            const el = document.getElementById('mo-orders');
+            if (!el) return;
+            if (myOrders.length === 0) {
+                el.innerHTML = '<div class="mv-empty">You have no orders' + (ordersMarketId ? ' in this market' : '') + '.</div>';
+                return;
+            }
+            const rows = myOrders.map(o =>
+                '<tr class="mv-clickable" data-order-id="' + escapeHtml(o.orderId) + '" title="Double click to delete the order">'
+                + '<td class="mv-instr-name">' + escapeHtml(o.marketName || String(o.marketId)) + '</td>'
+                + '<td>' + escapeHtml(o.instrumentName || String(o.instrumentId)) + '</td>'
+                + '<td class="' + (o.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + escapeHtml(o.side) + '</td>'
+                + '<td>' + fmtVol(o.quantity / SCALE) + '</td>'
+                + '<td>' + fmtPx(o.price / SCALE) + '</td>'
+                + '<td>' + escapeHtml(o.userRef || '—') + '</td>'
+                + '<td>' + (o.orderTime ? new Date(o.orderTime).toLocaleString() : '—') + '</td>'
+                + '<td>' + escapeHtml(o.orderId) + '</td>'
+                + '</tr>').join('');
+            el.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Market</th><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th>'
+                +     '<th>Reference</th><th>Entered</th><th>Order Id</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                +   '<tfoot><tr><td colspan="8">' + myOrders.length + ' orders</td></tr></tfoot>'
+                + '</table>';
+        }
+
+        document.getElementById('mv-price-container').addEventListener('dblclick', (evt) => {
+            if (!ordersView) return;
+            const tr = evt.target.closest('tr[data-order-id]');
+            if (!tr) return;
+            const o = myOrders.find(x => x.orderId === tr.dataset.orderId);
+            if (o) openDeleteOrderDialog(o);
+        });
+
+        function openDeleteOrderDialog(o) {
+            deletingOrder = o;
+            document.getElementById('do-sub').textContent = (o.marketName || o.marketId) + '  ·  order ' + o.orderId;
+            document.getElementById('do-instrument').textContent = o.instrumentName || String(o.instrumentId);
+            const orderEl = document.getElementById('do-order');
+            orderEl.textContent = o.side + '  ' + (o.quantity / SCALE) + ' @ ' + fmtPx(o.price / SCALE);
+            orderEl.className = (o.side === 'BUY') ? 'mv-bid' : 'mv-ask';
+            document.getElementById('do-userRef').textContent = o.userRef || '—';
+            document.getElementById('do-time').textContent = o.orderTime ? new Date(o.orderTime).toLocaleString() : '—';
+            document.getElementById('do-error').classList.add('alert-hidden');
+            document.getElementById('do-delete').disabled = false;
+            document.getElementById('delete-order-dialog').showModal();
+        }
+
+        async function deleteOrder() {
+            const o = deletingOrder;
+            if (!o) return;
+            const button = document.getElementById('do-delete');
+            button.disabled = true;
+            let error = null;
+            try {
+                const r = await fetch('api/orders/' + encodeURIComponent(o.orderId), { method: 'DELETE' });
+                if (!r.ok) {
+                    const text = await r.text().catch(() => '');
+                    let data = null;
+                    try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+                    const reply = (data && data.error) || text.trim().slice(0, 500);
+                    error = 'HTTP ' + r.status + (reply ? ': ' + reply : '');
+                }
+            } catch (e) {
+                error = 'Connection error: ' + (e.message || e);
+            }
+            if (error) {
+                const el = document.getElementById('do-error');
+                el.textContent = 'Failed to delete the order: ' + error;
+                el.classList.remove('alert-hidden');
+                button.disabled = false;
+                return;
+            }
+            document.getElementById('delete-order-dialog').close();
+            deletingOrder = null;
+            if (ordersView) loadOrders();   // the OwnOrder message reloads it too
+        }
 
         // ── Bulletin Orders view ──────────────────────────────────────────
         // The main area split horizontally: above, the firm's own bulletins in all its bulletin markets
@@ -914,7 +1256,10 @@
 
         // openOfferOf (optional): a bulletinId whose received offer is opened in the response dialog once loaded
         async function onMyBulletins(openOfferOf) {
+            portfolioView   = false;
+            tradesView      = false;
             myBulletinsView = true;
+            ordersView      = false;
             selectedMarket  = null;
             instruments     = [];
             renderMarketList();
@@ -944,7 +1289,7 @@
 
         async function loadMyBulletins() {
             try {
-                const r = await fetch('/api/bulletins');
+                const r = await fetch('api/bulletins');
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 if (!myBulletinsView) return;   // another view was selected meanwhile
@@ -1071,11 +1416,53 @@
                 toast.querySelector('.mv-toast-time span').textContent = left;
                 if (left === 0) remove();
             }, 1000);
-            function remove() { clearInterval(timer); toast.remove(); }
+            const notification = showOfferNotification(msg);
+            function remove() {
+                clearInterval(timer);
+                toast.remove();
+                if (notification) notification.close();
+            }
             toast.querySelector('[data-act="close"]').onclick  = remove;
             toast.querySelector('[data-act="answer"]').onclick = () => { remove(); onMyBulletins(msg.bulletinId); };
             toast.removeOffer = remove;
             box.appendChild(toast);
+        }
+
+        // ── Desktop notifications ─────────────────────────────────────────
+        // A new offer also gets a desktop notification (Notifications API), seen when the tab is in the
+        // background; clicking it brings the tab forward and opens the offer like the popup's Answer. It needs
+        // a secure context (https or localhost) and the user's permission, which browsers only let a page ask
+        // for on a user action: the first click on the page asks once.
+        const notificationsSupported = ('Notification' in window) && window.isSecureContext;
+        if (notificationsSupported && Notification.permission === 'default') {
+            document.addEventListener('click', () => {
+                if (Notification.permission === 'default') Notification.requestPermission();
+            }, { once: true });
+        }
+
+        // The notification for a new offer (closed with its popup); null if not supported or not allowed
+        function showOfferNotification(msg) {
+            if (!notificationsSupported || Notification.permission !== 'granted') return null;
+            const m = markets.find(x => x.id === msg.marketId);
+            try {
+                const n = new Notification('New bulletin offer', {
+                    body: (m ? m.name + ': ' : '') + msg.instrument + '\n'
+                          + msg.side + ' ' + fmtVol(msg.quantity) + ' @ ' + fmtPx(msg.price)
+                          + ', expires in ' + secondsLeft(msg.expiresAt) + ' s',
+                    tag: 'bulletin-offer-' + msg.bulletinId,   // a new offer on the bulletin replaces the old one
+                    requireInteraction: true                   // stays until clicked, closed or the offer ends
+                });
+                n.onclick = () => {
+                    window.focus();
+                    n.close();
+                    removeOfferToast(msg.bulletinId);
+                    onMyBulletins(msg.bulletinId);
+                };
+                return n;
+            } catch (e) {
+                console.error('Desktop notification failed', e);   // e.g. Chrome on Android needs a service worker
+                return null;
+            }
         }
 
         // An offer that was answered or cancelled no longer needs its popup
@@ -1143,7 +1530,7 @@
         async function answerOffer(accept) {
             const b = responseBulletin;
             setResponseButtons(false);
-            const r = await postJson('/api/bulletins/' + encodeURIComponent(b.bulletinId) + '/response', { accept });
+            const r = await postJson('api/bulletins/' + encodeURIComponent(b.bulletinId) + '/response', { accept });
             if (!r.ok) {
                 showResponseAlert('rd-error', (accept ? 'Accept' : 'Reject') + ' failed: ' + r.error);
                 setResponseButtons(secondsLeft(b.offer.expiresAt) > 0);
@@ -1155,7 +1542,216 @@
                 : 'Offer rejected. The bulletin is ' + r.data.state + ' again.');
         }
 
-        function onMyPortfolio()  { console.log('My Portfolio — TODO'); }
+        // ── My Trades view ────────────────────────────────────────────────
+        // The firm's trades in all markets for one day, oldest first: today's by default (GET /api/trades,
+        // from the matching engine, reloaded on each OwnTrade), another day from the database
+        // (GET /api/trades?date=yyyy-MM-dd). The date is entered as yyyy-MM-dd.
+        let tradesView = false;
+        let tradesDate = null;
+
+        function todayString() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        // A valid yyyy-MM-dd date (not e.g. 2026-02-30)
+        function isValidDate(str) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+            if (!m) return false;
+            const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+            return d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3]);
+        }
+
+        async function onMyTrades() {
+            leaveMyBulletins();
+            ordersView     = false;
+            portfolioView  = false;
+            tradesView     = true;
+            selectedMarket = null;
+            instruments    = [];
+            renderMarketList();
+            document.getElementById('mv-market-name').textContent = 'My Trades';
+            document.getElementById('mv-market-meta').textContent = 'All markets';
+            tradesDate = todayString();
+            document.getElementById('mv-price-container').innerHTML =
+                '<form class="mv-toolbar" onsubmit="event.preventDefault(); showTradesOfDate();">'
+                + '<label for="mt-date">Date</label>'
+                + '<input type="text" id="mt-date" placeholder="yyyy-MM-dd" maxlength="10" autocomplete="off" value="' + tradesDate + '">'
+                + '<button type="submit" class="btn btn-primary btn-sm">Show</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="shiftTradesDate(-1)" title="Previous day">&larr;</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="shiftTradesDate(1)" title="Next day">&rarr;</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="setTradesDate(todayString())">Today</button>'
+                + '<span id="mt-error" class="mv-toolbar-error"></span>'
+                + '</form>'
+                + '<div id="mt-trades"></div>';
+            await loadTrades();
+        }
+
+        function showTradesOfDate() {
+            const input = document.getElementById('mt-date');
+            const date  = input.value.trim();
+            if (!isValidDate(date)) {
+                input.classList.add('invalid');
+                document.getElementById('mt-error').textContent = 'The date must be a valid date as yyyy-MM-dd.';
+                return;
+            }
+            setTradesDate(date);
+        }
+
+        function setTradesDate(date) {
+            const input = document.getElementById('mt-date');
+            input.value = date;
+            input.classList.remove('invalid');
+            document.getElementById('mt-error').textContent = '';
+            tradesDate = date;
+            loadTrades();
+        }
+
+        function shiftTradesDate(days) {
+            const [y, m, d] = tradesDate.split('-').map(Number);
+            const t = new Date(y, m - 1, d + days);
+            setTradesDate(t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'));
+        }
+
+        async function loadTrades() {
+            const date = tradesDate;
+            const el = document.getElementById('mt-trades');
+            try {
+                // Today's trades come from the matching engine, another day's from the database
+                const url = (date === todayString()) ? 'api/trades' : 'api/trades?date=' + encodeURIComponent(date);
+                const r = await fetch(url);
+                const text = await r.text();
+                let data = null;
+                try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+                if (!r.ok) throw new Error('HTTP ' + r.status + ((data && data.error) ? ': ' + data.error : ''));
+                if (!tradesView || tradesDate !== date) return;   // another view or date was selected meanwhile
+                renderTrades(data.trades || [], date);
+            } catch (e) {
+                console.error('Failed to load trades', e);
+                if (el) el.innerHTML = '<div class="mv-empty">Failed to load trades: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function renderTrades(trades, date) {
+            const el = document.getElementById('mt-trades');
+            if (!el) return;
+            if (trades.length === 0) {
+                el.innerHTML = '<div class="mv-empty">No trades on ' + escapeHtml(date) + '.</div>';
+                return;
+            }
+            const time = (ms) => {
+                const d = new Date(ms);
+                return d.toLocaleTimeString(undefined, { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+            };
+            let bought = 0, sold = 0;
+            const rows = trades.map(t => {
+                const qty = t.quantity / SCALE, price = t.price / SCALE;
+                if (t.side === 'BUY') bought += t.quantity; else sold += t.quantity;   // scaled, exact
+                return '<tr>'
+                    + '<td class="mv-instr-name">' + time(t.tradeTime) + '</td>'
+                    + '<td>' + escapeHtml(t.marketName || String(t.marketId)) + '</td>'
+                    + '<td>' + escapeHtml(t.instrumentName || String(t.instrumentId)) + '</td>'
+                    + '<td class="' + (t.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + escapeHtml(t.side) + '</td>'
+                    + '<td>' + fmtVol(qty) + '</td>'
+                    + '<td>' + fmtPx(price) + '</td>'
+                    + '<td>' + fmtValue(qty * price) + '</td>'
+                    + '<td>' + escapeHtml(t.orderId) + '</td>'
+                    + '<td>' + escapeHtml(t.userRef || '—') + '</td>'
+                    + '<td>' + escapeHtml(t.tradeNo) + '</td>'
+                    + '</tr>';
+            }).join('');
+            el.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Time</th><th>Market</th><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th>'
+                +     '<th>Value</th><th>Order Id</th><th>Reference</th><th>Trade No</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                +   '<tfoot><tr><td colspan="10">' + trades.length + ' trades  ·  bought ' + bought / SCALE + '  ·  sold ' + sold / SCALE + '</td></tr></tfoot>'
+                + '</table>';
+        }
+
+        // ── My Portfolio view ─────────────────────────────────────────────
+        // The firm's holdings per instrument (GET /api/portfolio): the position is the sum of all its trades
+        // (bought minus sold, every day), the value the position times the last traded price. Reloaded on
+        // each OwnTrade; a PriceUpdate with a new last price revalues its instrument. Selecting a market
+        // leaves the view.
+        let portfolioView = false;
+        let portfolio     = [];                  // { instrumentId, market, instrument, position, bought, sold, lastPrice, value } in display units
+
+        async function onMyPortfolio() {
+            leaveMyBulletins();
+            ordersView     = false;
+            tradesView     = false;
+            portfolioView  = true;
+            selectedMarket = null;
+            instruments    = [];
+            renderMarketList();
+            document.getElementById('mv-market-name').textContent = 'My Portfolio';
+            document.getElementById('mv-market-meta').textContent = 'Positions from all trades';
+            await loadPortfolio();
+        }
+
+        async function loadPortfolio() {
+            try {
+                const r = await fetch('api/portfolio');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                if (!portfolioView) return;   // another view was selected meanwhile
+                const unscale = (v) => (v == null) ? null : v / SCALE;
+                portfolio = (data.positions || []).map(p => ({
+                    instrumentId: p.instrumentId, market: p.market, instrument: p.instrument,
+                    position: unscale(p.position), bought: unscale(p.bought), sold: unscale(p.sold),
+                    lastPrice: unscale(p.lastPrice), value: unscale(p.value)
+                }));
+                renderPortfolio();
+            } catch (e) {
+                console.error('Failed to load the portfolio', e);
+                renderEmptyMain('Failed to load the portfolio.');
+            }
+        }
+
+        function updatePortfolioPrice(instrumentId, last) {
+            const p = portfolio.find(x => x.instrumentId === instrumentId);
+            if (!p || p.lastPrice === last) return;
+            p.lastPrice = last;
+            p.value     = p.position * last;
+            renderPortfolio();
+        }
+
+        function fmtValue(v) {
+            return (v == null || isNaN(v)) ? '—'
+                : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function renderPortfolio() {
+            const container = document.getElementById('mv-price-container');
+            if (portfolio.length === 0) {
+                container.innerHTML = '<div class="mv-empty">You have no holdings.</div>';
+                return;
+            }
+            const signed = (v) => '<span class="' + (v > 0 ? 'mv-bid' : 'mv-ask') + '">' + (v > 0 ? '+' : '') + v + '</span>';
+            const total  = portfolio.reduce((sum, p) => sum + (p.value || 0), 0);
+            const rows = portfolio.map(p =>
+                '<tr>'
+                + '<td class="mv-instr-name">' + escapeHtml(p.market) + '</td>'
+                + '<td>' + escapeHtml(p.instrument) + '</td>'
+                + '<td>' + signed(p.position) + '</td>'
+                + '<td>' + fmtVol(p.bought) + '</td>'
+                + '<td>' + fmtVol(p.sold) + '</td>'
+                + '<td>' + fmtPx(p.lastPrice) + '</td>'
+                + '<td>' + fmtValue(p.value) + '</td>'
+                + '</tr>').join('');
+            container.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Market</th><th>Instrument</th><th>Position</th><th>Bought</th><th>Sold</th>'
+                +     '<th>Last Price</th><th>Value</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                +   '<tfoot><tr class="mv-total"><td colspan="6">Total value</td><td>' + fmtValue(total) + '</td></tr></tfoot>'
+                + '</table>';
+        }
 
         // ── Boot ──────────────────────────────────────────────────────────
         loadMarkets();

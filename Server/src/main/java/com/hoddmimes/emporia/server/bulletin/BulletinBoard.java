@@ -86,6 +86,11 @@ public class BulletinBoard {
 
     // ── Markets ───────────────────────────────────────────────────────────
 
+    /** Stops the expiry timer (web application undeploy). */
+    public void stop() {
+        mExpiryTimer.shutdownNow();
+    }
+
     /** Loads the bulletin markets and the stored bulletins from the database. Called once at startup. */
     public synchronized void load() {
         for (Document tDoc : mDatabase.listBulletinMarkets()) putMarket(tDoc);

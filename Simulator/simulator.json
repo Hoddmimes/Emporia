@@ -1,0 +1,41 @@
+{
+  "url": "http://localhost:8080",
+  "trustAllCertificates": false,
+  "firm": "ThinAir",
+  "user": "Geek",
+  "password": "changeit",
+  "txRate": 3,
+  "continuous": [
+    { "instrument": "ABB",
+      "tradeRate": 20,
+      "minDepth": 5, "maxDepth": 15,
+      "midPrice": 100.0, "maxPriceDeviation": 2.0,
+      "minVolume": 10, "maxVolume": 100 },
+    { "instrument": "ALFA",
+      "tradeRate": 20,
+      "minDepth": 5, "maxDepth": 15,
+      "midPrice": 400.0, "maxPriceDeviation": 8.0,
+      "minVolume": 10, "maxVolume": 100 },
+    { "instrument": "ERIC-B",
+      "tradeRate": 20,
+      "minDepth": 5, "maxDepth": 15,
+      "midPrice": 80.0, "maxPriceDeviation": 1.6,
+      "minVolume": 10, "maxVolume": 100 },
+    { "instrument": "SAND",
+      "tradeRate": 20,
+      "minDepth": 5, "maxDepth": 15,
+      "midPrice": 220.0, "maxPriceDeviation": 4.4,
+      "minVolume": 10, "maxVolume": 100 },
+    { "instrument": "BOL",
+      "tradeRate": 20,
+      "minDepth": 5, "maxDepth": 15,
+      "midPrice": 350.0, "maxPriceDeviation": 7.0,
+      "minVolume": 10, "maxVolume": 100 }
+  ],
+  "bulletins": [
+    { "market": "OTCMarket", "instrument": "Old tractor",
+      "midPrice": 1000, "maxPriceDeviation": 100,
+      "minVolume": 1, "maxVolume": 5,
+      "timeToCreate": 60, "timeToLive": 300 }
+  ]
+}

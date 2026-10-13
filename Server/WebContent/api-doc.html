@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emporia Trading API</title>
+<style>
+:root {
+    --bg: #f6f7fa; --surface: #ffffff; --text: #1f2a3c; --muted: #5d6b82; --border: #dde2ea;
+    --accent: #1f5fae; --code-bg: #f0f2f6; --get: #1c7c44; --post: #1f5fae; --patch: #a35d00; --delete: #b3261e;
+    --note-bg: #eef4fc; --warn-bg: #fdf3e6;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+        --accent: #6aa5ee; --code-bg: #232b36; --get: #5cc48a; --post: #6aa5ee; --patch: #e0a352; --delete: #ef7a72;
+        --note-bg: #1c2838; --warn-bg: #2e261a;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+    --accent: #6aa5ee; --code-bg: #232b36; --get: #5cc48a; --post: #6aa5ee; --patch: #e0a352; --delete: #ef7a72;
+    --note-bg: #1c2838; --warn-bg: #2e261a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.layout { display: flex; max-width: 1240px; margin: 0 auto; }
+nav { position: sticky; top: 0; align-self: flex-start; width: 250px; flex-shrink: 0; height: 100vh; overflow-y: auto;
+      padding: 28px 16px 28px 20px; border-right: 1px solid var(--border); font-size: 14px; }
+nav .title { font-weight: 700; letter-spacing: 1px; font-size: 16px; margin-bottom: 14px; }
+nav a { display: block; color: var(--muted); text-decoration: none; padding: 2px 0; }
+nav a:hover { color: var(--accent); }
+nav .group { margin-top: 12px; font-weight: 600; color: var(--text); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+main { flex: 1; min-width: 0; padding: 28px 40px 80px; }
+h1 { font-size: 28px; margin: 0 0 4px; }
+h2 { font-size: 21px; margin: 44px 0 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+h3 { font-size: 16px; margin: 28px 0 6px; }
+p, ul { margin: 8px 0; }
+a { color: var(--accent); }
+.subtitle { color: var(--muted); margin-bottom: 20px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+       background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.45; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 14px; background: var(--surface); }
+th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+td:first-child { white-space: nowrap; }
+.endpoint { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 18px 10px; margin: 18px 0; }
+.sig { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; font-weight: 600; margin: 12px 0 4px; }
+.m { display: inline-block; min-width: 62px; text-align: center; padding: 1px 6px; margin-right: 8px; border-radius: 4px;
+     color: #fff; font-size: 12px; font-weight: 700; vertical-align: 1px; }
+.GET { background: var(--get); } .POST { background: var(--post); } .PATCH { background: var(--patch); } .DELETE { background: var(--delete); }
+.note { background: var(--note-bg); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 4px; margin: 12px 0; }
+.warn { background: var(--warn-bg); border-left: 4px solid var(--patch); padding: 8px 12px; border-radius: 4px; margin: 12px 0; }
+.opt { color: var(--muted); font-size: 12px; }
+@media (max-width: 860px) {
+    .layout { display: block; }
+    nav { position: static; width: auto; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 16px; }
+    main { padding: 20px 16px 60px; }
+    td:first-child { white-space: normal; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+    <div class="title">EMPORIA API</div>
+    <a href="#overview">Overview</a>
+    <a href="#conventions">Conventions</a>
+    <a href="#session">Session and login</a>
+    <a href="#errors">Errors</a>
+    <div class="group">Reference data</div>
+    <a href="#markets">Markets</a>
+    <a href="#instruments">Instruments</a>
+    <div class="group">Market data</div>
+    <a href="#prices">Prices</a>
+    <a href="#orderbook">Order book</a>
+    <a href="#market-trades">Market trades</a>
+    <div class="group">Trading</div>
+    <a href="#orders">Orders</a>
+    <a href="#trades">Own trades</a>
+    <a href="#portfolio">Portfolio</a>
+    <div class="group">Bulletin board</div>
+    <a href="#bulletin-markets">Bulletin markets</a>
+    <a href="#bulletins">Bulletins</a>
+    <a href="#offers">Offers</a>
+    <div class="group">Streaming</div>
+    <a href="#websocket">WebSocket</a>
+    <a href="#bdx-messages">Messages</a>
+    <div class="group">Other</div>
+    <a href="#example">Example session</a>
+    <a href="#version">Version</a>
+</nav>
+
+<main>
+<h1>Emporia Trading API</h1>
+<div class="subtitle">REST and WebSocket interface for trading applications</div>
+
+<h2 id="overview">Overview</h2>
+<p>Emporia is a marketplace for trading commodities. A trading application talks to the server in two ways:</p>
+<ul>
+    <li><b>REST</b> (JSON over HTTPS) for logging in, reading reference and market data, entering, modifying and
+        deleting orders, and the bulletin board.</li>
+    <li><b>WebSocket</b> for live updates: prices, market states, trades, and changes to your own orders and bulletins.</li>
+</ul>
+<p>There are two kinds of markets:</p>
+<ul>
+    <li><b>Continuous and auction markets</b> trade listed instruments through an order book. A continuous market
+        matches orders as they arrive, in price-time priority. An auction market collects orders and matches them
+        at scheduled times at one clearing price.</li>
+    <li><b>Bulletin markets</b> hold informal, over-the-counter bulletins: a firm announces that it wants to buy or
+        sell something, another firm makes an offer, and the bulletin's owner accepts or rejects it.</li>
+</ul>
+<p>All paths in this document are relative to the server's base URL. For the server at hoddmimes.com this is
+<code>https://hoddmimes.com/emporia</code>, so the login is <code>POST https://hoddmimes.com/emporia/api/login</code>
+and the WebSocket is <code>wss://hoddmimes.com/emporia/ws</code>.</p>
+
+<h2 id="conventions">Conventions</h2>
+<h3>Accounts are firms</h3>
+<p>Every user belongs to a firm. Orders, trades, bulletins and positions belong to the firm, not to the user: all
+users of a firm see and can modify or delete the firm's orders. A firm never sees other firms' orders, trades or
+identities; the public market data is anonymous.</p>
+<p>A firm is authorized for certain markets by the marketplace administrator. Only those markets are listed, and a
+request for another market is refused with <code>403</code>.</p>
+
+<h3>Prices and quantities are scaled integers</h3>
+<p>In the REST API every price and quantity is a <b>long integer scaled by 100000</b>: the price 101.50 is sent as
+<code>10150000</code> and the quantity 5 as <code>500000</code>. This avoids rounding errors.</p>
+<p>The WebSocket messages instead use ordinary decimal numbers (101.5, 5).</p>
+<p>Each instrument has a <code>tickSize</code> and a <code>lotSize</code>, also scaled. An order's price must be a
+multiple of the tick size and its quantity a multiple of the lot size. With tick size <code>1000</code> (0.01) and
+lot size <code>100000</code> (1) the price 101.505 and the quantity 2.5 are refused.</p>
+
+<h3>Identifiers</h3>
+<ul>
+    <li><code>marketId</code>: an integer. Continuous, auction and bulletin markets share one numbering.</li>
+    <li><code>instrumentId</code>: a long integer, the market id in the high 32 bits and a sequence number in the
+        low 32 bits. Instrument 1 in market 1 is <code>4294967297</code>.</li>
+    <li><code>orderId</code>, <code>bulletinId</code>, <code>tradeNo</code>: hexadecimal strings, e.g.
+        <code>"6ace393800000001"</code>.</li>
+    <li><code>userRef</code> (orders and bulletins) and <code>offerRef</code> (offers): optional free text that you
+        choose. It is returned on everything that concerns the order, so you can match responses and messages to
+        your own records.</li>
+</ul>
+
+<h3>Times</h3>
+<p>Times (<code>tradeTime</code>, <code>orderTime</code>, <code>expiresAt</code>, <code>createTime</code>) are
+milliseconds since 1970-01-01 UTC. Dates in query parameters are <code>yyyy-MM-dd</code>.</p>
+
+<h3>Requests</h3>
+<p>Request bodies are JSON objects sent with <code>Content-Type: application/json</code>. All responses are JSON.</p>
+
+<h3>Trading status</h3>
+<p>Every market has a <code>tradingStatus</code>:</p>
+<table>
+    <tr><th>Status</th><th>Continuous / auction market</th><th>Bulletin market</th></tr>
+    <tr><td><code>PREOPEN</code></td><td>Orders are accepted and put in the book, but nothing is matched. When the
+        market opens, crossing orders are matched once at a single price.</td><td>Not used.</td></tr>
+    <tr><td><code>OPEN</code></td><td>Orders are accepted and matched.</td><td>Bulletins can be added, offered on
+        and accepted.</td></tr>
+    <tr><td><code>CLOSED</code></td><td>No new or modified orders, and no deletes.</td><td>Only withdrawing a
+        bulletin and rejecting an offer are possible.</td></tr>
+    <tr><td><code>SUSPENDED</code></td><td>No new or modified orders; deleting is possible.</td><td>As CLOSED.</td></tr>
+</table>
+<p>An instrument can also be <code>SUSPENDED</code> on its own; its orders can then only be deleted. Markets open
+and close at their configured hours on weekdays. The <code>MarketState</code> WebSocket message tells you when the
+status changes.</p>
+
+<h2 id="session">Session and login</h2>
+<p>The API is session based. Log in once; the response sets an HTTP session cookie (<code>JSESSIONID</code>) that
+must be sent with every later request and with the WebSocket connection. Use a cookie store in your HTTP client.
+A session ends after a period without requests (5 minutes on the hoddmimes.com server); after that every request
+answers <code>401</code> and you must log in again.</p>
+
+<div class="endpoint" id="login">
+<div class="sig"><span class="m POST">POST</span>/api/login</div>
+<p>Logs in a trading user.</p>
+<pre><code>{ "firm": "ThinAir", "userId": "trader1", "password": "secret" }</code></pre>
+<p>200:</p>
+<pre><code>{ "success": true, "sessionId": "6A7A0F6E302A6A68F9F8B2C92F111A9A" }</code></pre>
+<p>401 for a wrong firm, user or password: <code>{ "success": false, "message": "..." }</code></p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/logout</div>
+<p>Ends the login and closes the session's WebSocket connections. Always answers
+<code>{ "success": true }</code>.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/session</div>
+<p>Tells whether the session is logged in. Does not require a login.</p>
+<pre><code>{ "authenticated": true, "userId": "trader1", "firm": "ThinAir", "markets": [ ... ] }</code></pre>
+<p>401 with <code>{ "authenticated": false }</code> when not logged in.</p>
+</div>
+
+<h2 id="errors">Errors</h2>
+<table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td><code>200</code>, <code>201</code></td><td>Success. 201 for a new order or bulletin.</td></tr>
+    <tr><td><code>400</code></td><td>The request is invalid or was refused, e.g. a missing field, a price that is not
+        a tick multiple, or a closed market. The body is <code>{ "error": "message" }</code>.</td></tr>
+    <tr><td><code>401</code></td><td>Not logged in, or the session timed out.</td></tr>
+    <tr><td><code>403</code></td><td>The firm is not authorized for the market.</td></tr>
+    <tr><td><code>404</code></td><td>Unknown market, instrument, order or bulletin. Another firm's order or bulletin
+        is also reported as not found.</td></tr>
+</table>
+<p>Example: <code>{ "error": "Market Equities is CLOSED, orders are only accepted when it is OPEN or PREOPEN" }</code></p>
+<p>Every <code>/api</code> response carries an <code>X-Request-Id</code> header (<code>r1</code>, <code>r2</code>, ...).
+Quote it when reporting a problem; the server log shows it on every line about that request.</p>
+
+<h2 id="markets">Markets</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/markets</div>
+<p>The continuous and auction markets the firm is authorized for. Bulletin markets are listed separately, see
+<a href="#bulletin-markets">Bulletin markets</a>.</p>
+<pre><code>{ "markets": [
+  { "id": 1, "name": "Equities", "description": "Nordic equities", "type": "CONTINUOUS",
+    "open": "09:00", "close": "17:30", "preOpenTime": "08:45", "tradingStatus": "OPEN", ... } ] }</code></pre>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>id</code></td><td>The marketId.</td></tr>
+    <tr><td><code>type</code></td><td><code>CONTINUOUS</code> or <code>AUCTION</code>.</td></tr>
+    <tr><td><code>open</code>, <code>close</code>, <code>preOpenTime</code></td><td>Trading hours (server local time,
+        weekdays).</td></tr>
+    <tr><td><code>tradingStatus</code></td><td>See <a href="#conventions">Trading status</a>.</td></tr>
+    <tr><td><code>auctionInterval</code>, <code>randomAuctionInterval</code></td><td>Auction markets: the time
+        between auctions.</td></tr>
+</table>
+</div>
+
+<h2 id="instruments">Instruments</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/instruments?marketId=<i>id</i></div>
+<p>The market's instruments. <code>marketId</code> is required.</p>
+<pre><code>{ "instruments": [
+  { "id": 4294967297, "marketId": 1, "name": "ABB", "instType": "EQUITY",
+    "tickSize": 1000, "lotSize": 100000, "isin": "CH0012221716", "tradingStatus": "ACTIVE", ... } ] }</code></pre>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>id</code></td><td>The instrumentId, used in orders.</td></tr>
+    <tr><td><code>tickSize</code>, <code>lotSize</code></td><td>Scaled. Prices must be multiples of
+        <code>tickSize</code>, quantities of <code>lotSize</code>.</td></tr>
+    <tr><td><code>tradingStatus</code></td><td><code>ACTIVE</code> or <code>SUSPENDED</code>.</td></tr>
+    <tr><td><code>instType</code></td><td><code>COMMODITY</code>, <code>EQUITY</code>, <code>OPTION</code>,
+        <code>FUTURE</code> or <code>OTC</code>; options and futures also have <code>expirationDate</code>,
+        <code>strikePrice</code>, <code>underlying</code>, <code>optionType</code>.</td></tr>
+</table>
+</div>
+
+<h2 id="prices">Prices</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/markets/{marketId}/prices</div>
+<p>A price snapshot of every instrument in the market, sorted by name. Values are scaled; a value is
+<code>null</code> when there is none (an empty book side, or no trades today). For live prices use the
+<code>PriceUpdate</code> WebSocket message, which has the same fields in decimal form.</p>
+<pre><code>{ "marketId": 1, "prices": [
+  { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
+    "bidVol": 1500000, "bidPx": 9900000, "askVol": 100000, "askPx": 10000000,
+    "open": 9950000, "high": 10100000, "last": 10000000, "volume": 4200000 } ] }</code></pre>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>bidPx</code>, <code>bidVol</code></td><td>Best buy price and the total quantity at it.</td></tr>
+    <tr><td><code>askPx</code>, <code>askVol</code></td><td>Best sell price and the total quantity at it.</td></tr>
+    <tr><td><code>open</code>, <code>high</code>, <code>last</code></td><td>Today's first, highest and latest trade
+        price.</td></tr>
+    <tr><td><code>volume</code></td><td>Today's traded quantity.</td></tr>
+</table>
+</div>
+
+<h2 id="orderbook">Order book</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/markets/{marketId}/orderbook/{instrumentId}</div>
+<p>A snapshot of the instrument's whole order book, aggregated per price level, best price first. The book is
+anonymous, except that <code>own</code> tells how much of a level is your firm's.</p>
+<pre><code>{ "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
+  "bids": [ { "price": 9950000, "quantity": 200000,  "orders": 1, "own": 0 },
+            { "price": 9900000, "quantity": 1500000, "orders": 2, "own": 1000000 } ],
+  "asks": [ { "price": 10000000, "quantity": 100000, "orders": 1, "own": 0 } ],
+  "open": null, "high": null, "last": null, "volume": 0, "time": 1791896537670 }</code></pre>
+<p>404 if the instrument is not in the market. The <code>AddOrder</code>, <code>ModifyOrder</code> and
+<code>RemoveOrder</code> WebSocket messages let you keep a book up to date after the snapshot.</p>
+</div>
+
+<h2 id="market-trades">Market trades</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/markets/{marketId}/trades<span class="opt">?instrumentId=</span></div>
+<p>Today's trades in the market, oldest first, anonymous. Optionally for one instrument.</p>
+<pre><code>{ "marketId": 1, "trades": [
+  { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
+    "price": 10000000, "quantity": 200000, "tradeNo": "1", "tradeTime": 1791899978208 } ] }</code></pre>
+</div>
+
+<h2 id="orders">Orders</h2>
+<p>Orders are limit orders with a price and a quantity, valid for the day. In a continuous market an incoming order
+first trades against the other side, at the resting orders' prices; whatever is not matched rests in the book. In
+an auction market orders rest until the next auction.</p>
+<div class="warn">Orders are kept in memory only. They are gone after a server restart; trades are kept.</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/orders</div>
+<p>Enters an order. Requires the market to be <code>OPEN</code> or <code>PREOPEN</code> and the instrument not
+suspended.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>instrumentId</code></td><td>Required.</td></tr>
+    <tr><td><code>side</code></td><td>Required. <code>BUY</code> or <code>SELL</code>.</td></tr>
+    <tr><td><code>price</code></td><td>Required. Scaled, &gt; 0, a multiple of the tick size.</td></tr>
+    <tr><td><code>quantity</code></td><td>Required. Scaled, &gt; 0, a multiple of the lot size.</td></tr>
+    <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+</table>
+<pre><code>{ "instrumentId": 4294967297, "side": "BUY", "price": 10000000, "quantity": 500000, "userRef": "b-17" }</code></pre>
+<p>201:</p>
+<pre><code>{ "orderId": "6ace393800000001", "inserted": true, "matched": 200000, "remaining": 300000, "userRef": "b-17" }</code></pre>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>orderId</code></td><td>The order's id.</td></tr>
+    <tr><td><code>matched</code></td><td>The quantity that traded at once. The trades themselves arrive as
+        <code>OwnTrade</code> messages.</td></tr>
+    <tr><td><code>remaining</code></td><td>The quantity left in the book.</td></tr>
+    <tr><td><code>inserted</code></td><td><code>true</code> if a remainder rests in the book, <code>false</code> if
+        the order traded completely.</td></tr>
+</table>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m PATCH">PATCH</span>/api/orders/{orderId}</div>
+<p>Modifies one of your firm's resting orders.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>quantity</code></td><td>Required. The new remaining quantity.</td></tr>
+    <tr><td><code>price</code> <span class="opt">optional</span></td><td>The new price; left out (or 0) keeps the
+        current one.</td></tr>
+    <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>A new reference; left out keeps the
+        current one.</td></tr>
+</table>
+<p>The response has the same fields as for a new order. Lowering the quantity, or moving the price away from the
+other side, changes the order in place: it keeps its <code>orderId</code> and its original entry time for time
+priority. Raising the quantity, or moving the price towards the other side, replaces the order: it gets a
+<b>new <code>orderId</code></b> (returned in the response), a new entry time, and may trade at once.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m DELETE">DELETE</span>/api/orders/{orderId}</div>
+<p>Deletes one of your firm's orders. Possible in every trading status except <code>CLOSED</code>.</p>
+<pre><code>{ "orderId": "6ace393800000002", "inserted": false, "matched": 0, "remaining": 300000 }</code></pre>
+<p><code>remaining</code> is the quantity that was removed. 404 if the order no longer exists, for example because
+it has traded completely.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/orders<span class="opt">?marketId=&amp;instrumentId=</span></div>
+<p>Your firm's resting orders, optionally for one market and/or one instrument.</p>
+<pre><code>{ "orders": [
+  { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
+    "orderId": "6ace393800000001", "side": "BUY", "price": 10000000, "quantity": 300000,
+    "account": "ThinAir", "orderTime": 1791878914356, "userRef": "b-17" } ] }</code></pre>
+<p><code>quantity</code> is the remaining quantity; <code>account</code> is your firm.</p>
+</div>
+
+<h2 id="trades">Own trades</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/trades<span class="opt">?marketId=&amp;instrumentId=&amp;date=yyyy-MM-dd</span></div>
+<p>Your firm's trades, oldest first: today's, or with <code>date</code> those of that day. Optionally for one
+market and/or instrument. 400 for an invalid date.</p>
+<pre><code>{ "date": "2026-10-12", "trades": [
+  { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
+    "side": "BUY", "price": 10000000, "quantity": 200000, "tradeNo": "1", "tradeTime": 1791899978208,
+    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17" } ] }</code></pre>
+<p><code>date</code> is only in the response when it was given. If your firm traded with itself, the trade is
+listed twice, once per side. Bulletin trades are not included.</p>
+</div>
+
+<h2 id="portfolio">Portfolio</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/portfolio</div>
+<p>Your firm's position per instrument, from all its trades on every day: bought minus sold. Positions of 0 are
+left out. Sorted by market and instrument.</p>
+<pre><code>{ "positions": [
+  { "instrumentId": 4294967297, "instrument": "ABB", "marketId": 1, "market": "Equities",
+    "position": 500000, "bought": 1500000, "sold": 1000000,
+    "lastPrice": 10200000, "value": 51000000 } ],
+  "totalValue": 51000000 }</code></pre>
+<p><code>lastPrice</code> is the latest trade price (<code>null</code> if the instrument never traded);
+<code>value</code> = position &times; last price, negative for a short position. Bulletin trades are not
+included.</p>
+</div>
+
+<h2 id="bulletin-markets">Bulletin markets</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/bulletin-markets</div>
+<p>The bulletin markets your firm is authorized for. Note that the response is a JSON <b>array</b>.</p>
+<pre><code>[ { "id": 2, "name": "OTC-Machinery", "description": "Used machines", "tradingStatus": "OPEN",
+    "open": "08:00", "close": "17:00", "instruments": [ "Old tractor", "/Brent.*/" ], "maxOrderTime": "168:00" } ]</code></pre>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>instruments</code></td><td>What bulletins may be about. A plain entry must match the bulletin's
+        instrument text exactly (case-sensitive); an entry between slashes is a regular expression that must match
+        the whole text (<code>/Brent.*/</code> allows "Brent Crude").</td></tr>
+    <tr><td><code>maxOrderTime</code></td><td><code>hh:mm</code>: how long a bulletin stays on the board before it
+        expires. The hours may exceed 24.</td></tr>
+</table>
+</div>
+
+<h2 id="bulletins">Bulletins</h2>
+<p>A bulletin is an announcement in a bulletin market: a side, a free-text instrument, and optionally a price and a
+quantity. It is never matched automatically; other firms make offers on it. A bulletin stays until it is fully
+traded, withdrawn or expired.</p>
+<table>
+    <tr><th>State</th><th>Meaning</th></tr>
+    <tr><td><code>ACTIVE</code></td><td>Open for offers.</td></tr>
+    <tr><td><code>OFFER_PENDING</code></td><td>An offer is waiting for the owner's answer. No other offer can be
+        made, and the owner can't withdraw it.</td></tr>
+    <tr><td><code>TRADED</code>, <code>WITHDRAWN</code>, <code>EXPIRED</code>, <code>DELETED</code></td><td>Removed
+        from the board (DELETED: by the administrator).</td></tr>
+</table>
+
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/bulletins</div>
+<p>Adds a bulletin. Requires the bulletin market to be <code>OPEN</code>.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>marketId</code></td><td>Required. A bulletin market.</td></tr>
+    <tr><td><code>instrument</code></td><td>Required. Free text, allowed by the market's <code>instruments</code>.</td></tr>
+    <tr><td><code>side</code></td><td>Required. <code>BUY</code> or <code>SELL</code>.</td></tr>
+    <tr><td><code>price</code>, <code>quantity</code> <span class="opt">optional</span></td><td>Scaled; left out or
+        0 means not given.</td></tr>
+    <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+</table>
+<pre><code>{ "marketId": 2, "instrument": "Old tractor", "side": "SELL", "price": 100000000, "quantity": 500000, "userRef": "t1" }</code></pre>
+<p>201: <code>{ "bulletinId": "6acdec0800000001", "state": "ACTIVE", "expiresAt": 1792504800000, "userRef": "t1" }</code></p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/bulletins<span class="opt">?marketId=</span></div>
+<p>The bulletins in your bulletin markets (or one of them), oldest first.</p>
+<pre><code>{ "bulletins": [
+  { "bulletinId": "6acdec0800000001", "marketId": 2, "instrument": "Old tractor", "side": "SELL",
+    "price": 100000000, "quantity": 500000, "remainingQuantity": 500000, "state": "OFFER_PENDING",
+    "createTime": 1791900000000, "expiresAt": 1792504800000, "own": true,
+    "user": "trader1", "userRef": "t1",
+    "offer": { "price": 95000000, "quantity": 200000, "expiresAt": 1791900060000, "own": false } } ] }</code></pre>
+<p>Everyone sees the public fields; a <code>price</code> or <code>quantity</code> of 0 means not given.
+<code>own</code> is true for your firm's bulletins, which also show <code>user</code> and <code>userRef</code>.
+A pending <code>offer</code> is shown to the bulletin's owner and to the firm that made it (with
+<code>own: true</code> and its <code>offerRef</code>).</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m DELETE">DELETE</span>/api/bulletins/{bulletinId}</div>
+<p>Withdraws one of your firm's bulletins. Not possible while an offer is pending (answer it first). Possible in
+every trading status.</p>
+<p>200: <code>{ "bulletinId": "...", "state": "WITHDRAWN", "remainingQuantity": 500000 }</code></p>
+</div>
+
+<h2 id="offers">Offers</h2>
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/bulletins/{bulletinId}/offer</div>
+<p>Makes an offer on another firm's bulletin, on the opposite side. Requires the market to be <code>OPEN</code>,
+the bulletin to be <code>ACTIVE</code> and not your own.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>price</code></td><td>Required. Scaled, &gt; 0.</td></tr>
+    <tr><td><code>quantity</code></td><td>Required. Scaled, &gt; 0, at most the bulletin's remaining quantity (if it
+        has a quantity).</td></tr>
+    <tr><td><code>validTime</code> <span class="opt">optional</span></td><td>Seconds the owner has to answer;
+        default 60. Then the offer expires.</td></tr>
+    <tr><td><code>offerRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+</table>
+<p>200: <code>{ "bulletinId": "...", "state": "OFFER_PENDING", "remainingQuantity": 500000 }</code></p>
+<p>The owner's firm is told by a <code>BulletinOffer</code> message; you get the answer the same way.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/bulletins/{bulletinId}/response</div>
+<p>Accepts or rejects the pending offer on one of your firm's bulletins:
+<code>{ "accept": true }</code> or <code>{ "accept": false }</code>.</p>
+<p>Accepting makes a trade at the offer's price and quantity (requires the market to be <code>OPEN</code>). The
+remaining quantity drops; the bulletin is removed when nothing remains, or after its first trade if it had no
+quantity. Otherwise, and after a reject, it is <code>ACTIVE</code> again. Rejecting is always possible.</p>
+<p>200: <code>{ "bulletinId": "...", "state": "TRADED", "remainingQuantity": 0 }</code></p>
+</div>
+
+<h2 id="websocket">WebSocket</h2>
+<p>Connect to <code>wss://&lt;host&gt;/&lt;base&gt;/ws</code> (e.g. <code>wss://hoddmimes.com/emporia/ws</code>)
+<b>after logging in</b>, sending the session cookie with the connection request. There is nothing to subscribe to:
+the server sends every public message for the markets your firm is authorized for, and every private message for
+your firm.</p>
+<ul>
+    <li>On connect you first get a <b>snapshot</b>: the latest <code>PriceUpdate</code> of every instrument and the
+        <code>MarketState</code> of every market. Bulletins are not in the snapshot; read them with
+        <code>GET /api/bulletins</code>.</li>
+    <li>Send the text <code>ping</code> to get <code>pong</code> back. Send it right after connecting and wait for
+        the <code>pong</code>: from then on the connection is registered and no message is missed. The server
+        closes a connection that has been idle for 2 minutes, so send <code>ping</code> regularly (every 25 s is
+        fine). The server also sends WebSocket ping frames, which most clients answer automatically.</li>
+    <li>Without a valid login the connection is refused or closed at once (code 1008, "Not authenticated").
+        Logging out or the session timing out closes it (code 1000).</li>
+    <li>Messages sent while you were disconnected are not repeated. After reconnecting you get a new snapshot;
+        re-read your orders, trades and bulletins over REST.</li>
+</ul>
+
+<h2 id="bdx-messages">Messages</h2>
+<p>Every message is a JSON object that starts with <code>type</code>, <code>topic</code>, <code>marketId</code> and,
+for instrument messages, <code>instrumentId</code>, followed by the type's own fields. Prices and quantities are
+<b>decimals</b> here, not scaled. A field that is <code>null</code> has no value (clear any previous value).</p>
+<pre><code>{ "type": "PriceUpdate", "topic": "/PriceUpdate/1/4294967297", "marketId": 1, "instrumentId": 4294967297,
+  "bidVol": 15.0, "bidPx": 99.0, "askVol": 1.0, "askPx": 100.0,
+  "open": 99.5, "high": 101.0, "last": 100.0, "volume": 42.0 }</code></pre>
+
+<h3>Public messages</h3>
+<table>
+    <tr><th>Type</th><th>When</th><th>Fields</th></tr>
+    <tr><td><code>PriceUpdate</code></td><td>After every change to an instrument's book.</td><td><code>bidVol</code>,
+        <code>bidPx</code>, <code>askVol</code>, <code>askPx</code>, <code>open</code>, <code>high</code>,
+        <code>last</code>, <code>volume</code>; a complete snapshot each time.</td></tr>
+    <tr><td><code>MarketState</code></td><td>A market's trading status changes (also bulletin markets).</td>
+        <td><code>marketName</code>, <code>tradingStatus</code></td></tr>
+    <tr><td><code>Trade</code></td><td>A trade (anonymous).</td><td><code>price</code>, <code>quantity</code>,
+        <code>tradeNo</code>, <code>tradeTime</code></td></tr>
+    <tr><td><code>AddOrder</code><br><code>ModifyOrder</code><br><code>RemoveOrder</code></td><td>An order is added
+        to, changed in, or removed from a book (anonymous).</td><td><code>orderId</code>, <code>side</code>,
+        <code>price</code>, <code>quantity</code> (remaining), <code>seqNo</code> (per book, increasing). A partly
+        filled resting order gives a <code>ModifyOrder</code>; a fully filled one a <code>RemoveOrder</code> with
+        quantity 0. An incoming order that trades completely never enters the book and gives no order
+        message.</td></tr>
+    <tr><td><code>Bulletin</code></td><td>A bulletin is added, changes or is removed (anonymous; a market message
+        without <code>instrumentId</code>).</td><td><code>event</code> (ADDED, UPDATED, REMOVED),
+        <code>bulletinId</code>, <code>instrument</code>, <code>side</code>, <code>price</code>,
+        <code>quantity</code>, <code>remainingQuantity</code>, <code>state</code>, <code>expiresAt</code></td></tr>
+    <tr><td><code>BulletinTrade</code></td><td>A bulletin offer was accepted (anonymous).</td><td><code>bulletinId</code>,
+        <code>instrument</code>, <code>price</code>, <code>quantity</code>, <code>tradeNo</code>,
+        <code>tradeTime</code></td></tr>
+</table>
+
+<h3>Private messages (only to your firm)</h3>
+<table>
+    <tr><th>Type</th><th>When</th><th>Fields</th></tr>
+    <tr><td><code>OwnOrder</code></td><td>One of your firm's orders is added, changed or removed.</td><td>As
+        AddOrder, plus <code>event</code> (ADDED, MODIFIED, REMOVED) and <code>userRef</code>.</td></tr>
+    <tr><td><code>OwnTrade</code></td><td>One of your firm's orders traded (one message per side; both if you
+        traded with yourself).</td><td><code>side</code>, <code>price</code>, <code>quantity</code>,
+        <code>tradeNo</code>, <code>tradeTime</code>, <code>orderId</code>, <code>userRef</code></td></tr>
+    <tr><td><code>OwnBulletin</code></td><td>One of your firm's bulletins changes.</td><td>As Bulletin, plus
+        <code>user</code> and <code>userRef</code>.</td></tr>
+    <tr><td><code>BulletinOffer</code></td><td>An offer on your bulletin (<code>role</code> OWNER), or your own offer
+        (<code>role</code> OFFERER), changes.</td><td><code>event</code> (OFFERED, ACCEPTED, REJECTED, EXPIRED,
+        CANCELLED), <code>role</code>, <code>bulletinId</code>, <code>instrument</code>, <code>side</code> (the
+        offer's side), <code>price</code>, <code>quantity</code>, <code>expiresAt</code> (when the offer expires),
+        and <code>userRef</code> (OWNER) or <code>offerRef</code> (OFFERER)</td></tr>
+    <tr><td><code>OwnBulletinTrade</code></td><td>A bulletin trade your firm took part in.</td><td>As BulletinTrade,
+        plus <code>side</code> and <code>userRef</code> (owner) or <code>offerRef</code> (offerer)</td></tr>
+</table>
+<p>The counterparty of a trade or offer is never revealed. New message types or fields may be added; ignore what
+you don't recognize.</p>
+
+<h2 id="example">Example session</h2>
+<p>With <code>curl</code>, keeping the session cookie in a file:</p>
+<pre><code>BASE=https://hoddmimes.com/emporia
+J='Content-Type: application/json'
+
+# Log in
+curl -c jar -b jar -H "$J" -X POST $BASE/api/login -d '{"firm":"ThinAir","userId":"trader1","password":"secret"}'
+
+# Markets and instruments
+curl -b jar $BASE/api/markets
+curl -b jar "$BASE/api/instruments?marketId=1"
+
+# Buy 5 ABB at 100.00 (scaled by 100000)
+curl -b jar -H "$J" -X POST $BASE/api/orders \
+     -d '{"instrumentId":4294967297,"side":"BUY","price":10000000,"quantity":500000,"userRef":"b-1"}'
+
+# Lower it to 3, then delete it
+curl -b jar -H "$J" -X PATCH $BASE/api/orders/6ace393800000001 -d '{"quantity":300000}'
+curl -b jar -X DELETE $BASE/api/orders/6ace393800000001
+
+curl -b jar -X POST $BASE/api/logout</code></pre>
+<p>The WebSocket in JavaScript (a browser sends the session cookie by itself):</p>
+<pre><code>const ws = new WebSocket('wss://hoddmimes.com/emporia/ws');
+ws.onopen    = () =&gt; ws.send('ping');
+ws.onmessage = (e) =&gt; {
+    if (e.data === 'pong') return;
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'PriceUpdate') console.log(msg.instrumentId, msg.bidPx, msg.askPx);
+    if (msg.type === 'OwnTrade')    console.log('traded', msg.side, msg.quantity, '@', msg.price);
+};
+setInterval(() =&gt; ws.readyState === WebSocket.OPEN &amp;&amp; ws.send('ping'), 25000);</code></pre>
+
+<h2 id="version">Version</h2>
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/version</div>
+<p>The server's version and build date. Does not require a login.</p>
+<pre><code>{ "version": "V1.0-001", "buildDate": "2026-10-13 17:10" }</code></pre>
+</div>
+</main>
+</div>
+</body>
+</html>

@@ -1,3 +1,5 @@
 rootProject.name = 'Emporia'
 include 'Server'
 include 'TestClient'
+
+include 'Simulator'

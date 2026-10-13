@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Users</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2>Users</h2>
-                <a href="/admin/create-user.html" class="btn btn-primary btn-sm">+ Create User</a>
+                <a href="create-user.html" class="btn btn-primary btn-sm">+ Create User</a>
             </div>
 
             <div class="card" style="padding:0; overflow:hidden;">
@@ -44,9 +44,9 @@
         </main>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-users');
         cdSession.guard('user-info');
@@ -62,8 +62,8 @@
 
         async function loadUsers() {
             try {
-                const r = await cdApi.request('/api/admin/users');
-                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                const r = await cdApi.request('../api/admin/users');
+                if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     document.getElementById('users-body').innerHTML =
                         `<tr class="empty-row"><td colspan="4">Failed to load users: ${escHtml(r.error)}</td></tr>`;
@@ -81,7 +81,7 @@
                 }
 
                 tbody.innerHTML = users.map(u =>
-                    `<tr class="row-link" onclick="window.location='/admin/user.html?id=${u.mongoId}'">
+                    `<tr class="row-link" onclick="window.location='user.html?id=${u.mongoId}'">
                         <td>${escHtml(u.firm)}</td>
                         <td>${escHtml(u.id)}</td>
                         <td>${escHtml(u.name)}</td>

@@ -13,58 +13,80 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+/**
+ * The server: the database, instrument cache, broadcast distributor, matching engine, bulletin board and
+ * the schedulers. Started either standalone (main, with its own Jetty web server, RestApi.start) or as a
+ * web application in Tomcat (webapp.EmporiaWebApp, with Tomcat as the web server).
+ */
 public class Server {
 
     private static final Logger cLog = LogManager.getLogger(Server.class);
 
-    private JsonObject mConfig;
-    private String     mConfigPath;
-    private boolean    mTestMode;
-    private Database   mDatabase;
+    public final JsonObject      config;
+    public final Database        database;
+    public final InstrumentCache instrumentCache;
+    public final BdxDistributor  bdx;
+    public final MatchingEngine  matchingEngine;
+    public final BulletinBoard   bulletinBoard;
+    private final AuctionScheduler     mAuctionScheduler;
+    private final MarketStateScheduler mMarketStateScheduler;
 
     public static void main(String[] args) throws Exception {
-        new Server().start(args);
-    }
-
-    private void start(String[] args) throws Exception {
-        parseArgs(args);
-        mConfig = loadConfig(mConfigPath);
-
-        mDatabase = new Database();
-        mDatabase.connect(mConfig.get("database").getAsJsonObject());
-        mDatabase.initializeAdminCollection();
-
-        InstrumentCache tInstrumentCache = new InstrumentCache();
-        tInstrumentCache.load(mDatabase);
-
-        BdxDistributor tBdx            = new BdxDistributor(tInstrumentCache);
-        tBdx.start();
-
-
-        MatchingEngine tMatchingEngine = new MatchingEngine(tInstrumentCache, mDatabase, tBdx);
-        new AuctionScheduler(tMatchingEngine, tInstrumentCache).start();
-        BulletinBoard  tBulletinBoard  = new BulletinBoard(mDatabase, tBdx::publish);
-        tBulletinBoard.load();
-        new MarketStateScheduler(mDatabase, tInstrumentCache, tBulletinBoard).start(mTestMode);
-
-        new RestApi(mDatabase, tInstrumentCache, tBdx, tMatchingEngine, tBulletinBoard, mConfig).start();
-    }
-
-    private void parseArgs(String[] args) {
-        mConfigPath = null;
+        String tConfigPath = null;
         String tMode = "normal";
         for (int i = 0; i < args.length - 1; i++) {
-            if ("-config".equals(args[i])) { mConfigPath = args[i + 1]; }
+            if ("-config".equals(args[i])) { tConfigPath = args[i + 1]; }
             if ("-mode".equals(args[i]))   { tMode       = args[i + 1]; }
         }
-        if (mConfigPath == null || !(tMode.equals("normal") || tMode.equals("test"))) {
+        if (tConfigPath == null || !(tMode.equals("normal") || tMode.equals("test"))) {
             throw new RuntimeException("Usage: Server -config <file> [-mode normal|test]");
         }
-        // test: all markets are opened at startup and the market hours are not applied
-        mTestMode = tMode.equals("test");
+        Server tServer = new Server(loadConfig(tConfigPath), tMode.equals("test"));
+        tServer.restApi().start();
     }
 
-    private JsonObject loadConfig(String pConfigPath) throws IOException {
+    /**
+     * Starts everything but the web server. pTestMode: all markets are opened at startup and the market
+     * hours are not applied.
+     */
+    public Server(JsonObject pConfig, boolean pTestMode) {
+        cLog.info("Emporia {}", BuildInfo.text());
+        config = pConfig;
+
+        database = new Database();
+        database.connect(config.get("database").getAsJsonObject());
+        database.initializeAdminCollection();
+
+        instrumentCache = new InstrumentCache();
+        instrumentCache.load(database);
+
+        bdx = new BdxDistributor(instrumentCache);
+        bdx.start();
+
+        matchingEngine = new MatchingEngine(instrumentCache, database, bdx);
+        mAuctionScheduler = new AuctionScheduler(matchingEngine, instrumentCache);
+        mAuctionScheduler.start();
+        bulletinBoard = new BulletinBoard(database, bdx::publish);
+        bulletinBoard.load();
+        mMarketStateScheduler = new MarketStateScheduler(database, instrumentCache, bulletinBoard);
+        mMarketStateScheduler.start(pTestMode);
+    }
+
+    public RestApi restApi() {
+        return new RestApi(database, instrumentCache, bdx, matchingEngine, bulletinBoard, config);
+    }
+
+    /** Stops the threads and closes the database (web application undeploy). */
+    public void stop() {
+        mMarketStateScheduler.stop();
+        mAuctionScheduler.stop();
+        bulletinBoard.stop();
+        bdx.interrupt();
+        database.close();
+        cLog.info("Server stopped");
+    }
+
+    public static JsonObject loadConfig(String pConfigPath) throws IOException {
         String tContent = new String(Files.readAllBytes(Paths.get(pConfigPath)));
         cLog.info("Loaded config from {}", pConfigPath);
         return JsonParser.parseString(tContent).getAsJsonObject();

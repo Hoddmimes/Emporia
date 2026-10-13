@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Login</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <div class="login-page">
@@ -27,11 +27,17 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Sign In</button>
             </form>
+            <div id="build-info" class="login-build"></div>
         </div>
     </div>
 
-    <script src="/admin/js/cd-api.js"></script>
+    <script src="js/cd-api.js"></script>
     <script>
+        // The server's build version and date under the form (GET /api/version, no login needed)
+        fetch('../api/version').then(r => r.ok ? r.json() : null).then(v => {
+            if (v) document.getElementById('build-info').textContent = v.version + '  ·  built ' + v.buildDate;
+        }).catch(() => {});
+
         document.addEventListener('DOMContentLoaded', () => {
             const usernameEl = document.getElementById('username');
             const passwordEl = document.getElementById('password');
@@ -45,9 +51,9 @@
             const errorMsg = document.getElementById('error-msg');
             errorMsg.classList.add('alert-hidden');
 
-            const r = await cdApi.request('/api/admin/login', cdApi.json('POST', { username, password }));
+            const r = await cdApi.request('../api/admin/login', cdApi.json('POST', { username, password }));
             if (r.ok && r.data.success) {
-                window.location.href = '/admin/admin.html';
+                window.location.href = 'admin.html';
                 return;
             }
             // A wrong password is a 401 with a message; anything else shows the status and reply

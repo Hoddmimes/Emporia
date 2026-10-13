@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Market</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2 id="page-title">Market</h2>
-                <a href="/admin/markets.html" class="btn btn-outline btn-sm">&larr; Back to Markets</a>
+                <a href="markets.html" class="btn btn-outline btn-sm">&larr; Back to Markets</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -143,9 +143,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-markets');
         cdSession.guard('user-info');
@@ -196,10 +196,10 @@
         }
 
         async function loadMarket() {
-            if (!mongoId) { window.location.href = '/admin/markets.html'; return; }
+            if (!mongoId) { window.location.href = 'markets.html'; return; }
             try {
-                const r = await cdApi.request(`/api/admin/markets/${mongoId}`);
-                if (r.status === 404) { window.location.href = '/admin/markets.html'; return; }
+                const r = await cdApi.request(`../api/admin/markets/${mongoId}`);
+                if (r.status === 404) { window.location.href = 'markets.html'; return; }
                 if (!r.ok) { showError('Failed to load market: ' + r.error); return; }
                 const m = r.data;
 
@@ -250,7 +250,7 @@
                 randomAuctionInterval:document.getElementById('d-randomAuctionInterval').value.trim()
             };
             try {
-                const r = await cdApi.request(`/api/admin/markets/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/markets/${mongoId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -281,7 +281,7 @@
             if (!confirm(`Delete ALL orders in ${name}, of every firm? This cannot be undone.`)) return;
             document.getElementById('error-banner').classList.add('alert-hidden');
             try {
-                const r = await cdApi.request(`/api/admin/markets/${mongoId}/orders`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/markets/${mongoId}/orders`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete orders: ' + r.error); return; }
                 alert(`${r.data.ordersDeleted} order(s) deleted.`);
             } catch (e) {
@@ -302,12 +302,12 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`/api/admin/markets/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/markets/${mongoId}`, { method: 'DELETE' });
                 if (!r.ok) {
                     showError('Failed to delete market: ' + r.error);
                     return;
                 }
-                window.location.href = '/admin/markets.html';
+                window.location.href = 'markets.html';
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
             }

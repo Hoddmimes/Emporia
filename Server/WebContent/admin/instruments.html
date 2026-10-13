@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Instruments</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2>Instruments</h2>
-                <a href="/admin/create-instrument.html" class="btn btn-primary btn-sm">+ Create Instrument</a>
+                <a href="create-instrument.html" class="btn btn-primary btn-sm">+ Create Instrument</a>
             </div>
 
             <div class="card" style="margin-bottom:16px; padding:16px 20px;">
@@ -55,9 +55,9 @@
         </main>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-instruments');
         cdSession.guard('user-info');
@@ -79,8 +79,8 @@
 
         async function loadMarkets() {
             try {
-                const r = await cdApi.request('/api/admin/markets');
-                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                const r = await cdApi.request('../api/admin/markets');
+                if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     document.getElementById('inst-body').innerHTML =
                         `<tr class="empty-row"><td colspan="7">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
@@ -109,8 +109,8 @@
             }
             sessionStorage.setItem('inst-market', marketId);
             try {
-                const r = await cdApi.request(`/api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
-                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                const r = await cdApi.request(`../api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
+                if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Failed to load instruments: ${escHtml(r.error)}</td></tr>`;
                     return;
@@ -124,7 +124,7 @@
                     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                     .map(i => `
                         <tr>
-                            <td class="row-link" onclick="window.location='/admin/instrument.html?id=${i.mongoId}'">${escHtml(i.name)}</td>
+                            <td class="row-link" onclick="window.location='instrument.html?id=${i.mongoId}'">${escHtml(i.name)}</td>
                             <td>${escHtml(i.instType)}</td>
                             <td>${escHtml(i.isin)}</td>
                             <td>${fmtPrice(i.tickSize)}</td>
@@ -144,7 +144,7 @@
         }
 
         async function setStatus(mongoId, status) {
-            const r = await cdApi.request(`/api/admin/instruments/${mongoId}/status`,
+            const r = await cdApi.request(`../api/admin/instruments/${mongoId}/status`,
                     cdApi.json('PATCH', { tradingStatus: status }));
             if (!r.ok) alert('Failed to update trading status: ' + r.error);
             loadInstruments();

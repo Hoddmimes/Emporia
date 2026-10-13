@@ -19,7 +19,9 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.ThreadContext;
 
 import java.nio.file.Files;
+import java.time.Duration;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
@@ -30,10 +32,15 @@ public class RestApi {
 
     // Paths reachable without being logged in
     private static final Set<String> PUBLIC_PATHS = Set.of(
-            "/api/login", "/api/session", "/api/admin/login", "/api/admin/session");
+            "/api/login", "/api/session", "/api/admin/login", "/api/admin/session", "/api/version");
 
     // Upper bound on how often timed-out HTTP sessions are detected and removed
     private static final int SESSION_SCAVENGE_SECONDS = 30;
+
+    // A WebSocket without traffic for this long is closed (Jetty's default is 30 s). The server pings every
+    // BdxEndpoint.PING_SECONDS, so only a dead connection reaches it; the margin covers a browser that
+    // answers late, e.g. while the page is in the background.
+    public static final Duration WS_IDLE_TIMEOUT = Duration.ofMinutes(2);
 
     // Request ids: a counter, restarting at 1 when the server restarts
     public  static final String REQUEST_ID     = "rid";   // Log4j ThreadContext key, %X{rid} in the log pattern
@@ -108,6 +115,7 @@ public class RestApi {
                 tIdManager.setSessionHouseKeeper(tHouseKeeper);
                 server.setSessionIdManager(tIdManager);
             });
+            config.jetty.modifyWebSocketServletFactory(factory -> factory.setIdleTimeout(WS_IDLE_TIMEOUT));
             // A session that times out (or is invalidated) takes its bdx WebSockets with it
             config.jetty.modifyServletContextHandler(handler -> handler.addEventListener(new HttpSessionListener() {
                 @Override
@@ -123,15 +131,37 @@ public class RestApi {
             }
         });
 
-        declareRequestId(tApp);
-        declareAuthFilter(tApp);
-        declareEndpoints(tApp);
-        declareAfterHandlers(tApp);
+        declareHandlers(tApp, true);
 
         tApp.start();
 
         if (tHttpsEnabled) cLog.info("HTTPS listening on {}:{}", tInterface, tHttpsPort);
         if (tHttpEnabled)  cLog.info("HTTP  listening on {}:{}", tInterface, tHttpPort);
+    }
+
+    public RestApiContext context() { return mCtx; }
+
+    /**
+     * The REST API as a servlet, for a servlet container (Tomcat), deployed at pContextPath ("" for the
+     * root, e.g. "/emporia"; the routes are matched below it): the container is the web server, so
+     * there are no ports, SSL, static files or Jetty settings here, and no /ws route, since Javalin's
+     * WebSockets need Jetty (the web application serves /ws itself, webapp.BdxWebSocket). The servlet is
+     * built after all routes are registered.
+     */
+    public jakarta.servlet.Servlet createServlet(String pContextPath) {
+        Javalin tApp = Javalin.create(config -> {
+            config.showJavalinBanner = false;
+            if (!pContextPath.isEmpty()) config.router.contextPath = pContextPath;
+        });
+        declareHandlers(tApp, false);
+        return new io.javalin.http.servlet.JavalinServlet(tApp.unsafeConfig());
+    }
+
+    private void declareHandlers(Javalin pApp, boolean pJettyWebSocket) {
+        declareRequestId(pApp);
+        declareAuthFilter(pApp);
+        declareEndpoints(pApp, pJettyWebSocket);
+        declareAfterHandlers(pApp);
     }
 
     // ── Request id ────────────────────────────────────────────────────────
@@ -151,13 +181,14 @@ public class RestApi {
 
     private void declareAuthFilter(Javalin pApp) {
         // The trading interface is served from the web root (index.html), the admin interface from /admin/
-        pApp.get("/admin",  ctx -> ctx.redirect("/admin/login.html"));
-        pApp.get("/admin/", ctx -> ctx.redirect("/admin/login.html"));
+        pApp.get("/admin",  ctx -> ctx.redirect(ctx.req().getContextPath() + "/admin/login.html"));
+        pApp.get("/admin/", ctx -> ctx.redirect(ctx.req().getContextPath() + "/admin/login.html"));
 
         pApp.before("/api/*", ctx -> {
-            if (PUBLIC_PATHS.contains(ctx.path())) return;
+            String tPath = apiPath(ctx);
+            if (PUBLIC_PATHS.contains(tPath)) return;
             var tSession = ctx.req().getSession(false);
-            String tAttribute = ctx.path().startsWith("/api/admin/")
+            String tAttribute = tPath.startsWith("/api/admin/")
                     ? RestApiContext.ADMIN_USER : RestApiContext.USER;
             String tUser = (tSession != null) ? (String) tSession.getAttribute(tAttribute) : null;
             if (tUser == null) throw new UnauthorizedResponse("Not authenticated");
@@ -166,7 +197,7 @@ public class RestApi {
         // Runs after the auth filter, only for requests that matched an endpoint: puts the trading
         // user on the context (see SessionUser.of), so endpoints need not read the session
         pApp.beforeMatched("/api/*", ctx -> {
-            if (ctx.path().startsWith("/api/admin/")) return;
+            if (apiPath(ctx).startsWith("/api/admin/")) return;
             var tSession = ctx.req().getSession(false);
             if (tSession == null) return;
             String tUser = (String) tSession.getAttribute(RestApiContext.USER);
@@ -175,6 +206,11 @@ public class RestApi {
                         new SessionUser(tUser, (String) tSession.getAttribute(RestApiContext.FIRM)));
             }
         });
+    }
+
+    // The request's path within the application: without the context path (e.g. /emporia in Tomcat)
+    private static String apiPath(io.javalin.http.Context ctx) {
+        return ctx.path().substring(ctx.req().getContextPath().length());
     }
 
     // ── After handlers ────────────────────────────────────────────────────
@@ -201,16 +237,17 @@ public class RestApi {
 
     // ── REST endpoints ────────────────────────────────────────────────────
 
-    private void declareEndpoints(Javalin pApp) {
-        List<RestEndpoint> tEndpoints = List.of(
+    private void declareEndpoints(Javalin pApp, boolean pJettyWebSocket) {
+        List<RestEndpoint> tEndpoints = new ArrayList<>(List.of(
+            new VersionEndpoint(mCtx),
             new SessionEndpoint(mCtx),
             new LoginEndpoint(mCtx),
             new LogoutEndpoint(mCtx),
             new MarketEndpoints(mCtx),
             new InstrumentEndpoints(mCtx),
-            new BdxEndpoint(mCtx),
             new OrderEndpoints(mCtx),
             new TradeEndpoints(mCtx),
+            new PortfolioEndpoints(mCtx),
             new BulletinEndpoints(mCtx),
             new AdminSessionEndpoint(mCtx),
             new AdminLoginEndpoint(mCtx),
@@ -222,7 +259,8 @@ public class RestApi {
             new AdminBulletinMarketEndpoints(mCtx),
             new AdminInstrumentEndpoints(mCtx),
             new AdminAuthorizationEndpoints(mCtx)
-        );
+        ));
+        if (pJettyWebSocket) tEndpoints.add(new BdxEndpoint(mCtx));
         tEndpoints.forEach(e -> e.register(pApp));
     }
 }

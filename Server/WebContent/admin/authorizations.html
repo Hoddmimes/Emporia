@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Authorizations</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2>Authorizations</h2>
-                <a href="/admin/create-authorization.html" class="btn btn-primary btn-sm">+ Create Authorization</a>
+                <a href="create-authorization.html" class="btn btn-primary btn-sm">+ Create Authorization</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -67,9 +67,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-authorizations');
         cdSession.guard('user-info');
@@ -80,7 +80,7 @@
         async function loadMarkets() {
             try {
                 const [rm, rb] = await Promise.all(
-                    ['/api/admin/markets', '/api/admin/bulletin-markets'].map(url => cdApi.request(url)));
+                    ['../api/admin/markets', '../api/admin/bulletin-markets'].map(url => cdApi.request(url)));
                 const failed = [rm, rb].find(r => !r.ok);
                 if (failed) { cdApi.showError('error-banner', 'Failed to load markets: ' + failed.error); return; }
                 const [markets, bulletinMarkets] = [rm.data, rb.data];
@@ -97,7 +97,7 @@
 
         async function loadFirms() {
             try {
-                const r = await cdApi.request('/api/admin/firms');
+                const r = await cdApi.request('../api/admin/firms');
                 if (!r.ok) { cdApi.showError('error-banner', 'Failed to load firms: ' + r.error); return; }
                 const firms = r.data;
                 const select = document.getElementById('firm-select');
@@ -118,7 +118,7 @@
                 return;
             }
             try {
-                const r = await cdApi.request(`/api/admin/authorizations?firm=${encodeURIComponent(firm)}`);
+                const r = await cdApi.request(`../api/admin/authorizations?firm=${encodeURIComponent(firm)}`);
                 if (!r.ok) {
                     tbody.innerHTML = '<tr><td colspan="2" class="empty-state">Failed to load authorizations.</td></tr>';
                     cdApi.showError('error-banner', 'Failed to load authorizations: ' + r.error);
@@ -168,7 +168,7 @@
             if (!pendingDeleteId) return;
             const idToDelete = pendingDeleteId;
             closeDeleteModal();
-            const r = await cdApi.request(`/api/admin/authorizations/${idToDelete}`, { method: 'DELETE' });
+            const r = await cdApi.request(`../api/admin/authorizations/${idToDelete}`, { method: 'DELETE' });
             if (!r.ok) { cdApi.showError('error-banner', 'Failed to delete authorization: ' + r.error); return; }
             loadAuthorizations();
         }

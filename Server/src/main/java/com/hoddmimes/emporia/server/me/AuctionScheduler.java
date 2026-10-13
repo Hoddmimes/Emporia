@@ -53,6 +53,11 @@ public class AuctionScheduler {
                 r -> { Thread t = new Thread(r, "AuctionScheduler"); t.setDaemon(true); return t; });
     }
 
+    /** Stops all auction timers (web application undeploy). */
+    public void stop() {
+        mScheduler.shutdownNow();
+    }
+
     /** Called once at server startup to arm schedulers for all AUCTION markets. */
     public void start() {
         for (InstrumentCache.MarketEntry tMarket : mInstrumentCache.getAllMarkets()) {

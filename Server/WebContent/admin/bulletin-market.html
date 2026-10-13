@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Bulletin Market</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2 id="page-title">Bulletin Market</h2>
-                <a href="/admin/bulletin-markets.html" class="btn btn-outline btn-sm">&larr; Back to Bulletin Markets</a>
+                <a href="bulletin-markets.html" class="btn btn-outline btn-sm">&larr; Back to Bulletin Markets</a>
             </div>
 
             <div id="error-banner" class="alert alert-error alert-hidden"></div>
@@ -115,9 +115,9 @@
         </div>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-bulletin-markets');
         cdSession.guard('user-info');
@@ -149,10 +149,10 @@
         }
 
         async function loadMarket() {
-            if (!mongoId) { window.location.href = '/admin/bulletin-markets.html'; return; }
+            if (!mongoId) { window.location.href = 'bulletin-markets.html'; return; }
             try {
-                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`);
-                if (r.status === 404) { window.location.href = '/admin/bulletin-markets.html'; return; }
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`);
+                if (r.status === 404) { window.location.href = 'bulletin-markets.html'; return; }
                 if (!r.ok) { showError('Failed to load bulletin market: ' + r.error); return; }
                 const m = r.data;
 
@@ -175,7 +175,7 @@
             document.getElementById('error-banner').classList.add('alert-hidden');
             const body = currentValues();
             try {
-                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -196,7 +196,7 @@
             if (!confirm(`Delete ALL bulletins in ${name}, of every firm? This cannot be undone.`)) return;
             document.getElementById('error-banner').classList.add('alert-hidden');
             try {
-                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}/bulletins`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}/bulletins`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete bulletins: ' + r.error); return; }
                 alert(`${r.data.bulletinsDeleted} bulletin(s) deleted.`);
             } catch (e) {
@@ -217,12 +217,12 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`/api/admin/bulletin-markets/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`, { method: 'DELETE' });
                 if (!r.ok) {
                     showError('Failed to delete bulletin market: ' + r.error);
                     return;
                 }
-                window.location.href = '/admin/bulletin-markets.html';
+                window.location.href = 'bulletin-markets.html';
             } catch (e) {
                 showError('Unexpected error: ' + e.message);
             }

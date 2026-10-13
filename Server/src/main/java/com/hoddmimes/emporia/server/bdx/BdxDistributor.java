@@ -39,7 +39,7 @@ public class BdxDistributor extends Thread {
     private static final Logger cLog = LogManager.getLogger(BdxDistributor.class);
 
     private static final Set<String> SNAPSHOT_TYPES = Set.of(BdxMessage.PRICE_UPDATE, BdxMessage.MARKET_STATE);
-    private static final int MAX_PENDING_SENDS = 10000;
+    public static final int MAX_PENDING_SENDS = 10000;
 
     /**
      * A connected client; sender and closer deliver to its WebSocket.
@@ -84,8 +84,10 @@ public class BdxDistributor extends Thread {
                 tReason -> pCtx.closeSession(1000, tReason));
     }
 
-    // synchronized with dispatch() so a connecting client can't get an older snapshot after a newer message
-    synchronized void addClient(Object pKey, String pHttpSessionId, String pFirm, Set<Integer> pAuthorizedMarkets,
+    // synchronized with dispatch() so a connecting client can't get an older snapshot after a newer message.
+    // pKey identifies the connection for removeClient; pSender sends a message to it without waiting,
+    // pCloser closes it with a reason (used by the web application's WebSocket, webapp.BdxWebSocket).
+    public synchronized void addClient(Object pKey, String pHttpSessionId, String pFirm, Set<Integer> pAuthorizedMarkets,
                                 Consumer<String> pSender, Consumer<String> pCloser) {
         Client tClient = new Client(pHttpSessionId, pFirm, pAuthorizedMarkets, pSender, pCloser);
         mClients.put(pKey, tClient);

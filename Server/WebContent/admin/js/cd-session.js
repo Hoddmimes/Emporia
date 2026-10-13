@@ -2,7 +2,7 @@
  * Shared session utilities for all Emporia admin pages.
  *
  * Usage — include at the bottom of every admin page body:
- *   <script src="/admin/js/cd-session.js"></script>
+ *   <script src="js/cd-session.js"></script>
  *   <script>cdSession.guard('user-info');</script>
  *
  * cdSession.guard(userInfoElementId)
@@ -17,9 +17,9 @@ const cdSession = (() => {
 
     async function guard(userInfoId) {
         try {
-            const response = await fetch('/api/admin/session');
+            const response = await fetch('../api/admin/session');
             if (!response.ok) {
-                window.location.href = '/admin/login.html';
+                window.location.href = 'login.html';
                 return;
             }
             const data = await response.json();
@@ -28,15 +28,15 @@ const cdSession = (() => {
                 if (el) el.textContent = data.username;
             }
         } catch (e) {
-            window.location.href = '/admin/login.html';
+            window.location.href = 'login.html';
         }
     }
 
     async function logout() {
         try {
-            await fetch('/api/admin/logout', { method: 'POST' });
+            await fetch('../api/admin/logout', { method: 'POST' });
         } finally {
-            window.location.href = '/admin/login.html';
+            window.location.href = 'login.html';
         }
     }
 

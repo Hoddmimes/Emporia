@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Firms</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2>Firms</h2>
-                <a href="/admin/create-firm.html" class="btn btn-primary btn-sm">+ Create Firm</a>
+                <a href="create-firm.html" class="btn btn-primary btn-sm">+ Create Firm</a>
             </div>
 
             <div class="card" style="padding:0; overflow:hidden;">
@@ -42,9 +42,9 @@
         </main>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('list-firms');
         cdSession.guard('user-info');
@@ -56,8 +56,8 @@
 
         async function loadFirms() {
             try {
-                const r = await cdApi.request('/api/admin/firms');
-                if (r.status === 401) { window.location.href = '/admin/login.html'; return; }
+                const r = await cdApi.request('../api/admin/firms');
+                if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     document.getElementById('firms-body').innerHTML =
                         `<tr class="empty-row"><td colspan="2">Failed to load firms: ${escHtml(r.error)}</td></tr>`;
@@ -72,7 +72,7 @@
                 }
 
                 tbody.innerHTML = firms.map(f =>
-                    `<tr class="row-link" onclick="window.location='/admin/firm.html?id=${f.id}'">
+                    `<tr class="row-link" onclick="window.location='firm.html?id=${f.id}'">
                         <td>${escHtml(f.name)}</td>
                         <td>${statusBadge(f.status)}</td>
                     </tr>`

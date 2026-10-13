@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emporia &mdash; Create Firm</title>
-    <link rel="stylesheet" href="/admin/css/cd.css">
+    <link rel="stylesheet" href="css/cd.css">
 </head>
 <body>
     <header class="cd-header">
@@ -23,7 +23,7 @@
         <main class="cd-content">
             <div class="page-title-row">
                 <h2>Create Firm</h2>
-                <a href="/admin/firms.html" class="btn btn-outline btn-sm">&larr; Back to Firms</a>
+                <a href="firms.html" class="btn btn-outline btn-sm">&larr; Back to Firms</a>
             </div>
 
             <div class="card" style="max-width:560px;">
@@ -59,16 +59,16 @@
                     </div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
                         <button type="submit" class="btn btn-primary">Create Firm</button>
-                        <a href="/admin/firms.html" class="btn btn-outline">Cancel</a>
+                        <a href="firms.html" class="btn btn-outline">Cancel</a>
                     </div>
                 </form>
             </div>
         </main>
     </div>
 
-    <script src="/admin/js/cd-session.js"></script>
-    <script src="/admin/js/cd-api.js"></script>
-    <script src="/admin/js/cd-nav.js"></script>
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
     <script>
         cdNav.render('create-firm');
         cdSession.guard('user-info');
@@ -87,14 +87,14 @@
                 mail:    document.getElementById('f-mail').value.trim()
             };
 
-            const r = await cdApi.request('/api/admin/firms', cdApi.json('POST', body));
+            const r = await cdApi.request('../api/admin/firms', cdApi.json('POST', body));
             if (!r.ok) {
                 errorMsg.textContent = 'Failed to create firm: ' + r.error;
                 errorMsg.classList.remove('alert-hidden');
                 return;
             }
             const data = r.data;
-            window.location.href = `/admin/firm.html?id=${data.id}`;
+            window.location.href = `firm.html?id=${data.id}`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {

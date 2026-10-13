@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Emporia as a Tomcat web application (Tomcat 10.1 or later, Jakarta EE). Deploy as webapps/ROOT.war
+     and give the configuration file with -Demporia.config=<file> (CATALINA_OPTS) or EMPORIA_CONFIG. -->
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
+         version="5.0"
+         metadata-complete="true">
+
+    <display-name>Emporia</display-name>
+
+    <!-- No library jar takes part in the startup: the Jetty jars (used by the standalone server only)
+         contain ServletContainerInitializers that must not run in Tomcat -->
+    <absolute-ordering/>
+
+    <listener>
+        <listener-class>com.hoddmimes.emporia.server.webapp.EmporiaWebApp</listener-class>
+    </listener>
+
+    <welcome-file-list>
+        <welcome-file>index.html</welcome-file>
+    </welcome-file-list>
+</web-app>

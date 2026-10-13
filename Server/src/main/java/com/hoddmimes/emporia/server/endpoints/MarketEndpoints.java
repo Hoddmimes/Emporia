@@ -11,7 +11,8 @@ import java.util.Set;
 
 /**
  * Markets visible to the logged-in trading user, i.e. those the user's firm is authorized for, and
- * each such market's public data: its trades (anonymous) and a price snapshot of its instruments.
+ * each such market's public data: its trades (anonymous), a price snapshot of its instruments and an
+ * instrument's whole order book.
  * Prices and quantities are longs scaled by MatchingEngine.SCALE. A market the firm is not authorized
  * for is refused (403), an unknown one is not found (404).
  */
@@ -57,6 +58,21 @@ public class MarketEndpoints implements RestEndpoint {
             tOut.addProperty("marketId", tMarketId);
             tOut.add("prices", mCtx.matchingEngine.getPrices(tMarketId));
             ctx.json(tOut.toString());
+        });
+
+        // A snapshot of one instrument's whole order book, aggregated per price level (anonymous, except
+        // that each level tells the firm's own quantity)
+        app.get("/api/markets/{marketId}/orderbook/{instrumentId}", ctx -> {
+            Integer tMarketId = marketIdPath(ctx);
+            if (tMarketId == null) return;
+            long tInstrumentId;
+            try { tInstrumentId = Long.parseLong(ctx.pathParam("instrumentId")); }
+            catch (NumberFormatException e) { OrderEndpoints.error(ctx, 400, "instrumentId must be an integer"); return; }
+            var tInstrument = mCtx.instrumentCache.getInstrument(tInstrumentId);
+            if (tInstrument == null || tInstrument.marketId() != tMarketId) {
+                OrderEndpoints.error(ctx, 404, "Instrument " + tInstrumentId + " not found in market " + tMarketId); return;
+            }
+            ctx.json(mCtx.matchingEngine.getOrderbook(tInstrumentId, SessionUser.of(ctx).firm()).toString());
         });
     }
 

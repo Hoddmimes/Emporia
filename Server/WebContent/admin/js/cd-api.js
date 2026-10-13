@@ -4,9 +4,9 @@
  * "Not authenticated", or a 500 from a server error).
  *
  * Usage:
- *   <script src="/admin/js/cd-api.js"></script>
+ *   <script src="js/cd-api.js"></script>
  *
- *   const r = await cdApi.request('/api/admin/markets');                 // GET
+ *   const r = await cdApi.request('../api/admin/markets');                 // GET
  *   const r = await cdApi.request(url, cdApi.json('POST', body));         // JSON body
  *   if (!r.ok) { showError('Failed to load markets: ' + r.error); return; }
  *   ... r.data ...

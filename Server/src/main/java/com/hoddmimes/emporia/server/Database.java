@@ -52,6 +52,11 @@ public class Database {
         cLog.info("MongoDB connection established, database: {}", tName);
     }
 
+    /** Closes the MongoDB connection (web application undeploy). */
+    public void close() {
+        if (mMongoClient != null) mMongoClient.close();
+    }
+
     // ── Admin ────────────────────────────────────────────────────────────
 
     public void initializeAdminCollection() {
@@ -602,6 +607,15 @@ public class Database {
         return mDatabase.getCollection("Trades")
                 .deleteMany(new Document("tradeNo", Long.toHexString(pTradeNo)))
                 .getDeletedCount();
+    }
+
+    /** The price (scaled) of the instrument's latest stored trade, of any firm and day; 0 if it never traded. */
+    public long lastTradePrice(long pInstrumentId) {
+        Document tDoc = mDatabase.getCollection("Trades")
+                .find(new Document("instrumentId", String.valueOf(pInstrumentId)))
+                .sort(new Document("tradeTime", -1).append("_id", -1))
+                .first();
+        return (tDoc != null) ? tDoc.getLong("price") : 0L;
     }
 
     private List<Document> findTrades(Document pFilter) {

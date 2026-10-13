@@ -9,15 +9,24 @@ import org.eclipse.jetty.websocket.server.JettyServerUpgradeRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * The /ws WebSocket on which trading clients receive broadcast (bdx) messages. The upgrade
  * request must belong to an HTTP session with a logged-in trading user (the same session cookie
  * as the REST calls). The client may send "ping" (answered with "pong"); other messages are ignored.
  * Logging out or the session timing out closes the session's WebSockets.
+ *
+ * The server sends a WebSocket ping frame every PING_SECONDS. The browser answers it with a pong frame
+ * by itself, without running the page's JavaScript, so the connection stays within the idle timeout
+ * (RestApi.WS_IDLE_TIMEOUT) also when the page's own "ping" timer is throttled in a background tab.
  */
 public class BdxEndpoint implements RestEndpoint {
 
     private static final Logger cLog = LogManager.getLogger(BdxEndpoint.class);
+
+    /** Interval of the server's WebSocket ping frames; well below RestApi.WS_IDLE_TIMEOUT. */
+    public static final long PING_SECONDS = 20;
 
     private final RestApiContext mCtx;
 
@@ -41,16 +50,21 @@ public class BdxEndpoint implements RestEndpoint {
                 var tUpgradeReq = (JettyServerUpgradeRequest) ctx.session.getUpgradeRequest();
                 String tHttpSessionId = ((HttpSession) tUpgradeReq.getSession()).getId();
                 mCtx.bdx.addClient(ctx, tHttpSessionId, tFirm, mCtx.authorizedMarkets(tFirm));
+                ctx.enableAutomaticPings(PING_SECONDS, TimeUnit.SECONDS);
                 cLog.info("WebSocket connected: user '{}' firm '{}' ({} clients)", tUser, tFirm, mCtx.bdx.clientCount());
             });
             ws.onMessage(ctx -> {
                 if ("ping".equals(ctx.message())) BdxDistributor.send(ctx, "pong");
             });
             ws.onClose(ctx -> {
+                ctx.disableAutomaticPings();
                 mCtx.bdx.removeClient(ctx);
                 cLog.info("WebSocket closed ({} clients)", mCtx.bdx.clientCount());
             });
-            ws.onError(ctx -> mCtx.bdx.removeClient(ctx));
+            ws.onError(ctx -> {
+                ctx.disableAutomaticPings();
+                mCtx.bdx.removeClient(ctx);
+            });
         });
     }
 }
