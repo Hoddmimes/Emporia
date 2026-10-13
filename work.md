@@ -35,3 +35,11 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-12 Bulletin markets can be SUSPENDED (manual, never changed by the scheduler); only withdrawing bulletins and rejecting offers are allowed while suspended.
 * 26-10-12 HTTPS is HTTP/1.1 only (SslPlugin http2 = false): browsers on https used WebSockets over HTTP/2 (RFC 8441), which Javalin doesn't handle, so /ws failed with 1006 in market-view.html.
 * 26-10-12 Prices after a restart: today's reloaded trades restore open/high/last/volume and a PriceUpdate per instrument; market-view.html also loads GET /api/markets/{id}/prices when a market is selected.
+* 26-10-12 market-view.html lists the authorized bulletin markets too; selecting one shows its bulletins, reloaded on each Bulletin message. Bulletin markets are listed below the other markets, under their own heading, in a teal color.
+* 26-10-12 market-view.html Enter Order dialog: an order in a continuous/auction market or a bulletin in a bulletin market, validated for the selected market's kind before it is sent; MarketState messages keep the markets' trading status current.
+* 26-10-12 market-view.html: a double click in the price table opens the order dialog for that instrument, on the bid as a BUY and on the ask as a SELL with that side's best price and volume.
+* 26-10-12 market-view.html: clicking a bulletin opens an offer dialog (price, quantity, valid time in seconds, reference), prefilled from the bulletin.
+* 26-10-12 market-view.html: a double click on the bid opens the order dialog as a SELL, on the ask as a BUY.
+* 26-10-13 market-view.html: Bulletin Orders in the top menu shows the firm's own bulletins in all bulletin markets, with pending offers.
+* 26-10-13 market-view.html: the Bulletin Orders view is split, own bulletins above and received offers (not expired) below; clicking an offer opens an accept/reject dialog.
+* 26-10-13 market-view.html: a popup for each new offer received on the firm's bulletins (from the private BulletinOffer broadcast), with a countdown and an Answer button opening the response dialog.

@@ -4,6 +4,7 @@
 :root {
     --primary:      #1a6fd4;
     --primary-dark: #155bb5;
+    --bulletin:     #0f8a8f;   /* bulletin markets in the market list: a teal close to --primary */
     --bg:           #f4f6f9;
     --surface:      #ffffff;
     --border:       #d0d7e3;
@@ -275,6 +276,25 @@ body {
     color: var(--primary);
     font-weight: 600;
 }
+/* Bulletin markets: the same look in --bulletin instead of --primary */
+.mv-market-list li.bulletin { color: var(--bulletin); }
+.mv-market-list li.bulletin:hover { background: #eef8f8; }
+.mv-market-list li.bulletin.active {
+    background: #e3f4f4;
+    border-left-color: var(--bulletin);
+    color: var(--bulletin);
+}
+.mv-market-list li.mv-market-heading {
+    cursor: default;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--text-light);
+    padding: 18px 16px 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--border);
+}
+.mv-market-list li.mv-market-heading:hover { background: none; }
 .mv-market-list li .mv-market-desc {
     display: block;
     font-size: 12px;
@@ -359,3 +379,109 @@ body {
     border: 1px solid var(--border);
     border-radius: 6px;
 }
+
+/* ── Enter order dialog (market-view.html) ─────────────────────────── */
+.mv-order-dialog {
+    margin: auto;               /* centres the modal dialog; the global reset sets margin 0 */
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    width: 440px;
+    max-width: calc(100vw - 32px);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--primary);
+    border-radius: 6px;
+    padding: 20px 22px 18px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.22);
+    color: var(--text);
+    background: var(--surface);
+}
+.mv-order-dialog::backdrop { background: rgba(20,30,50,.35); }
+.mv-order-dialog.bulletin  { border-top-color: var(--bulletin); }
+.mv-order-dialog h3 { font-size: 17px; font-weight: 600; margin-bottom: 2px; }
+.mv-order-dialog .mv-order-sub {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-bottom: 16px;
+}
+.mv-order-dialog.bulletin h3 { color: var(--bulletin); }
+.mv-order-row { display: flex; gap: 12px; }
+.mv-order-row .form-group { flex: 1; }
+.mv-order-dialog .form-hint {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 4px;
+}
+.mv-order-dialog .form-group input.invalid,
+.mv-order-dialog .form-group select.invalid { border-color: var(--error); }
+.mv-order-side { display: flex; gap: 8px; }
+.mv-order-side label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 0;
+}
+.mv-order-side input { width: auto; }
+.mv-order-side label.buy.checked  { background: #e9f6ee; border-color: #1c7c44; color: #1c7c44; }
+.mv-order-side label.sell.checked { background: var(--error-bg); border-color: var(--error); color: var(--error); }
+.mv-order-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.mv-order-dialog.bulletin .btn-primary { background: var(--bulletin); }
+.mv-order-dialog.bulletin .btn-primary:hover { background: #0b6f73; }
+.btn:disabled { opacity: .5; cursor: default; }
+.mv-order-side.invalid label { border-color: var(--error); }
+.mv-price-table tr.mv-clickable td { cursor: pointer; }
+.mv-offer-info { font-size: 13px; margin-bottom: 14px; border-collapse: collapse; }
+.mv-offer-info th { text-align: left; font-weight: 600; color: var(--text-light); padding: 3px 14px 3px 0; }
+.mv-offer-info td { padding: 3px 0; font-weight: 600; }
+
+/* ── Bulletin Orders view: the main area split horizontally ────────── */
+.mv-main.split { display: flex; flex-direction: column; overflow: hidden; }
+.mv-main.split #mv-price-container { flex: 1; min-height: 0; }
+.mv-split { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+.mv-split-pane { flex: 1; min-height: 0; overflow: auto; }
+.mv-split-pane h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--text-light);
+    margin-bottom: 8px;
+}
+.btn-danger { background: var(--error); color: #fff; }
+.btn-danger:hover { background: #a93226; }
+
+/* ── New bulletin offer popups ─────────────────────────────────────── */
+.mv-toasts {
+    position: fixed;
+    top: 64px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 100;
+    max-width: calc(100vw - 32px);
+}
+.mv-toast {
+    width: 300px;
+    max-width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--bulletin);
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    padding: 12px 14px;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.mv-toast-title { font-weight: 700; color: var(--bulletin); font-size: 14px; }
+.mv-toast-time  { color: var(--text-light); font-size: 12px; }
+.mv-toast-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+.mv-toast .btn-primary { background: var(--bulletin); }
+.mv-toast .btn-primary:hover { background: #0b6f73; }

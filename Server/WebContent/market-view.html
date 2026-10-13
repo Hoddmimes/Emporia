@@ -22,6 +22,7 @@
         <nav class="mv-actions">
             <button class="btn btn-primary btn-sm" onclick="onEnterOrder()">Enter Order</button>
             <button class="btn btn-outline btn-sm" onclick="onMyOrders()">My Orders</button>
+            <button class="btn btn-outline btn-sm" onclick="onMyBulletins()">Bulletin Orders</button>
             <button class="btn btn-outline btn-sm" onclick="onMyPortfolio()">My Portfolio</button>
         </nav>
 
@@ -47,6 +48,129 @@
         </main>
     </div>
 
+    <!-- Enter order dialog: an order in a continuous/auction market or a bulletin in a bulletin market,
+         for the market selected when it was opened -->
+    <dialog id="order-dialog" class="mv-order-dialog">
+        <form id="order-form" novalidate onsubmit="submitOrder(event)">
+            <h3 id="of-title">Enter Order</h3>
+            <div id="of-sub" class="mv-order-sub"></div>
+            <div id="of-error" class="alert alert-error alert-hidden"></div>
+            <div id="of-success" class="alert alert-success alert-hidden"></div>
+
+            <div class="form-group">
+                <label id="of-instrument-label" for="of-instrument-select">Instrument <span style="color:var(--error)">*</span></label>
+                <select id="of-instrument-select"></select>
+                <input type="text" id="of-instrument-text" list="of-instrument-list" autocomplete="off"
+                       placeholder="Instrument name">
+                <datalist id="of-instrument-list"></datalist>
+                <div id="of-instrument-hint" class="form-hint"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Side <span style="color:var(--error)">*</span></label>
+                <div id="of-side" class="mv-order-side">
+                    <label class="buy"><input type="radio" name="of-side" value="BUY"> BUY</label>
+                    <label class="sell"><input type="radio" name="of-side" value="SELL"> SELL</label>
+                </div>
+            </div>
+
+            <div class="mv-order-row">
+                <div class="form-group">
+                    <label for="of-price">Price <span id="of-price-req" style="color:var(--error)">*</span></label>
+                    <input type="text" id="of-price" inputmode="decimal" autocomplete="off">
+                    <div id="of-price-hint" class="form-hint"></div>
+                </div>
+                <div class="form-group">
+                    <label for="of-quantity">Quantity <span id="of-quantity-req" style="color:var(--error)">*</span></label>
+                    <input type="text" id="of-quantity" inputmode="decimal" autocomplete="off">
+                    <div id="of-quantity-hint" class="form-hint"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="of-userRef">Reference</label>
+                <input type="text" id="of-userRef" autocomplete="off" placeholder="Optional, your own reference">
+                <div id="of-userRef-hint" class="form-hint"></div>
+            </div>
+
+            <div class="mv-order-buttons">
+                <button type="button" class="btn btn-outline" onclick="closeOrderDialog()">Close</button>
+                <button type="submit" id="of-submit" class="btn btn-primary">Submit</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Offer dialog: an offer on another firm's bulletin (click on a row of a bulletin market's table) -->
+    <dialog id="offer-dialog" class="mv-order-dialog bulletin">
+        <form id="offer-form" novalidate onsubmit="submitOffer(event)">
+            <h3>Make Offer</h3>
+            <div id="od-sub" class="mv-order-sub"></div>
+            <div id="od-error" class="alert alert-error alert-hidden"></div>
+            <div id="od-success" class="alert alert-success alert-hidden"></div>
+
+            <table class="mv-offer-info">
+                <tr><th>Instrument</th><td id="od-instrument"></td></tr>
+                <tr><th>Bulletin</th><td id="od-bulletin"></td></tr>
+                <tr><th>Your side</th><td id="od-side"></td></tr>
+            </table>
+
+            <div class="mv-order-row">
+                <div class="form-group">
+                    <label for="od-price">Price <span style="color:var(--error)">*</span></label>
+                    <input type="text" id="od-price" inputmode="decimal" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="od-quantity">Quantity <span style="color:var(--error)">*</span></label>
+                    <input type="text" id="od-quantity" inputmode="decimal" autocomplete="off">
+                    <div id="od-quantity-hint" class="form-hint"></div>
+                </div>
+            </div>
+
+            <div class="mv-order-row">
+                <div class="form-group">
+                    <label for="od-validTime">Valid Time (seconds) <span style="color:var(--error)">*</span></label>
+                    <input type="text" id="od-validTime" inputmode="numeric" autocomplete="off">
+                    <div class="form-hint">Offer validity time</div>
+                </div>
+                <div class="form-group">
+                    <label for="od-offerRef">Reference</label>
+                    <input type="text" id="od-offerRef" autocomplete="off" placeholder="Optional">
+                </div>
+            </div>
+
+            <div class="mv-order-buttons">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('offer-dialog').close()">Close</button>
+                <button type="submit" id="od-submit" class="btn btn-primary">Submit Offer</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Popups for new offers received on the firm's bulletins -->
+    <div id="mv-toasts" class="mv-toasts"></div>
+
+    <!-- Offer response dialog: accept or reject an offer received on one of the firm's bulletins
+         (click on a row of Received Offers in the Bulletin Orders view) -->
+    <dialog id="response-dialog" class="mv-order-dialog bulletin">
+        <h3>Offer Received</h3>
+        <div id="rd-sub" class="mv-order-sub"></div>
+        <div id="rd-error" class="alert alert-error alert-hidden"></div>
+        <div id="rd-success" class="alert alert-success alert-hidden"></div>
+
+        <table class="mv-offer-info">
+            <tr><th>Instrument</th><td id="rd-instrument"></td></tr>
+            <tr><th>Your bulletin</th><td id="rd-bulletin"></td></tr>
+            <tr><th>Your reference</th><td id="rd-userRef"></td></tr>
+            <tr><th>Offer</th><td id="rd-offer"></td></tr>
+            <tr><th>Expires in</th><td id="rd-timeLeft"></td></tr>
+        </table>
+
+        <div class="mv-order-buttons">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('response-dialog').close()">Close</button>
+            <button type="button" id="rd-reject" class="btn btn-danger" onclick="answerOffer(false)">Reject</button>
+            <button type="button" id="rd-accept" class="btn btn-primary" onclick="answerOffer(true)">Accept</button>
+        </div>
+    </dialog>
+
     <script src="/js/tr-session.js"></script>
     <script>
         trSession.guard('user-info');
@@ -54,7 +178,8 @@
         // ── State ─────────────────────────────────────────────────────────
         let markets        = [];
         let selectedMarket = null;
-        let instruments    = [];                 // current market instruments, sorted by name
+        let bulletins      = [];                 // current bulletin market's bulletins (GET /api/bulletins)
+        let instruments    = [];                 // current market instruments, sorted by name (none for a bulletin market)
         const priceState   = new Map();          // instrumentId -> { bidVol, bidPx, askVol, askPx, open, high, last, volume }
 
         // ── Cookie / login lookup ─────────────────────────────────────────
@@ -75,10 +200,18 @@
         // ── Markets sidebar ───────────────────────────────────────────────
         async function loadMarkets() {
             try {
-                const r = await fetch('/api/markets');
+                // The firm's authorized markets: continuous/auction markets and bulletin markets
+                const [r, rb] = await Promise.all([fetch('/api/markets'), fetch('/api/bulletin-markets')]);
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
-                markets = (data.markets || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                let bulletinMarkets = [];
+                if (rb.ok) bulletinMarkets = await rb.json();
+                else console.error('Failed to load bulletin markets: HTTP ' + rb.status);
+                // The continuous/auction markets first, then the bulletin markets, each sorted by name
+                const byName = (a, b) => a.name.localeCompare(b.name);
+                markets = (data.markets || []).slice().sort(byName)
+                    .concat(bulletinMarkets.map(m => Object.assign({}, m, { type: 'BULLETIN', bulletin: true }))
+                                           .sort(byName));
                 renderMarketList();
                 if (markets.length > 0) selectMarket(markets[0]);
                 else renderEmptyMain('No markets available.');
@@ -95,9 +228,19 @@
                 ul.innerHTML = '<li class="mv-market-desc" style="cursor:default;">No markets.</li>';
                 return;
             }
+            let bulletinHeading = false;
             for (const m of markets) {
+                if (m.bulletin && !bulletinHeading) {
+                    // The bulletin markets follow the other markets under their own heading
+                    const h = document.createElement('li');
+                    h.className = 'mv-market-heading';
+                    h.textContent = 'Bulletin Markets';
+                    ul.appendChild(h);
+                    bulletinHeading = true;
+                }
                 const li = document.createElement('li');
                 li.dataset.marketId = m.id;
+                if (m.bulletin) li.classList.add('bulletin');
                 if (selectedMarket && selectedMarket.id === m.id) li.classList.add('active');
                 li.innerHTML = '<span>' + escapeHtml(m.name) + '</span>'
                              + '<span class="mv-market-desc">' + escapeHtml(m.description || m.type || '') + '</span>';
@@ -107,13 +250,69 @@
         }
 
         async function selectMarket(market) {
+            leaveMyBulletins();
             selectedMarket = market;
             renderMarketList();
             document.getElementById('mv-market-name').textContent = market.name;
             document.getElementById('mv-market-meta').textContent =
                 (market.type || '') + (market.tradingStatus ? '  ·  ' + market.tradingStatus : '');
+            if (market.bulletin) {
+                instruments = [];
+                await loadBulletins(market.id);
+                return;
+            }
             await loadInstruments(market.id);
             await loadPrices(market.id);
+        }
+
+        // ── Bulletin markets ──────────────────────────────────────────────
+        // A bulletin market shows its bulletins (GET /api/bulletins, prices and quantities scaled
+        // longs, 0 = not given); a Bulletin message on the WebSocket reloads the list.
+        async function loadBulletins(marketId) {
+            try {
+                const r = await fetch('/api/bulletins?marketId=' + encodeURIComponent(marketId));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                if (!selectedMarket || selectedMarket.id !== marketId) return;   // another market was selected meanwhile
+                bulletins = data.bulletins || [];
+                renderBulletinTable(bulletins);
+            } catch (e) {
+                console.error('Failed to load bulletins', e);
+                renderEmptyMain('Failed to load bulletins.');
+            }
+        }
+
+        function renderBulletinTable(bulletins) {
+            const container = document.getElementById('mv-price-container');
+            if (bulletins.length === 0) {
+                container.innerHTML = '<div class="mv-empty">No bulletins in this market.</div>';
+                return;
+            }
+            const given = (v) => (v > 0) ? v / SCALE : null;
+            const rows = bulletins.map(b =>
+                '<tr class="mv-clickable" data-bulletin-id="' + escapeHtml(b.bulletinId) + '"'
+                + (b.own ? '' : ' title="Click to make an offer"') + '>'
+                + '<td class="mv-instr-name">' + escapeHtml(b.instrument) + (b.own ? ' <em>(own)</em>' : '') + '</td>'
+                + '<td class="' + (b.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + escapeHtml(b.side) + '</td>'
+                + '<td>' + fmtPx(given(b.price)) + '</td>'
+                + '<td>' + fmtVol(given(b.quantity)) + '</td>'
+                + '<td>' + fmtVol(b.quantity > 0 ? b.remainingQuantity / SCALE : null) + '</td>'
+                + '<td>' + escapeHtml(b.state) + '</td>'
+                + '<td>' + new Date(b.expiresAt).toLocaleString() + '</td>'
+                + '</tr>').join('');
+            container.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Instrument</th>'
+                +     '<th>Side</th>'
+                +     '<th>Price</th>'
+                +     '<th>Quantity</th>'
+                +     '<th>Remaining</th>'
+                +     '<th>State</th>'
+                +     '<th>Expires</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                + '</table>';
         }
 
         // The market's price snapshot over REST, so the table is filled also when the WebSocket's
@@ -164,7 +363,7 @@
             }
             const rows = instruments.map(i => {
                 const p = priceState.get(i.id) || {};
-                return '<tr data-instrument-id="' + i.id + '">'
+                return '<tr data-instrument-id="' + i.id + '" title="Double click to enter an order">'
                     + '<td class="mv-instr-name">' + escapeHtml(i.name) + '</td>'
                     + '<td class="mv-bid">' + fmtSide(p.bidVol, p.bidPx) + '</td>'
                     + '<td class="mv-ask">' + fmtSide(p.askVol, p.askPx) + '</td>'
@@ -248,11 +447,33 @@
         }
 
         function handleWsMessage(raw) {
-            // Broadcast (bdx) messages: { type, topic, marketId, instrumentId, ... }. Only PriceUpdate is used here:
+            // Broadcast (bdx) messages: { type, topic, marketId, instrumentId, ... }. Only PriceUpdate,
+            // MarketState (the market's tradingStatus), Bulletin (reloads the bulletins of the selected
+            // bulletin market or the Bulletin Orders view) and BulletinOffer (a popup for a new offer on an
+            // own bulletin; reloads the Bulletin Orders view) are used here:
             //   { type: "PriceUpdate", instrumentId, bidVol, bidPx, askVol, askPx, open, high, last, volume }
-            // Other types (MarketState, Trade, AddOrder/ModifyOrder/RemoveOrder, OwnOrder, OwnTrade) are ignored.
+            // Other types (Trade, AddOrder/ModifyOrder/RemoveOrder, OwnOrder, OwnTrade and the other
+            // bulletin messages) are ignored.
             let msg;
             try { msg = JSON.parse(raw); } catch (_) { return; }
+            if (msg && msg.type === 'MarketState') {
+                updateMarketState(msg.marketId, msg.tradingStatus);
+                return;
+            }
+            if (msg && msg.type === 'BulletinOffer' && msg.role === 'OWNER') {
+                if (msg.event === 'OFFERED') showOfferToast(msg);
+                else removeOfferToast(msg.bulletinId);   // ACCEPTED, REJECTED, EXPIRED or CANCELLED
+            }
+            if (msg && (msg.type === 'Bulletin' || msg.type === 'BulletinOffer') && myBulletinsView) {
+                loadMyBulletins();
+                return;
+            }
+            if (msg && msg.type === 'Bulletin') {
+                if (selectedMarket && selectedMarket.bulletin && selectedMarket.id === msg.marketId) {
+                    loadBulletins(msg.marketId);
+                }
+                return;
+            }
             if (!msg || msg.type !== 'PriceUpdate' || msg.instrumentId == null) return;
 
             const prev = priceState.get(msg.instrumentId) || {};
@@ -262,6 +483,17 @@
             if (selectedMarket && instruments.some(i => i.id === msg.instrumentId)) {
                 updateRow(msg.instrumentId, next);
             }
+        }
+
+        // A market's new trading status (MarketState): shown in the header and used by the order dialog
+        function updateMarketState(marketId, tradingStatus) {
+            const m = markets.find(x => x.id === marketId);
+            if (!m || !tradingStatus) return;
+            m.tradingStatus = tradingStatus;
+            if (selectedMarket && selectedMarket.id === marketId) {
+                document.getElementById('mv-market-meta').textContent = (m.type || '') + '  ·  ' + tradingStatus;
+            }
+            if (orderMarket && orderMarket.id === marketId) renderOrderSub();
         }
 
         function updateRow(instrumentId, p) {
@@ -282,9 +514,647 @@
             document.getElementById('mv-wss-label').textContent = label;
         }
 
+        // ── Enter order dialog ────────────────────────────────────────────
+        // Opened for the selected market. A continuous/auction market takes an order (POST /api/orders):
+        // instrument (one of the market's), side, price and quantity are required, the price a multiple of
+        // the instrument's tick size and the quantity of its lot size, and the market must be OPEN or
+        // PREOPEN. A bulletin market takes a bulletin (POST /api/bulletins): a free text instrument that
+        // one of the market's instrument entries allows (a literal name, or /regex/ matching the whole
+        // text), a side, and an optional price and quantity; the market must be OPEN. The server checks
+        // everything again; its error is shown with the HTTP status.
+        const ORDER_ACCEPT_STATES = ['OPEN', 'PREOPEN'];
+        const MAX_DECIMALS        = 5;            // SCALE = 10^5
+        let orderMarket = null;                   // the market the dialog was opened for
+
+        // prefill (optional, continuous/auction markets): { instrumentId, side, price, quantity } in display
+        // units, from a double click in the price table; the fields it holds replace the dialog's values
+        function onEnterOrder(prefill) {
+            if (!selectedMarket) { alert('Select a market first.'); return; }
+            orderMarket = selectedMarket;
+            const bulletin = !!orderMarket.bulletin;
+            const dlg = document.getElementById('order-dialog');
+            dlg.classList.toggle('bulletin', bulletin);
+            document.getElementById('of-title').textContent = bulletin ? 'Enter Bulletin' : 'Enter Order';
+            renderOrderSub();
+            hideOrderAlerts();
+            document.querySelectorAll('#order-form .invalid').forEach(e => e.classList.remove('invalid'));
+
+            const select = document.getElementById('of-instrument-select');
+            const text   = document.getElementById('of-instrument-text');
+            select.style.display = bulletin ? 'none' : '';
+            text.style.display   = bulletin ? '' : 'none';
+            document.getElementById('of-instrument-label').htmlFor =
+                bulletin ? 'of-instrument-text' : 'of-instrument-select';
+
+            if (bulletin) {
+                const entries = orderMarket.instruments || [];
+                document.getElementById('of-instrument-list').innerHTML = entries
+                    .filter(e => !isRegexEntry(e))
+                    .map(e => '<option value="' + escapeHtml(e) + '">').join('');
+                document.getElementById('of-instrument-hint').innerHTML =
+                    'Allowed: ' + entries.map(e => '<code>' + escapeHtml(e) + '</code>').join(', ');
+                document.getElementById('of-price-hint').textContent    = 'Optional';
+                document.getElementById('of-quantity-hint').textContent = 'Optional';
+                document.getElementById('of-userRef-hint').textContent  =
+                    'The bulletin expires after ' + (orderMarket.maxOrderTime || '?') + ' (hh:mm).';
+            } else {
+                const previous = select.value;
+                select.innerHTML = '<option value="">— select instrument —</option>' + instruments.map(i =>
+                    '<option value="' + i.id + '"' + (i.tradingStatus === 'SUSPENDED' ? ' disabled' : '') + '>'
+                    + escapeHtml(i.name) + (i.tradingStatus === 'SUSPENDED' ? ' (suspended)' : '') + '</option>').join('');
+                if (instruments.some(i => String(i.id) === previous)) select.value = previous;
+                if (prefill) applyPrefill(prefill);
+                document.getElementById('of-instrument-hint').textContent = '';
+                document.getElementById('of-userRef-hint').textContent    = '';
+                updateSizeHints();
+            }
+            document.getElementById('of-price-req').style.display    = bulletin ? 'none' : '';
+            document.getElementById('of-quantity-req').style.display = bulletin ? 'none' : '';
+            document.getElementById('of-submit').textContent = bulletin ? 'Submit Bulletin' : 'Submit Order';
+            document.getElementById('of-submit').disabled = false;
+
+            dlg.showModal();
+            (bulletin ? text : select).focus();
+        }
+
+        // The prefill replaces all the fields: what it doesn't give (no side clicked, no price or volume on
+        // that side) comes up empty, not with the previous order's values
+        function applyPrefill(prefill) {
+            const value = (v) => (v == null || isNaN(v)) ? '' : String(v);
+            document.getElementById('of-instrument-select').value = String(prefill.instrumentId);
+            document.querySelectorAll('input[name="of-side"]').forEach(r => r.checked = (r.value === prefill.side));
+            syncSideLabels();
+            document.getElementById('of-price').value    = value(prefill.price);
+            document.getElementById('of-quantity').value = value(prefill.quantity);
+            document.getElementById('of-userRef').value  = '';
+        }
+
+        // Double click in the price table (continuous/auction market): the order dialog for that instrument;
+        // on the bid it is a SELL (hits the bid), on the ask a BUY (lifts the ask), with that side's best
+        // price and volume
+        document.getElementById('mv-price-container').addEventListener('dblclick', (e) => {
+            const tr = e.target.closest('tr[data-instrument-id]');
+            if (!tr || !selectedMarket || selectedMarket.bulletin) return;
+            const td = e.target.closest('td');
+            const instrumentId = Number(tr.dataset.instrumentId);
+            const p = priceState.get(instrumentId) || {};
+            const prefill = { instrumentId };
+            if (td === tr.children[1]) Object.assign(prefill, { side: 'SELL', price: p.bidPx, quantity: p.bidVol });
+            if (td === tr.children[2]) Object.assign(prefill, { side: 'BUY',  price: p.askPx, quantity: p.askVol });
+            window.getSelection().removeAllRanges();   // a double click selects the cell's text
+            onEnterOrder(prefill);
+        });
+
+        // ── Offer dialog ──────────────────────────────────────────────────
+        // A click on a bulletin opens an offer on it (POST /api/bulletins/{bulletinId}/offer): price and
+        // quantity required (> 0, prefilled with the bulletin's when it has them; the quantity at most the
+        // bulletin's remaining quantity when it has one), the valid time in seconds (default 60) and an
+        // optional reference. The offer's side is the opposite of the bulletin's. Offering is not possible
+        // on the firm's own bulletin, on one with a pending offer, or while the market is not OPEN.
+        const DEFAULT_OFFER_VALID_SECONDS = 60;
+        let offerBulletin = null;
+
+        document.getElementById('mv-price-container').addEventListener('click', (e) => {
+            const tr = e.target.closest('tr[data-bulletin-id]');
+            if (!tr || !selectedMarket || !selectedMarket.bulletin) return;
+            const b = bulletins.find(x => x.bulletinId === tr.dataset.bulletinId);
+            if (b) openOfferDialog(b);
+        });
+
+        function openOfferDialog(b) {
+            offerBulletin = b;
+            const given = (v) => (v > 0) ? String(v / SCALE) : '';
+            const offerSide = (b.side === 'BUY') ? 'SELL' : 'BUY';
+            document.getElementById('od-sub').textContent =
+                selectedMarket.name + '  ·  ' + (selectedMarket.tradingStatus || '?');
+            document.getElementById('od-instrument').textContent = b.instrument;
+            document.getElementById('od-bulletin').textContent = b.side
+                + '  ' + (b.quantity > 0 ? b.remainingQuantity / SCALE + ' (of ' + b.quantity / SCALE + ')' : 'no quantity')
+                + '  @  ' + (b.price > 0 ? fmtPx(b.price / SCALE) : 'no price');
+            const sideEl = document.getElementById('od-side');
+            sideEl.textContent = offerSide;
+            sideEl.className = (offerSide === 'BUY') ? 'mv-bid' : 'mv-ask';
+            document.getElementById('od-price').value      = given(b.price);
+            document.getElementById('od-quantity').value   = (b.quantity > 0) ? given(b.remainingQuantity) : '';
+            document.getElementById('od-quantity-hint').textContent =
+                (b.quantity > 0) ? 'At most ' + b.remainingQuantity / SCALE : '';
+            document.getElementById('od-validTime').value  = String(DEFAULT_OFFER_VALID_SECONDS);
+            document.getElementById('od-offerRef').value   = '';
+            document.querySelectorAll('#offer-form .invalid').forEach(e => e.classList.remove('invalid'));
+            hideOfferAlerts();
+
+            // Reasons the offer can't be made at all
+            const blocked = offerBlocked(b);
+            document.getElementById('od-submit').disabled = !!blocked;
+            if (blocked) showOfferAlert('od-error', escapeHtml(blocked));
+
+            document.getElementById('offer-dialog').showModal();
+            if (!blocked) document.getElementById('od-price').focus();
+        }
+
+        function offerBlocked(b) {
+            if (b.own) return 'This is your firm\'s own bulletin; a firm can\'t make an offer on its own bulletin.';
+            if (b.state !== 'ACTIVE') return 'The bulletin is ' + b.state + (b.state === 'OFFER_PENDING' ? ': it already has a pending offer.' : '.');
+            if (selectedMarket.tradingStatus !== 'OPEN') {
+                return 'Market ' + selectedMarket.name + ' is ' + selectedMarket.tradingStatus + '; offers are only accepted when it is OPEN.';
+            }
+            return null;
+        }
+
+        function hideOfferAlerts() {
+            document.getElementById('od-error').classList.add('alert-hidden');
+            document.getElementById('od-success').classList.add('alert-hidden');
+        }
+
+        function showOfferAlert(id, msg) {
+            hideOfferAlerts();
+            const el = document.getElementById(id);
+            el.innerHTML = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        async function submitOffer(event) {
+            event.preventDefault();
+            hideOfferAlerts();
+            const b = offerBulletin;
+            const errors = [];
+            const bad = (id, msg) => { document.getElementById(id).classList.add('invalid'); errors.push(msg); };
+            document.querySelectorAll('#offer-form .invalid').forEach(e => e.classList.remove('invalid'));
+            const blocked = offerBlocked(b);
+            if (blocked) errors.push(blocked);
+
+            const priceStr = document.getElementById('od-price').value.trim();
+            const qtyStr   = document.getElementById('od-quantity').value.trim();
+            const validStr = document.getElementById('od-validTime').value.trim();
+            const offerRef = document.getElementById('od-offerRef').value.trim();
+            const price = parseScaled(priceStr);
+            const qty   = parseScaled(qtyStr);
+            if (!priceStr) bad('od-price', 'Price is required.');
+            else if (price == null || price <= 0) {
+                bad('od-price', 'Price must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals.');
+            }
+            if (!qtyStr) bad('od-quantity', 'Quantity is required.');
+            else if (qty == null || qty <= 0) {
+                bad('od-quantity', 'Quantity must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals.');
+            } else if (b.quantity > 0 && qty > b.remainingQuantity) {
+                bad('od-quantity', 'Quantity must not exceed the bulletin\'s remaining quantity ' + b.remainingQuantity / SCALE + '.');
+            }
+            if (!/^\d+$/.test(validStr) || Number(validStr) <= 0) {
+                bad('od-validTime', 'Valid time must be a whole number of seconds greater than zero.');
+            }
+            if (errors.length > 0) {
+                showOfferAlert('od-error', errors.map(escapeHtml).join('<br>'));
+                return;
+            }
+
+            const body = { price, quantity: qty, validTime: Number(validStr) };
+            if (offerRef) body.offerRef = offerRef;
+            const button = document.getElementById('od-submit');
+            button.disabled = true;
+            const r = await postJson('/api/bulletins/' + encodeURIComponent(b.bulletinId) + '/offer', body);
+            if (!r.ok) {
+                button.disabled = false;
+                showOfferAlert('od-error', escapeHtml('Offer rejected: ' + r.error));
+                return;
+            }
+            // One pending offer per bulletin: the button stays disabled
+            showOfferAlert('od-success', escapeHtml('Offer made on bulletin ' + b.bulletinId + ', valid '
+                + validStr + ' s. The owner accepts or rejects it.'));
+        }
+
+        function closeOrderDialog() {
+            document.getElementById('order-dialog').close();
+        }
+
+        function renderOrderSub() {
+            if (!orderMarket) return;
+            document.getElementById('of-sub').textContent =
+                orderMarket.name + '  ·  ' + (orderMarket.type || '') + '  ·  ' + (orderMarket.tradingStatus || '?');
+        }
+
+        function hideOrderAlerts() {
+            document.getElementById('of-error').classList.add('alert-hidden');
+            document.getElementById('of-success').classList.add('alert-hidden');
+        }
+
+        function showOrderAlert(id, msg) {
+            hideOrderAlerts();
+            const el = document.getElementById(id);
+            el.innerHTML = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        function orderInstrument() {
+            const id = document.getElementById('of-instrument-select').value;
+            return instruments.find(i => String(i.id) === id) || null;
+        }
+
+        // The selected instrument's tick and lot size (scaled longs) as hints
+        function updateSizeHints() {
+            if (!orderMarket || orderMarket.bulletin) return;
+            const i = orderInstrument();
+            document.getElementById('of-price-hint').textContent =
+                (i && i.tickSize > 0) ? 'Tick size ' + i.tickSize / SCALE : '';
+            document.getElementById('of-quantity-hint').textContent =
+                (i && i.lotSize > 0) ? 'Lot size ' + i.lotSize / SCALE : '';
+        }
+
+        // A decimal number as a long scaled by SCALE, exactly (no floating point rounding);
+        // null if it is not a non-negative number with at most MAX_DECIMALS decimals
+        function parseScaled(str) {
+            const m = /^(\d+)(?:[.,](\d+))?$/.exec(str.trim());
+            if (!m) return null;
+            const frac = m[2] || '';
+            if (frac.length > MAX_DECIMALS) return null;
+            const scaled = Number(m[1]) * SCALE + Number(frac.padEnd(MAX_DECIMALS, '0'));
+            return Number.isSafeInteger(scaled) ? scaled : null;
+        }
+
+        function isRegexEntry(e) { return e.length >= 2 && e.startsWith('/') && e.endsWith('/'); }
+
+        // As BulletinMarket.allows: a literal entry matches exactly, a /regex/ entry the whole text.
+        // A regex JavaScript can't compile is left to the server.
+        function bulletinAllows(market, instrument) {
+            return (market.instruments || []).some(e => {
+                if (!isRegexEntry(e)) return e === instrument;
+                try { return new RegExp('^(?:' + e.slice(1, -1) + ')$').test(instrument); }
+                catch (_) { return true; }
+            });
+        }
+
+        // Checks the form; marks the invalid fields and returns the request body, or null
+        function validateOrder() {
+            const errors = [];
+            const bad = (id, msg) => { document.getElementById(id).classList.add('invalid'); errors.push(msg); };
+            document.querySelectorAll('#order-form .invalid').forEach(e => e.classList.remove('invalid'));
+            const m = orderMarket;
+            const sideEl   = document.querySelector('input[name="of-side"]:checked');
+            const side     = sideEl ? sideEl.value : null;
+            const priceStr = document.getElementById('of-price').value.trim();
+            const qtyStr   = document.getElementById('of-quantity').value.trim();
+            const userRef  = document.getElementById('of-userRef').value.trim();
+            const price    = priceStr ? parseScaled(priceStr) : null;
+            const qty      = qtyStr   ? parseScaled(qtyStr)   : null;
+            const body     = {};
+
+            if (m.bulletin) {
+                if (m.tradingStatus !== 'OPEN') {
+                    errors.push('Market ' + m.name + ' is ' + m.tradingStatus + '; bulletins are only accepted when it is OPEN.');
+                }
+                const instrument = document.getElementById('of-instrument-text').value.trim();
+                if (!instrument) bad('of-instrument-text', 'Instrument is required.');
+                else if (!bulletinAllows(m, instrument)) {
+                    bad('of-instrument-text', 'Instrument \'' + instrument + '\' is not traded in ' + m.name + '.');
+                }
+                if (!side) bad('of-side', 'Side is required.');
+                // Price and quantity are optional (not sent = not given), but must be valid when given
+                if (priceStr && (price == null || price <= 0)) {
+                    bad('of-price', 'Price must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals, or empty.');
+                }
+                if (qtyStr && (qty == null || qty <= 0)) {
+                    bad('of-quantity', 'Quantity must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals, or empty.');
+                }
+                Object.assign(body, { marketId: m.id, instrument, side });
+                if (priceStr) body.price    = price;
+                if (qtyStr)   body.quantity = qty;
+            } else {
+                if (!ORDER_ACCEPT_STATES.includes(m.tradingStatus)) {
+                    errors.push('Market ' + m.name + ' is ' + m.tradingStatus + '; orders are only accepted when it is OPEN or PREOPEN.');
+                }
+                const i = orderInstrument();
+                if (!i) bad('of-instrument-select', 'Instrument is required.');
+                else if (i.tradingStatus === 'SUSPENDED') bad('of-instrument-select', i.name + ' is suspended.');
+                if (!side) bad('of-side', 'Side is required.');
+                if (!priceStr) bad('of-price', 'Price is required.');
+                else if (price == null || price <= 0) {
+                    bad('of-price', 'Price must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals.');
+                } else if (i && i.tickSize > 0 && price % i.tickSize !== 0) {
+                    bad('of-price', 'Price must be a multiple of the tick size ' + i.tickSize / SCALE + '.');
+                }
+                if (!qtyStr) bad('of-quantity', 'Quantity is required.');
+                else if (qty == null || qty <= 0) {
+                    bad('of-quantity', 'Quantity must be a number greater than zero with at most ' + MAX_DECIMALS + ' decimals.');
+                } else if (i && i.lotSize > 0 && qty % i.lotSize !== 0) {
+                    bad('of-quantity', 'Quantity must be a multiple of the lot size ' + i.lotSize / SCALE + '.');
+                }
+                if (i) Object.assign(body, { instrumentId: i.id, side, price, quantity: qty });
+            }
+            if (userRef) body.userRef = userRef;
+
+            if (errors.length > 0) {
+                showOrderAlert('of-error', errors.map(escapeHtml).join('<br>'));
+                return null;
+            }
+            return body;
+        }
+
+        async function submitOrder(event) {
+            event.preventDefault();
+            hideOrderAlerts();
+            const body = validateOrder();
+            if (!body) return;
+            const bulletin = !!orderMarket.bulletin;
+            const button = document.getElementById('of-submit');
+            button.disabled = true;
+            const r = await postJson(bulletin ? '/api/bulletins' : '/api/orders', body);
+            button.disabled = false;
+            if (!r.ok) {
+                showOrderAlert('of-error', escapeHtml((bulletin ? 'Bulletin' : 'Order') + ' rejected: ' + r.error));
+                return;
+            }
+            const d = r.data;
+            if (bulletin) {
+                showOrderAlert('of-success', escapeHtml('Bulletin ' + d.bulletinId + ' added, expires '
+                    + new Date(d.expiresAt).toLocaleString() + '.'));
+            } else {
+                showOrderAlert('of-success', escapeHtml('Order ' + d.orderId + ' accepted: matched ' + d.matched / SCALE
+                    + ', ' + (d.inserted ? 'in the book ' + d.remaining / SCALE : 'nothing left in the book') + '.'));
+            }
+            document.getElementById('of-userRef').value = '';   // a reference names one order
+        }
+
+        // POST with a JSON body; never throws. { ok, status, data, error }, error with the HTTP status
+        // and the reply's error (or its text)
+        async function postJson(url, body) {
+            let response;
+            try {
+                response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify(body) });
+            } catch (e) {
+                return { ok: false, status: 0, data: null, error: 'Connection error: ' + (e.message || e) };
+            }
+            const text = await response.text().catch(() => '');
+            let data = null;
+            try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+            if (response.ok && data !== null) return { ok: true, status: response.status, data, error: null };
+            const reply = (data && data.error) || text.trim().slice(0, 500);
+            return { ok: false, status: response.status, data,
+                     error: 'HTTP ' + response.status + (reply ? ': ' + reply : '') };
+        }
+
+        document.getElementById('of-instrument-select').addEventListener('change', updateSizeHints);
+        function syncSideLabels() {
+            document.querySelectorAll('#of-side label').forEach(l =>
+                l.classList.toggle('checked', l.querySelector('input').checked));
+        }
+        document.querySelectorAll('input[name="of-side"]').forEach(r => r.addEventListener('change', syncSideLabels));
+
         // ── Top action buttons (placeholders) ─────────────────────────────
-        function onEnterOrder()   { console.log('Enter Order — TODO'); }
         function onMyOrders()     { console.log('My Orders — TODO'); }
+
+        // ── Bulletin Orders view ──────────────────────────────────────────
+        // The main area split horizontally: above, the firm's own bulletins in all its bulletin markets
+        // (GET /api/bulletins without marketId, the ones marked own); below, the offers received on them
+        // that have not expired (a bulletin holds at most one pending offer, which its owner sees), with a
+        // countdown. A click on an offer opens the response dialog (accept/reject). Selecting a market
+        // leaves the view. Reloaded on each Bulletin and BulletinOffer message.
+        let myBulletinsView = false;
+        let myBulletins     = [];
+        let myBulletinsTimer = null;            // 1 s countdown of the received offers
+
+        // openOfferOf (optional): a bulletinId whose received offer is opened in the response dialog once loaded
+        async function onMyBulletins(openOfferOf) {
+            myBulletinsView = true;
+            selectedMarket  = null;
+            instruments     = [];
+            renderMarketList();
+            document.querySelector('.mv-main').classList.add('split');
+            document.getElementById('mv-market-name').textContent = 'My Bulletin Orders';
+            document.getElementById('mv-market-meta').textContent = 'All bulletin markets';
+            document.getElementById('mv-price-container').innerHTML =
+                '<div class="mv-split">'
+                + '<section class="mv-split-pane"><h4>My Bulletins</h4><div id="mb-bulletins"></div></section>'
+                + '<section class="mv-split-pane"><h4>Received Offers</h4><div id="mb-offers"></div></section>'
+                + '</div>';
+            clearInterval(myBulletinsTimer);
+            myBulletinsTimer = setInterval(tickOffers, 1000);
+            await loadMyBulletins();
+            if (openOfferOf) {
+                const b = receivedOffers().find(x => x.bulletinId === openOfferOf);
+                if (b) openResponseDialog(b);
+            }
+        }
+
+        function leaveMyBulletins() {
+            myBulletinsView = false;
+            clearInterval(myBulletinsTimer);
+            myBulletinsTimer = null;
+            document.querySelector('.mv-main').classList.remove('split');
+        }
+
+        async function loadMyBulletins() {
+            try {
+                const r = await fetch('/api/bulletins');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                if (!myBulletinsView) return;   // another view was selected meanwhile
+                const marketName = (id) => { const m = markets.find(x => x.id === id); return m ? m.name : String(id); };
+                myBulletins = (data.bulletins || []).filter(b => b.own)
+                    .map(b => Object.assign({ marketName: marketName(b.marketId) }, b))
+                    .sort((a, b) => a.marketName.localeCompare(b.marketName) || a.createTime - b.createTime);
+                renderMyBulletins();
+                renderReceivedOffers();
+            } catch (e) {
+                console.error('Failed to load bulletins', e);
+                document.getElementById('mb-bulletins').innerHTML = '<div class="mv-empty">Failed to load bulletins.</div>';
+            }
+        }
+
+        // "4@98.00" for a bulletin's or offer's quantity and price (scaled, 0 = not given)
+        function qtyAtPrice(qty, price) {
+            return (qty > 0 ? fmtVol(qty / SCALE) : '—') + ' @ ' + (price > 0 ? fmtPx(price / SCALE) : '—');
+        }
+
+        function secondsLeft(expiresAt) { return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)); }
+
+        function renderMyBulletins() {
+            const el = document.getElementById('mb-bulletins');
+            if (!el) return;
+            if (myBulletins.length === 0) {
+                el.innerHTML = '<div class="mv-empty">You have no bulletins.</div>';
+                return;
+            }
+            const given = (v) => (v > 0) ? v / SCALE : null;
+            const rows = myBulletins.map(b =>
+                '<tr>'
+                + '<td class="mv-instr-name">' + escapeHtml(b.marketName) + '</td>'
+                + '<td>' + escapeHtml(b.instrument) + '</td>'
+                + '<td class="' + (b.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + escapeHtml(b.side) + '</td>'
+                + '<td>' + fmtPx(given(b.price)) + '</td>'
+                + '<td>' + fmtVol(given(b.quantity)) + '</td>'
+                + '<td>' + fmtVol(b.quantity > 0 ? b.remainingQuantity / SCALE : null) + '</td>'
+                + '<td>' + escapeHtml(b.state) + '</td>'
+                + '<td>' + escapeHtml(b.userRef || '—') + '</td>'
+                + '<td>' + escapeHtml(b.user || '') + '</td>'
+                + '<td>' + new Date(b.expiresAt).toLocaleString() + '</td>'
+                + '</tr>').join('');
+            el.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Market</th><th>Instrument</th><th>Side</th><th>Price</th><th>Quantity</th>'
+                +     '<th>Remaining</th><th>State</th><th>Reference</th><th>User</th><th>Expires</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                + '</table>';
+        }
+
+        function receivedOffers() {
+            return myBulletins.filter(b => b.offer && b.offer.expiresAt > Date.now());
+        }
+
+        function renderReceivedOffers() {
+            const el = document.getElementById('mb-offers');
+            if (!el) return;
+            const list = receivedOffers();
+            if (list.length === 0) {
+                el.innerHTML = '<div class="mv-empty">No offers waiting for an answer.</div>';
+                return;
+            }
+            const rows = list.map(b => {
+                const offerSide = (b.side === 'BUY') ? 'SELL' : 'BUY';
+                return '<tr class="mv-clickable" data-offer-bulletin-id="' + escapeHtml(b.bulletinId) + '" title="Click to accept or reject">'
+                    + '<td class="mv-instr-name">' + escapeHtml(b.marketName) + '</td>'
+                    + '<td>' + escapeHtml(b.instrument) + '</td>'
+                    + '<td class="' + (b.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + escapeHtml(b.side) + ' '
+                    +   qtyAtPrice(b.quantity > 0 ? b.remainingQuantity : 0, b.price) + '</td>'
+                    + '<td class="' + (offerSide === 'BUY' ? 'mv-bid' : 'mv-ask') + '">' + offerSide + ' '
+                    +   qtyAtPrice(b.offer.quantity, b.offer.price) + '</td>'
+                    + '<td>' + escapeHtml(b.userRef || '—') + '</td>'
+                    + '<td class="mv-time-left" data-expires-at="' + b.offer.expiresAt + '">' + secondsLeft(b.offer.expiresAt) + ' s</td>'
+                    + '</tr>';
+            }).join('');
+            el.innerHTML =
+                '<table class="mv-price-table">'
+                +   '<thead><tr>'
+                +     '<th>Market</th><th>Instrument</th><th>Your Bulletin</th><th>Offer</th><th>Reference</th><th>Expires In</th>'
+                +   '</tr></thead>'
+                +   '<tbody>' + rows + '</tbody>'
+                + '</table>';
+        }
+
+        // Each second: count down the received offers, and drop the ones that expired
+        function tickOffers() {
+            let expired = false;
+            document.querySelectorAll('#mb-offers .mv-time-left').forEach(td => {
+                const left = secondsLeft(Number(td.dataset.expiresAt));
+                td.textContent = left + ' s';
+                if (left === 0) expired = true;
+            });
+            if (expired) renderReceivedOffers();
+            tickResponseDialog();
+        }
+
+        // ── New offer popups ──────────────────────────────────────────────
+        // A BulletinOffer OFFERED to the owner (role OWNER, sent privately to every client of the firm that
+        // owns the bulletin) shows a popup in any view, until it is closed, answered or the offer expires.
+        // "Answer" opens the Bulletin Orders view with the offer in the response dialog.
+        function showOfferToast(msg) {
+            const box = document.getElementById('mv-toasts');
+            const old = box.querySelector('[data-bulletin-id="' + CSS.escape(msg.bulletinId) + '"]');
+            if (old) old.remove();
+            const toast = document.createElement('div');
+            toast.className = 'mv-toast';
+            toast.dataset.bulletinId = msg.bulletinId;
+            const m = markets.find(x => x.id === msg.marketId);
+            toast.innerHTML =
+                '<div class="mv-toast-title">New bulletin offer</div>'
+                + '<div>' + escapeHtml((m ? m.name + ': ' : '') + msg.instrument) + '</div>'
+                + '<div class="' + (msg.side === 'BUY' ? 'mv-bid' : 'mv-ask') + '">'
+                +   escapeHtml(msg.side) + ' ' + fmtVol(msg.quantity) + ' @ ' + fmtPx(msg.price) + '</div>'
+                + '<div class="mv-toast-time">Expires in <span>' + secondsLeft(msg.expiresAt) + '</span> s</div>'
+                + '<div class="mv-toast-buttons">'
+                +   '<button class="btn btn-outline btn-sm" data-act="close">Close</button>'
+                +   '<button class="btn btn-primary btn-sm" data-act="answer">Answer</button>'
+                + '</div>';
+            const timer = setInterval(() => {
+                const left = secondsLeft(msg.expiresAt);
+                toast.querySelector('.mv-toast-time span').textContent = left;
+                if (left === 0) remove();
+            }, 1000);
+            function remove() { clearInterval(timer); toast.remove(); }
+            toast.querySelector('[data-act="close"]').onclick  = remove;
+            toast.querySelector('[data-act="answer"]').onclick = () => { remove(); onMyBulletins(msg.bulletinId); };
+            toast.removeOffer = remove;
+            box.appendChild(toast);
+        }
+
+        // An offer that was answered or cancelled no longer needs its popup
+        function removeOfferToast(bulletinId) {
+            const t = document.querySelector('#mv-toasts [data-bulletin-id="' + CSS.escape(bulletinId) + '"]');
+            if (t) t.removeOffer();
+        }
+
+        // ── Offer response dialog ─────────────────────────────────────────
+        // Accept or reject the pending offer on one of the firm's bulletins
+        // (POST /api/bulletins/{bulletinId}/response, { accept: true|false }).
+        let responseBulletin = null;
+
+        document.getElementById('mv-price-container').addEventListener('click', (e) => {
+            const tr = e.target.closest('tr[data-offer-bulletin-id]');
+            if (!tr || !myBulletinsView) return;
+            const b = myBulletins.find(x => x.bulletinId === tr.dataset.offerBulletinId);
+            if (b && b.offer) openResponseDialog(b);
+        });
+
+        function openResponseDialog(b) {
+            responseBulletin = b;
+            const offerSide = (b.side === 'BUY') ? 'SELL' : 'BUY';
+            document.getElementById('rd-sub').textContent = b.marketName + '  ·  bulletin ' + b.bulletinId;
+            document.getElementById('rd-instrument').textContent = b.instrument;
+            document.getElementById('rd-bulletin').textContent = b.side + '  '
+                + qtyAtPrice(b.quantity > 0 ? b.remainingQuantity : 0, b.price);
+            document.getElementById('rd-userRef').textContent = b.userRef || '—';
+            const offerEl = document.getElementById('rd-offer');
+            offerEl.textContent = offerSide + '  ' + qtyAtPrice(b.offer.quantity, b.offer.price);
+            offerEl.className = (offerSide === 'BUY') ? 'mv-bid' : 'mv-ask';
+            document.getElementById('rd-error').classList.add('alert-hidden');
+            document.getElementById('rd-success').classList.add('alert-hidden');
+            setResponseButtons(true);
+            tickResponseDialog();
+            document.getElementById('response-dialog').showModal();
+        }
+
+        function setResponseButtons(enabled) {
+            document.getElementById('rd-accept').disabled = !enabled;
+            document.getElementById('rd-reject').disabled = !enabled;
+        }
+
+        function showResponseAlert(id, msg) {
+            document.getElementById('rd-error').classList.add('alert-hidden');
+            document.getElementById('rd-success').classList.add('alert-hidden');
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.classList.remove('alert-hidden');
+        }
+
+        // The dialog's countdown; an offer that expired can no longer be answered
+        function tickResponseDialog() {
+            const dlg = document.getElementById('response-dialog');
+            if (!responseBulletin || !dlg.open || responseBulletin.answered) return;
+            const left = secondsLeft(responseBulletin.offer.expiresAt);
+            document.getElementById('rd-timeLeft').textContent = left + ' s';
+            if (left === 0) {
+                setResponseButtons(false);
+                showResponseAlert('rd-error', 'The offer has expired.');
+                responseBulletin.answered = true;
+            }
+        }
+
+        async function answerOffer(accept) {
+            const b = responseBulletin;
+            setResponseButtons(false);
+            const r = await postJson('/api/bulletins/' + encodeURIComponent(b.bulletinId) + '/response', { accept });
+            if (!r.ok) {
+                showResponseAlert('rd-error', (accept ? 'Accept' : 'Reject') + ' failed: ' + r.error);
+                setResponseButtons(secondsLeft(b.offer.expiresAt) > 0);
+                return;
+            }
+            b.answered = true;
+            showResponseAlert('rd-success', accept
+                ? 'Offer accepted: traded ' + qtyAtPrice(b.offer.quantity, b.offer.price) + '. The bulletin is now ' + r.data.state + '.'
+                : 'Offer rejected. The bulletin is ' + r.data.state + ' again.');
+        }
+
         function onMyPortfolio()  { console.log('My Portfolio — TODO'); }
 
         // ── Boot ──────────────────────────────────────────────────────────
