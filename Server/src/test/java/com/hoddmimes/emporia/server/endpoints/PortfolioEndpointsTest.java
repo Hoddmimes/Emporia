@@ -46,6 +46,28 @@ class PortfolioEndpointsTest {
         assertEquals(4 * S, tPositions.get(0).bought());
     }
 
+    private static Document bulletinTrade(int pMarketId, String pInstrument, long pQuantity, String pBuyer, String pSeller) {
+        return new Document("marketId", pMarketId).append("instrument", pInstrument)
+                .append("price", 80 * S).append("quantity", pQuantity * S)
+                .append("buyAccount", pBuyer).append("sellAccount", pSeller);
+    }
+
+    @Test
+    void bulletinPositionsArePerMarketAndInstrumentText() {
+        List<PortfolioEndpoints.BulletinPosition> tPositions = PortfolioEndpoints.bulletinPositions("FA", List.of(
+                bulletinTrade(5, "Brent Jan", 10, "FA", "FB"),
+                bulletinTrade(5, "Brent Jan",  3, "FB", "FA"),
+                bulletinTrade(6, "Brent Jan",  2, "FB", "FA"),    // another market: its own position
+                bulletinTrade(5, "brent jan",  1, "FA", "FB")));  // another instrument text
+        assertEquals(3, tPositions.size());
+        assertEquals(7 * S, tPositions.get(0).position());
+        assertEquals(10 * S, tPositions.get(0).bought());
+        assertEquals(3 * S, tPositions.get(0).sold());
+        assertEquals(6, tPositions.get(1).marketId());
+        assertEquals(-2 * S, tPositions.get(1).position());
+        assertEquals("brent jan", tPositions.get(2).instrument());
+    }
+
     @Test
     void valueIsPositionTimesLastPrice() {
         assertEquals(510 * S, PortfolioEndpoints.value(5 * S, 102 * S));        // +5 @ 102

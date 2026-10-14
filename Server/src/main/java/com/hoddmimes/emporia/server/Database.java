@@ -1,10 +1,12 @@
 package com.hoddmimes.emporia.server;
 
 import com.google.gson.JsonObject;
+import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.ReturnDocument;
 import com.hoddmimes.emporia.server.me.InternalTrade;
@@ -50,6 +52,22 @@ public class Database {
         mDatabase = mMongoClient.getDatabase(tName);
         mDatabase.runCommand(new Document("ping", 1));
         cLog.info("MongoDB connection established, database: {}", tName);
+        createIndexes();
+    }
+
+    /**
+     * Creates the indexes if they are missing (createIndex does nothing for an existing index). Trades:
+     * tradeTime, then _id, which serves both the day range on tradeTime and the latest first sort
+     * (tradeTime, _id descending, the index read backwards) in findTrades; and buyAccount and sellAccount,
+     * each followed by tradeTime and _id, for a firm's trades (listTradesByFirm: one index per side of
+     * its $or, with the same day range and sort).
+     */
+    private void createIndexes() {
+        var tTrades = mDatabase.getCollection("Trades");
+        cLog.info("Trades indexes {}, {}, {}",
+                tTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
+                tTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
+                tTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")));
     }
 
     /** Closes the MongoDB connection (web application undeploy). */
@@ -161,9 +179,14 @@ public class Database {
                 new Document("$set", tFields));
     }
 
-    public void deleteFirm(String pId) {
-        mDatabase.getCollection("Firm").deleteOne(
+    /** Deletes the firm and its authorizations; returns the firm's name, or null if there was no such firm. */
+    public String deleteFirm(String pId) {
+        Document tFirm = mDatabase.getCollection("Firm").findOneAndDelete(
                 new Document("_id", new ObjectId(pId)));
+        if (tFirm == null) return null;
+        String tName = tFirm.getString("name");
+        mDatabase.getCollection("Authorization").deleteMany(new Document("firm", tName));
+        return tName;
     }
 
     // ── User CRUD ────────────────────────────────────────────────────────
@@ -452,6 +475,14 @@ public class Database {
         return tResult;
     }
 
+    public List<Document> listAuthorizations() {
+        List<Document> tResult = new ArrayList<>();
+        for (Document tDoc : mDatabase.getCollection("Authorization").find()) {
+            tResult.add(tDoc);
+        }
+        return tResult;
+    }
+
     public boolean authorizationExists(String pFirm, String pMarket) {
         return mDatabase.getCollection("Authorization")
                 .find(new Document("firm", pFirm).append("market", pMarket))
@@ -538,6 +569,17 @@ public class Database {
         return tDoc.getObjectId("_id").toHexString();
     }
 
+    /**
+     * Stores trades in the Trades collection (as saveTrade) with one journaled write: MongoDB answers
+     * once the trades are in its journal on disk (an fsync), so they survive a host failure. Used by
+     * the matching engine's TradePersister, which batches the trades of many orders into one call.
+     */
+    public void saveTrades(List<InternalTrade> pTrades) {
+        List<Document> tDocs = new ArrayList<>(pTrades.size());
+        for (InternalTrade tTrade : pTrades) tDocs.add(toTradeDocument(tTrade));
+        mDatabase.getCollection("Trades").withWriteConcern(WriteConcern.JOURNALED).insertMany(tDocs);
+    }
+
     /** The Trades document for a trade, as stored by saveTrade (without the MongoDB _id). */
     static Document toTradeDocument(InternalTrade pTrade) {
         Order tBuy  = pTrade.getBuyOrder();
@@ -619,12 +661,61 @@ public class Database {
     }
 
     private List<Document> findTrades(Document pFilter) {
+        return findTrades("Trades", pFilter);
+    }
+
+    private List<Document> findTrades(String pCollection, Document pFilter) {
         // Latest first; _id (increasing on insert) orders trades stored within the same millisecond
         List<Document> tResult = new ArrayList<>();
-        for (Document tDoc : mDatabase.getCollection("Trades").find(pFilter).sort(new Document("tradeTime", -1).append("_id", -1))) {
+        for (Document tDoc : mDatabase.getCollection(pCollection).find(pFilter).sort(new Document("tradeTime", -1).append("_id", -1))) {
             tResult.add(tDoc);
         }
         return tResult;
+    }
+
+    // ── Bulletin trades ──────────────────────────────────────────────────
+
+    /**
+     * Stores a bulletin trade in the BulletinTrades collection (kept apart from Trades, whose documents
+     * are replayed into the order books at startup). The document is built by BulletinBoard: tradeNo,
+     * bulletinId, marketId, the free text instrument, price and quantity (scaled), tradeTime as
+     * "yyyy-MM-dd HH:mm:ss.SSS" (formatTradeTime), and per side the firm, user and reference
+     * (buyAccount/buyUser/buyRef, sellAccount/sellUser/sellRef). The write is journaled (on disk
+     * before it returns), like saveTrades, and the board publishes the trade only afterwards.
+     */
+    public void saveBulletinTrade(Document pDoc) {
+        mDatabase.getCollection("BulletinTrades").withWriteConcern(WriteConcern.JOURNALED).insertOne(pDoc);
+    }
+
+    /**
+     * The bulletin trades where the firm is the buyer or the seller, for a date given as "yyyy-MM-dd"
+     * or, if the date is null, for all dates; latest first.
+     *
+     * @throws IllegalArgumentException if the date is not null and not a valid "yyyy-MM-dd" date
+     */
+    public List<Document> listBulletinTradesByFirm(String pFirm, String pDate) {
+        Document tFilter = new Document("$or", List.of(new Document("buyAccount", pFirm), new Document("sellAccount", pFirm)));
+        if (pDate != null) tFilter.append("tradeTime", tradeDay(pDate));
+        return findTrades("BulletinTrades", tFilter);
+    }
+
+    /** The price (scaled) of the latest bulletin trade in the instrument (free text) of the bulletin market; 0 if none. */
+    public long lastBulletinTradePrice(int pMarketId, String pInstrument) {
+        Document tDoc = mDatabase.getCollection("BulletinTrades")
+                .find(new Document("marketId", pMarketId).append("instrument", pInstrument))
+                .sort(new Document("tradeTime", -1).append("_id", -1))
+                .first();
+        return (tDoc != null) ? tDoc.getLong("price") : 0L;
+    }
+
+    /** An epoch millis time as stored in tradeTime: "yyyy-MM-dd HH:mm:ss.SSS", server local time. */
+    public static String formatTradeTime(long pEpochMillis) {
+        return TRADE_TIME_FORMAT.format(Instant.ofEpochMilli(pEpochMillis));
+    }
+
+    /** A stored tradeTime back to epoch millis. */
+    public static long parseTradeTime(String pTradeTime) {
+        return ZonedDateTime.parse(pTradeTime, TRADE_TIME_FORMAT).toInstant().toEpochMilli();
     }
 
     /** A tradeTime condition matching the whole day of a "yyyy-MM-dd" date. */

@@ -35,13 +35,21 @@ import java.util.function.Consumer;
  * Tomcat allows one asynchronous send at a time per connection, so each connection has its own queue:
  * a message is sent when the previous one is written (on the WsPinger thread). More than MAX_PENDING_SENDS queued messages
  * disconnect the client (1008), as in the standalone server.
+ *
+ * Connections and disconnects are logged at info level by the BdxDistributor; a connection without a
+ * logged-in trading user is logged here. The client's address comes from the REMOTE_ADDRESS_HEADER that
+ * EmporiaWebApp's filter adds to the upgrade request (the first X-Forwarded-For address behind a proxy,
+ * else the peer's address); Tomcat gives a Jakarta endpoint no other way to it.
  */
 public class BdxWebSocket extends Endpoint {
 
     private static final Logger cLog = LogManager.getLogger(BdxWebSocket.class);
 
     public static final long PING_SECONDS = 20;
-    private static final String HTTP_SESSION = "httpSession";
+    /** Request header with the client's address, set by EmporiaWebApp's filter on /ws. */
+    static final String REMOTE_ADDRESS_HEADER = "X-Emporia-Remote-Address";
+    private static final String HTTP_SESSION   = "httpSession";
+    private static final String REMOTE_ADDRESS = "remoteAddress";
 
     private final RestApiContext           mCtx;
     private final ScheduledExecutorService mPinger;
@@ -60,6 +68,11 @@ public class BdxWebSocket extends Endpoint {
                     public void modifyHandshake(ServerEndpointConfig pConfig, HandshakeRequest pRequest, HandshakeResponse pResponse) {
                         // The configuration's user properties are per connection in Tomcat
                         if (pRequest.getHttpSession() != null) pConfig.getUserProperties().put(HTTP_SESSION, pRequest.getHttpSession());
+                        pRequest.getHeaders().forEach((tName, tValues) -> {
+                            if (REMOTE_ADDRESS_HEADER.equalsIgnoreCase(tName) && tValues != null && !tValues.isEmpty()) {
+                                pConfig.getUserProperties().put(REMOTE_ADDRESS, tValues.get(0));
+                            }
+                        });
                     }
 
                     @Override
@@ -84,6 +97,7 @@ public class BdxWebSocket extends Endpoint {
             // the HTTP session was invalidated meanwhile
         }
         if (tUser == null) {
+            cLog.info("WebSocket refused from {}: no logged-in trading user", remoteAddress(pSession, pConfig));
             close(pSession, CloseReason.CloseCodes.VIOLATED_POLICY, "Not authenticated");
             return;
         }
@@ -97,26 +111,30 @@ public class BdxWebSocket extends Endpoint {
             }
         });
         tSender.pinging = mPinger.scheduleAtFixedRate(tSender::ping, PING_SECONDS, PING_SECONDS, TimeUnit.SECONDS);
-        mCtx.bdx.addClient(pSession, tHttpSession.getId(), tFirm, mCtx.authorizedMarkets(tFirm), tSender,
+        mCtx.bdx.addClient(pSession, tHttpSession.getId(), tUser, tFirm, remoteAddress(pSession, pConfig),
+                mCtx.authorizedMarkets(tFirm), tSender,
                 tReason -> close(pSession, CloseReason.CloseCodes.NORMAL_CLOSURE, tReason));
-        cLog.info("WebSocket connected: user '{}' firm '{}' ({} clients)", tUser, tFirm, mCtx.bdx.clientCount());
     }
 
     @Override
     public void onClose(Session pSession, CloseReason pReason) {
-        removed(pSession);
-        cLog.info("WebSocket closed ({} clients)", mCtx.bdx.clientCount());
+        removed(pSession, BdxDistributor.closeDescription(pReason.getCloseCode().getCode(), pReason.getReasonPhrase()));
     }
 
     @Override
     public void onError(Session pSession, Throwable pError) {
-        removed(pSession);
+        removed(pSession, BdxDistributor.errorDescription(pError));
     }
 
-    private void removed(Session pSession) {
+    private void removed(Session pSession, String pReason) {
         Sender tSender = mSenders.remove(pSession);
         if (tSender != null && tSender.pinging != null) tSender.pinging.cancel(false);
-        mCtx.bdx.removeClient(pSession);
+        mCtx.bdx.removeClient(pSession, pReason);
+    }
+
+    private static String remoteAddress(Session pSession, EndpointConfig pConfig) {
+        Object tAddress = pConfig.getUserProperties().get(REMOTE_ADDRESS);
+        return (tAddress != null) ? tAddress.toString() : "unknown";
     }
 
     private static void close(Session pSession, CloseReason.CloseCodes pCode, String pReason) {

@@ -49,7 +49,7 @@ public class RestApi {
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
 
-    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, BdxDistributor pBdx,
+    public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, AuthorizationCache pAuthorizations, BdxDistributor pBdx,
                    MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
@@ -61,7 +61,7 @@ public class RestApi {
             cLog.info("Session inactivity timeout: {} seconds", tSessionInactivitySeconds);
         }
 
-        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pBdx, pMatchingEngine, pBulletinBoard,
+        mCtx = new RestApiContext(pDatabase, pInstrumentCache, pAuthorizations, pBdx, pMatchingEngine, pBulletinBoard,
                 pConfiguration, tSessionInactivitySeconds);
     }
 

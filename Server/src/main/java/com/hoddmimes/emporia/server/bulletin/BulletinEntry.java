@@ -7,7 +7,8 @@ import java.util.concurrent.ScheduledFuture;
 /**
  * One bulletin on the bulletin board, with at most one pending offer. Only used by BulletinBoard,
  * under its lock. Prices and quantities are longs scaled by MatchingEngine.SCALE; 0 means the
- * bulletin did not specify a price or quantity. A bulletin is stored in the Bulletins collection
+ * bulletin did not specify a price or quantity; a null side means it did not specify a side (the
+ * offering firm chooses one). A bulletin is stored in the Bulletins collection
  * (toDocument) without its pending offer, so it is reloaded as ACTIVE.
  */
 class BulletinEntry {
@@ -22,7 +23,7 @@ class BulletinEntry {
     final String bulletinId;
     final int    marketId;
     final String instrument;
-    final String side;              // BUY or SELL, the owner's side
+    final String side;              // BUY or SELL, the owner's side; null if not given
     final long   price;
     final long   quantity;
     final String ownerFirm;
@@ -39,6 +40,7 @@ class BulletinEntry {
     long   offerSeq;                // identifies the offer for its expiry timer
     String offerFirm;
     String offerUser;
+    String offerSide;               // BUY or SELL, the offer's side
     long   offerPrice;
     long   offerQuantity;
     String offerRef;
@@ -85,9 +87,14 @@ class BulletinEntry {
                 pDoc.getLong("createTime"), pDoc.getLong("expiresAt"));
     }
 
-    /** The side of whoever makes an offer on this bulletin. */
-    String offerSide() {
-        return "BUY".equals(side) ? "SELL" : "BUY";
+    /** The other side: SELL for BUY, BUY for SELL. */
+    static String opposite(String pSide) {
+        return "BUY".equals(pSide) ? "SELL" : "BUY";
+    }
+
+    /** The owner's side in a trade on the pending offer: the opposite of the offer's side. */
+    String ownerTradeSide() {
+        return opposite(offerSide);
     }
 
     void clearOffer() {
@@ -95,6 +102,7 @@ class BulletinEntry {
         offerExpiry    = null;
         offerFirm      = null;
         offerUser      = null;
+        offerSide      = null;
         offerPrice     = 0;
         offerQuantity  = 0;
         offerRef       = null;

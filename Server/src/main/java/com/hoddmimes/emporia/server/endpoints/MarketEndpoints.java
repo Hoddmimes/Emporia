@@ -84,7 +84,7 @@ public class MarketEndpoints implements RestEndpoint {
         if (mCtx.instrumentCache.getMarket(tMarketId) == null) {
             OrderEndpoints.error(ctx, 404, "Market not found: " + tMarketId); return null;
         }
-        if (!mCtx.authorizedMarkets(SessionUser.of(ctx).firm()).contains(tMarketId)) {
+        if (!mCtx.isAuthorized(SessionUser.of(ctx).firm(), tMarketId)) {
             OrderEndpoints.error(ctx, 403, "Not authorized for market " + tMarketId); return null;
         }
         return tMarketId;

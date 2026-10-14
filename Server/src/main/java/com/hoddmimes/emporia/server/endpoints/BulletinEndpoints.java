@@ -18,7 +18,8 @@ import java.util.Set;
 /**
  * The bulletin board for trading users (see BulletinBoard), and the list of bulletin markets. Adding a bulletin, making an offer and
  * listing bulletins require the firm to be authorized for the market; withdrawing a bulletin and
- * answering an offer are for the bulletin owner's firm only (another firm's bulletin is reported as
+ * answering an offer are for the bulletin owner's firm only, withdrawing an offer for the offering firm
+ * only (another firm's bulletin or offer is reported as
  * not found). Prices and quantities are longs scaled by MatchingEngine.SCALE. Changes are pushed to
  * the clients as bdx messages on /ws.
  */
@@ -54,13 +55,12 @@ public class BulletinEndpoints implements RestEndpoint {
             SessionUser tUser = SessionUser.of(ctx);
             if (!tBody.has("marketId"))   { OrderEndpoints.error(ctx, 400, "marketId is required");   return; }
             if (!tBody.has("instrument")) { OrderEndpoints.error(ctx, 400, "instrument is required"); return; }
-            if (!tBody.has("side"))       { OrderEndpoints.error(ctx, 400, "side is required");       return; }
             int tMarketId = tBody.get("marketId").getAsInt();
             if (!checkMarketAccess(ctx, tUser.firm(), tMarketId)) return;
 
             respond(ctx, mCtx.bulletinBoard.addBulletin(tUser.firm(), tUser.userId(), tMarketId,
                     tBody.get("instrument").getAsString(),
-                    tBody.get("side").getAsString().toUpperCase(),
+                    optionalSide(tBody),
                     tBody.has("price")    ? tBody.get("price").getAsLong()    : 0L,
                     tBody.has("quantity") ? tBody.get("quantity").getAsLong() : 0L,
                     tBody.has("userRef")  ? tBody.get("userRef").getAsString() : null));
@@ -103,10 +103,18 @@ public class BulletinEndpoints implements RestEndpoint {
             if (tMarketId == 0) { OrderEndpoints.error(ctx, 404, "Bulletin not found: " + tBulletinId); return; }
             if (!checkMarketAccess(ctx, tUser.firm(), tMarketId)) return;
 
-            respond(ctx, mCtx.bulletinBoard.makeOffer(tUser.firm(), tUser.userId(), tBulletinId,
+            respond(ctx, mCtx.bulletinBoard.makeOffer(tUser.firm(), tUser.userId(), tBulletinId, optionalSide(tBody),
                     tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(),
                     tBody.has("offerRef")  ? tBody.get("offerRef").getAsString() : null,
                     tBody.has("validTime") ? tBody.get("validTime").getAsLong()  : 0L));
+        });
+
+        // The offering firm withdraws its pending offer
+        app.delete("/api/bulletins/{bulletinId}/offer", ctx -> {
+            if (cLog.isTraceEnabled()) {
+                cLog.trace("{} (withdraw offer) user: {}", ctx.path(), SessionUser.of(ctx));
+            }
+            respond(ctx, mCtx.bulletinBoard.withdrawOffer(SessionUser.of(ctx).firm(), ctx.pathParam("bulletinId")));
         });
 
         app.post("/api/bulletins/{bulletinId}/response", ctx -> {
@@ -121,6 +129,13 @@ public class BulletinEndpoints implements RestEndpoint {
         });
     }
 
+    /** The body's side in upper case, or null if it is missing, JSON null or empty (no side). */
+    private static String optionalSide(JsonObject pBody) {
+        if (!pBody.has("side") || pBody.get("side").isJsonNull()) return null;
+        String tSide = pBody.get("side").getAsString().trim();
+        return tSide.isEmpty() ? null : tSide.toUpperCase();
+    }
+
     private static JsonObject parseBody(Context ctx) {
         try { return JsonParser.parseString(ctx.body()).getAsJsonObject(); }
         catch (Exception e) { OrderEndpoints.error(ctx, 400, "Request body must be a JSON object"); return null; }
@@ -128,7 +143,7 @@ public class BulletinEndpoints implements RestEndpoint {
 
     /** Replies 403 and returns false unless the firm is authorized for the market. */
     private boolean checkMarketAccess(Context ctx, String pFirm, int pMarketId) {
-        if (!mCtx.authorizedMarkets(pFirm).contains(pMarketId)) {
+        if (!mCtx.isAuthorized(pFirm, pMarketId)) {
             OrderEndpoints.error(ctx, 403, "Not authorized for market " + pMarketId); return false;
         }
         return true;

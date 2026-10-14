@@ -14,7 +14,16 @@ import java.util.Locale;
  * tTimestamp.mark("validated");
  * ...
  * tTimestamp.mark("matched");
- * cLog.debug(tTimestamp);   // addOrder usec: validated 3.1 (+3.1), matched 12.3 (+9.2)
+ * cLog.debug(tTimestamp);
+ * </pre>
+ *
+ * logs
+ *
+ * <pre>
+ * addOrder usec:
+ *   validated       3.1 (+3.1)
+ *   matched        12.3 (+9.2)
+ *   total          12.3
  * </pre>
  *
  * A Timestamp measures one execution and is not thread-safe; create a new one for every
@@ -49,19 +58,24 @@ public final class Timestamp {
     }
 
     /**
-     * The name and each point's timestamp relative to the start, in microseconds, with the time
-     * since the previous point in parentheses: "addOrder usec: validated 3.1 (+3.1), matched 12.3 (+9.2)".
+     * The name, then one line per point with its timestamp relative to the start in microseconds
+     * and the time since the previous point in parentheses, and a last line with the total time from
+     * the start to the last point (see the class comment). The labels are padded to the same width.
      */
     @Override
     public String toString() {
+        int tWidth = "total".length();
+        for (Point p : mPoints) tWidth = Math.max(tWidth, p.label().length());
+        String tFormat = "%n  %-" + tWidth + "s %10s";
+
         StringBuilder sb = new StringBuilder(mName).append(" usec:");
         long tPrevious = 0L;
-        for (int i = 0; i < mPoints.size(); i++) {
-            Point p = mPoints.get(i);
-            sb.append(i > 0 ? ", " : " ").append(p.label()).append(' ').append(usec(p.nanos()))
+        for (Point p : mPoints) {
+            sb.append(String.format(Locale.ROOT, tFormat, p.label(), usec(p.nanos())))
               .append(" (+").append(usec(p.nanos() - tPrevious)).append(')');
             tPrevious = p.nanos();
         }
+        sb.append(String.format(Locale.ROOT, tFormat, "total", usec(totalNanos())));
         return sb.toString();
     }
 

@@ -14,7 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 /**
- * The server: the database, instrument cache, broadcast distributor, matching engine, bulletin board and
+ * The server: the database, instrument cache, authorization cache, broadcast distributor, matching engine, bulletin board and
  * the schedulers. Started either standalone (main, with its own Jetty web server, RestApi.start) or as a
  * web application in Tomcat (webapp.EmporiaWebApp, with Tomcat as the web server).
  */
@@ -22,12 +22,13 @@ public class Server {
 
     private static final Logger cLog = LogManager.getLogger(Server.class);
 
-    public final JsonObject      config;
-    public final Database        database;
-    public final InstrumentCache instrumentCache;
-    public final BdxDistributor  bdx;
-    public final MatchingEngine  matchingEngine;
-    public final BulletinBoard   bulletinBoard;
+    public final JsonObject         config;
+    public final Database           database;
+    public final InstrumentCache    instrumentCache;
+    public final AuthorizationCache authorizations;
+    public final BdxDistributor     bdx;
+    public final MatchingEngine     matchingEngine;
+    public final BulletinBoard      bulletinBoard;
     private final AuctionScheduler     mAuctionScheduler;
     private final MarketStateScheduler mMarketStateScheduler;
 
@@ -60,6 +61,9 @@ public class Server {
         instrumentCache = new InstrumentCache();
         instrumentCache.load(database);
 
+        authorizations = new AuthorizationCache();
+        authorizations.load(database);
+
         bdx = new BdxDistributor(instrumentCache);
         bdx.start();
 
@@ -73,7 +77,7 @@ public class Server {
     }
 
     public RestApi restApi() {
-        return new RestApi(database, instrumentCache, bdx, matchingEngine, bulletinBoard, config);
+        return new RestApi(database, instrumentCache, authorizations, bdx, matchingEngine, bulletinBoard, config);
     }
 
     /** Stops the threads and closes the database (web application undeploy). */
@@ -81,6 +85,7 @@ public class Server {
         mMarketStateScheduler.stop();
         mAuctionScheduler.stop();
         bulletinBoard.stop();
+        matchingEngine.stop();   // stores the queued trades, publishes the queued messages
         bdx.interrupt();
         database.close();
         cLog.info("Server stopped");

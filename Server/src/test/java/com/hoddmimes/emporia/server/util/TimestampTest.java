@@ -12,9 +12,9 @@ class TimestampTest {
     }
 
     @Test
-    void withoutPointsOnlyTheNameIsShown() {
+    void withoutPointsOnlyTheNameAndTotalAreShown() {
         Timestamp tTimestamp = new Timestamp("op");
-        assertEquals("op usec:", tTimestamp.toString());
+        assertEquals(String.format("op usec:%n  total        0.0"), tTimestamp.toString());
         assertEquals(0, tTimestamp.totalNanos());
     }
 
@@ -29,8 +29,12 @@ class TimestampTest {
         assertTrue(tFirst  >= 2_000_000, "a: " + tFirst);
         assertTrue(tSecond >= 3_000_000, "b: " + tSecond);
         assertEquals(tFirst + tSecond, tTimestamp.totalNanos());
-        assertTrue(tTimestamp.toString().matches("op usec: a \\d+\\.\\d \\(\\+\\d+\\.\\d\\), b \\d+\\.\\d \\(\\+\\d+\\.\\d\\)"),
-                tTimestamp.toString());
+        String[] tLines = tTimestamp.toString().split("\\R");
+        assertEquals(4, tLines.length, tTimestamp.toString());
+        assertEquals("op usec:", tLines[0]);
+        assertTrue(tLines[1].matches("  a     +\\d+\\.\\d \\(\\+\\d+\\.\\d\\)"), tLines[1]);
+        assertTrue(tLines[2].matches("  b     +\\d+\\.\\d \\(\\+\\d+\\.\\d\\)"), tLines[2]);
+        assertEquals("  total " + String.format("%10s", Timestamp.usec(tTimestamp.totalNanos())), tLines[3]);
     }
 
     @Test

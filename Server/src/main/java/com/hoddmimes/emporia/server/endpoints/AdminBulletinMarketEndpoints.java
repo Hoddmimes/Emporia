@@ -58,6 +58,7 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
             String tMongoId = mCtx.database.createBulletinMarket(tMarketId, tName, tFields.description(),
                     tFields.tradingStatus(), tFields.open(), tFields.close(), tFields.instruments(), tFields.maxOrderTime());
             mCtx.bulletinBoard.putMarket(mCtx.database.getBulletinMarket(tMongoId));
+            mCtx.refreshClientAuthorizations();   // firms authorized for "*" get the new market
             ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
         });
 
@@ -93,6 +94,7 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
             }
             mCtx.database.deleteBulletinMarket(ctx.pathParam("id"));
             mCtx.bulletinBoard.removeMarket(tMarketId);
+            mCtx.refreshClientAuthorizations();
             ctx.json("{\"success\":true}");
         });
 

@@ -53,6 +53,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
                     tOpen, tClose, tInverse, tPreOpenTime, tOpenAuctionTime,
                     tAuctionInterval, tRandomAuctionInterval, tTradingStatus);
             mCtx.instrumentCache.putMarket(mCtx.database.getMarket(tMongoId));
+            mCtx.refreshClientAuthorizations();   // firms authorized for "*" get the new market
             ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
         });
 
@@ -115,6 +116,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
                 }
                 mCtx.database.deleteMarket(tMongoId);
                 if (tMarketId != null) mCtx.instrumentCache.removeMarket(tMarketId);
+                mCtx.refreshClientAuthorizations();
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid market ID\"}");

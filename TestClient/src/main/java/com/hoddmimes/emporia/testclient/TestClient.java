@@ -27,7 +27,7 @@ import java.util.concurrent.CountDownLatch;
  * {
  *   "url": "http://localhost:8080",
  *   "trustAllCertificates": false,      // accept any HTTPS certificate (expired, self-signed, wrong host)
- *   "verbose": false,                   // print every request and response
+ *   "verbose": false,                   // print every request and response and every bdx message
  *   "sessions": [
  *     { "firm": "ThinAir", "user": "Geek", "password": "secret",
  *       "repeat": 10,                    // times the directives are run (default 1)
@@ -45,9 +45,10 @@ import java.util.concurrent.CountDownLatch;
  * concurrently, each with its own HTTP session.
  *
  * Command line: -config file (default ./testclient.json) and -bdx true|false (default true). With
- * -bdx true each session opens a WebSocket to the server's /ws after logging in and prints every
- * broadcast (bdx) message it receives; the server sends all messages for the firm's authorized
- * markets and the firm's own orders and trades, so there is nothing to subscribe to. No session
+ * -bdx true each session opens a WebSocket to the server's /ws after logging in and counts the
+ * broadcast (bdx) messages it receives, printing each one with "verbose"; the server sends all
+ * messages for the firm's authorized markets and the firm's own orders and trades, so there is
+ * nothing to subscribe to. No session
  * sends a transaction before every session has logged in and its WebSocket is registered by the
  * server.
  */

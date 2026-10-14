@@ -2,16 +2,30 @@ package com.hoddmimes.emporia.server.webapp;
 
 import com.hoddmimes.emporia.server.RestApi;
 import com.hoddmimes.emporia.server.Server;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRegistration;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionListener;
 import jakarta.websocket.server.ServerContainer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -19,7 +33,8 @@ import java.util.concurrent.ScheduledExecutorService;
  * Runs the server as a web application in Tomcat (the WAR's WEB-INF/web.xml declares this listener).
  * At deploy it starts the server (Server), registers the REST API as a servlet (/api/*, and /admin for
  * its redirect), the /ws WebSocket (BdxWebSocket) and a session listener that closes a timed-out session's
- * WebSockets. Tomcat serves the static pages from the WAR (the WebContent directory) and does HTTP,
+ * WebSockets. A filter on /ws gives the WebSocket handshake the client's address (see RemoteAddressFilter),
+ * which a Jakarta WebSocket endpoint can't get otherwise. Tomcat serves the static pages from the WAR (the WebContent directory) and does HTTP,
  * HTTPS and ports; the configuration file's http_interface is not used.
  *
  * The configuration file and mode are taken from, in this order, the context parameter, the Java system
@@ -69,6 +84,10 @@ public class EmporiaWebApp implements ServletContextListener {
                 t.setDaemon(true);
                 return t;
             });
+            // Before Tomcat's WebSocket filter (isMatchAfter false), which does the upgrade without passing it on
+            tContext.addFilter("emporia-ws-remote-address", new RemoteAddressFilter())
+                    .addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST), false, "/ws");
+
             ServerContainer tWsContainer = (ServerContainer) tContext.getAttribute(ServerContainer.class.getName());
             if (tWsContainer == null) throw new IllegalStateException("The servlet container has no WebSocket support");
             tWsContainer.addEndpoint(BdxWebSocket.config(new BdxWebSocket(tApi.context(), mPinger)));
@@ -84,6 +103,45 @@ public class EmporiaWebApp implements ServletContextListener {
     public void contextDestroyed(ServletContextEvent pEvent) {
         if (mPinger != null) mPinger.shutdownNow();
         if (mServer != null) mServer.stop();
+    }
+
+    /**
+     * Adds the header BdxWebSocket.REMOTE_ADDRESS_HEADER to the /ws upgrade request: the first
+     * X-Forwarded-For address when the request came through a proxy (Apache), else the peer's address.
+     * The wrapper replaces any such header sent by the client.
+     */
+    private static class RemoteAddressFilter implements Filter {
+        @Override
+        public void doFilter(ServletRequest pRequest, ServletResponse pResponse, FilterChain pChain)
+                throws IOException, ServletException {
+            if (!(pRequest instanceof HttpServletRequest tRequest)) { pChain.doFilter(pRequest, pResponse); return; }
+            String tForwarded = tRequest.getHeader("X-Forwarded-For");
+            String tAddress = (tForwarded != null && !tForwarded.isBlank())
+                    ? tForwarded.split(",")[0].trim() : tRequest.getRemoteAddr();
+            pChain.doFilter(new HttpServletRequestWrapper(tRequest) {
+                private boolean ours(String pName) {
+                    return BdxWebSocket.REMOTE_ADDRESS_HEADER.equalsIgnoreCase(pName);
+                }
+
+                @Override
+                public String getHeader(String pName) {
+                    return ours(pName) ? tAddress : super.getHeader(pName);
+                }
+
+                @Override
+                public Enumeration<String> getHeaders(String pName) {
+                    return ours(pName) ? Collections.enumeration(List.of(tAddress)) : super.getHeaders(pName);
+                }
+
+                @Override
+                public Enumeration<String> getHeaderNames() {
+                    List<String> tNames = new ArrayList<>();
+                    for (String tName : Collections.list(super.getHeaderNames())) if (!ours(tName)) tNames.add(tName);
+                    tNames.add(BdxWebSocket.REMOTE_ADDRESS_HEADER);
+                    return Collections.enumeration(tNames);
+                }
+            }, pResponse);
+        }
     }
 
     private static String setting(ServletContext pContext, String pName, String pEnvironment, String pDefault) {

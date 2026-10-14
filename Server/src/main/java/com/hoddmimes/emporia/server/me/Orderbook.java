@@ -63,7 +63,7 @@ public class Orderbook {
         if (tErr != null) return OrderResponse.error(tErr);
 
         if (!cLog.isTraceEnabled()) {
-            cLog.info( pReq.toString());
+            cLog.info("addOrder {}", pReq);
         }
 
         Order tOrder = new Order(pReq);

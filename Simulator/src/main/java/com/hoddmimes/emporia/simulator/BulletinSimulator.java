@@ -10,7 +10,8 @@ import java.util.concurrent.TimeUnit;
  * Bulletins for one instrument of a bulletin market, one at a time: after a random time between 10 s
  * and timeToCreate seconds a bulletin is added (POST /api/bulletins), and after a random time between
  * 10 s and timeToLive seconds it is withdrawn (DELETE /api/bulletins/{bulletinId}); then the next one
- * is created the same way. The side is the configured one, or random if none is given. The price is
+ * is created the same way. The side is the configured one (BUY, SELL or NONE for a bulletin without a
+ * side), or random among the three if none is given. The price is
  * the mid price plus or minus a random amount up to maxPriceDeviation (rounded to 0.01), and the quantity
  * random between minVolume and maxVolume (whole units); a bulletin without midPrice has no price, one
  * without minVolume/maxVolume no quantity. A bulletin that is already gone when it is to be withdrawn
@@ -29,7 +30,7 @@ class BulletinSimulator {
     private final int    mMarketId;
     private final String mMarketName;
     private final String mInstrument;
-    private final String mSide;                  // null = random
+    private final String mSide;                  // BUY, SELL or NONE (no side); null = random
     private final long   mMidPrice;              // scaled, 0 = no price
     private final long   mMaxDeviation;          // scaled
     private final long   mMinVolume;             // whole units, 0 = no quantity
@@ -52,8 +53,8 @@ class BulletinSimulator {
         mMaxVolume    = Math.round(Config.decimal(pConfig, "maxVolume", mMinVolume));
         mTimeToCreate = Config.integer(pConfig, "timeToCreate", 60);
         mTimeToLive   = Config.integer(pConfig, "timeToLive", 300);
-        if (mSide != null && !mSide.equals("BUY") && !mSide.equals("SELL")) {
-            throw new IllegalArgumentException(mInstrument + ": side must be BUY or SELL");
+        if (mSide != null && !mSide.equals("BUY") && !mSide.equals("SELL") && !mSide.equals("NONE")) {
+            throw new IllegalArgumentException(mInstrument + ": side must be BUY, SELL or NONE");
         }
         if (mMaxVolume < mMinVolume) throw new IllegalArgumentException(mInstrument + ": maxVolume < minVolume");
     }
@@ -68,17 +69,19 @@ class BulletinSimulator {
         return ThreadLocalRandom.current().nextLong(Math.max(1, tLow), Math.max(1, tHigh) + 1);
     }
 
+    private static final String[] SIDES = { "BUY", "SELL", "NONE" };
+
     private void scheduleCreate() {
         mScheduler.schedule(this::create, randomSeconds(mTimeToCreate), TimeUnit.SECONDS);
     }
 
     private void create() {
         ThreadLocalRandom r = ThreadLocalRandom.current();
-        String tSide = (mSide != null) ? mSide : (r.nextBoolean() ? "BUY" : "SELL");
+        String tSide = (mSide != null) ? mSide : SIDES[r.nextInt(SIDES.length)];
         JsonObject tBody = new JsonObject();
         tBody.addProperty("marketId",   mMarketId);
         tBody.addProperty("instrument", mInstrument);
-        tBody.addProperty("side",       tSide);
+        if (!tSide.equals("NONE")) tBody.addProperty("side", tSide);   // NONE: a bulletin without a side
         long tPrice = 0, tQuantity = 0;
         if (mMidPrice > 0) {
             long tOffset = (mMaxDeviation > 0) ? r.nextLong(-mMaxDeviation, mMaxDeviation + 1) : 0;

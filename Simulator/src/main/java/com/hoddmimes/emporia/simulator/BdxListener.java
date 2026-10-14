@@ -86,8 +86,8 @@ class BdxListener implements WebSocket.Listener {
                     instrument(m), str(m, "side"), str(m, "quantity"), str(m, "price"), str(m, "orderId"), str(m, "tradeNo")));
             case "BulletinOffer" -> {
                 if (!"OWNER".equals(str(m, "role"))) return;
-                Events.print("BULLETIN OFFER", String.format("%s  bulletin %s  %s offer %s @ %s", str(m, "instrument"),
-                        str(m, "bulletinId"), str(m, "event"), str(m, "quantity"), str(m, "price")));
+                Events.print("BULLETIN OFFER", String.format("%s  bulletin %s  %s offer %s %s @ %s", str(m, "instrument"),
+                        str(m, "bulletinId"), str(m, "event"), str(m, "side"), str(m, "quantity"), str(m, "price")));
             }
             case "OwnBulletinTrade" -> Events.print("BULLETIN TRADE", String.format("%s %s %s @ %s  bulletin %s",
                     str(m, "instrument"), str(m, "side"), str(m, "quantity"), str(m, "price"), str(m, "bulletinId")));

@@ -75,6 +75,42 @@ class BulletinBoardTest {
     }
 
     @Test
+    void bulletinWithoutSideLetsTheOfferingFirmChooseTheSide() {
+        String tId = add("FA", null, 100 * S, 10 * S);
+        assertTrue(mPublished.get(0).toJson().get("side").isJsonNull());   // public Bulletin: no side
+        assertTrue(mBoard.getBulletins("FB", Set.of(1)).get(0).getAsJsonObject().get("side").isJsonNull());
+        assertEquals(400, mBoard.addBulletin("FA", "u", 1, "x", "HOLD", 0, 0, null).status());
+
+        // The offer must name its side
+        assertEquals(400, mBoard.makeOffer("FB", "u-FB", tId, 98 * S, 4 * S, "o1", 0).status());
+        assertEquals(400, mBoard.makeOffer("FB", "u-FB", tId, "HOLD", 98 * S, 4 * S, "o1", 0).status());
+        mPublished.clear();
+        assertTrue(mBoard.makeOffer("FB", "u-FB", tId, "SELL", 98 * S, 4 * S, "o1", 0).success());
+        assertEquals("SELL", str(ofType(BdxMessage.BULLETIN_OFFER).get(0), "side"));   // to the owner: the offer's side
+        JsonObject tOffer = mBoard.getBulletins("FA", Set.of(1)).get(0).getAsJsonObject().getAsJsonObject("offer");
+        assertEquals("SELL", tOffer.get("side").getAsString());
+
+        // Accepted: the offering firm sells, so the owner buys
+        mPublished.clear();
+        assertTrue(mBoard.answerOffer("FA", tId, true).success());
+        List<BdxMessage> tOwnTrades = ofType(BdxMessage.OWN_BULLETIN_TRADE);
+        assertEquals("FA",   tOwnTrades.get(0).firm());
+        assertEquals("BUY",  str(tOwnTrades.get(0), "side"));
+        assertEquals("FB",   tOwnTrades.get(1).firm());
+        assertEquals("SELL", str(tOwnTrades.get(1), "side"));
+
+        // The next offer may take the other side
+        assertTrue(mBoard.makeOffer("FC", "u-FC", tId, "BUY", 99 * S, 1 * S, null, 0).success());
+    }
+
+    @Test
+    void offerOnBulletinWithSideMustBeOnTheOppositeSide() {
+        String tId = add("FA", "SELL", 100 * S, 10 * S);
+        assertEquals(400, mBoard.makeOffer("FB", "u", tId, "SELL", 98 * S, 4 * S, null, 0).status());
+        assertTrue(mBoard.makeOffer("FB", "u", tId, "BUY", 98 * S, 4 * S, null, 0).success());
+    }
+
+    @Test
     void addIsRejectedOutsideOpenBulletinMarkets() {
         assertEquals(400, mBoard.addBulletin("FA", "u", 9, "x", "BUY", 0, 0, null).status());   // no such bulletin market
         mBoard.putMarket(market(1, "BB", "CLOSED", "1:00"));
@@ -170,6 +206,63 @@ class BulletinBoardTest {
             assertEquals("EXPIRED", str(ofType(BdxMessage.BULLETIN_OFFER).get(0), "event"));
             assertEquals("ACTIVE", mBoard.getBulletins("FA", Set.of(1)).get(0).getAsJsonObject().get("state").getAsString());
         }
+    }
+
+    @Test
+    void offeringFirmWithdrawsItsPendingOffer() {
+        String tId = add("FA", "SELL", 100 * S, 10 * S);
+        assertEquals(404, mBoard.withdrawOffer("FB", tId).status());   // no offer yet
+        assertTrue(mBoard.makeOffer("FB", "u-FB", tId, 99 * S, 2 * S, "o1", 0).success());
+        assertEquals(404, mBoard.withdrawOffer("FA", tId).status());   // the owner answers, it can't withdraw
+        assertEquals(404, mBoard.withdrawOffer("FC", tId).status());   // not its offer
+        assertEquals(404, mBoard.withdrawOffer("FB", "nope").status());
+
+        mBoard.putMarket(market(1, "BB", "CLOSED", "1:00"));   // allowed in any market state
+        mPublished.clear();
+        BulletinBoard.Result tResult = mBoard.withdrawOffer("FB", tId);
+        assertTrue(tResult.success(), tResult.error());
+        assertEquals("ACTIVE", tResult.body().get("state").getAsString());
+        List<BdxMessage> tOffers = ofType(BdxMessage.BULLETIN_OFFER);
+        assertEquals(2, tOffers.size());
+        assertEquals("CANCELLED", str(tOffers.get(0), "event"));
+        assertEquals("OWNER",     str(tOffers.get(0), "role"));
+        assertEquals("FA",        tOffers.get(0).firm());
+        assertEquals("OFFERER",   str(tOffers.get(1), "role"));
+        assertEquals("FB",        tOffers.get(1).firm());
+        assertEquals("o1",        str(tOffers.get(1), "offerRef"));
+        assertEquals("ACTIVE", str(ofType(BdxMessage.BULLETIN).get(0), "state"));
+        assertEquals(404, mBoard.withdrawOffer("FB", tId).status());   // already gone
+
+        // The bulletin takes offers again
+        mBoard.putMarket(market(1, "BB", "OPEN", "1:00"));
+        assertTrue(mBoard.makeOffer("FC", "u-FC", tId, 98 * S, 1 * S, null, 0).success());
+    }
+
+    @Test
+    void tradeDocumentHasTheBuyerAndSellerOfTheTrade() {
+        BulletinEntry tEntry = new BulletinEntry("b1", 1, "Old tractor", "SELL", 100 * S, 10 * S, 10 * S,
+                "FA", "u-FA", "ref-FA", 0L, 0L);
+        tEntry.offerFirm     = "FB";
+        tEntry.offerUser     = "u-FB";
+        tEntry.offerSide     = "BUY";
+        tEntry.offerPrice    = 99 * S;
+        tEntry.offerQuantity = 4 * S;
+        tEntry.offerRef      = "o1";
+        Document tDoc = BulletinBoard.tradeDocument(tEntry, "t1", 0L);
+        assertEquals("FB", tDoc.getString("buyAccount"));
+        assertEquals("u-FB", tDoc.getString("buyUser"));
+        assertEquals("o1", tDoc.getString("buyRef"));
+        assertEquals("FA", tDoc.getString("sellAccount"));
+        assertEquals("ref-FA", tDoc.getString("sellRef"));
+        assertEquals(99 * S, tDoc.getLong("price"));
+        assertEquals(4 * S, tDoc.getLong("quantity"));
+        assertEquals("Old tractor", tDoc.getString("instrument"));
+        assertEquals(1, tDoc.getInteger("marketId"));
+
+        tEntry.offerSide = "SELL";   // a bulletin without a side: the offering firm sold, the owner bought
+        tDoc = BulletinBoard.tradeDocument(tEntry, "t2", 0L);
+        assertEquals("FA", tDoc.getString("buyAccount"));
+        assertEquals("FB", tDoc.getString("sellAccount"));
     }
 
     @Test

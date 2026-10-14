@@ -18,9 +18,16 @@ import java.util.*;
  * Implements {@link MatchingEngineCallbackIf} to receive callbacks from the orderbooks and
  * broadcasts every orderbook change as bdx messages (see {@link BdxMessage}).
  *
- * Prices and quantities are longs scaled by {@link #SCALE}. Orders, books and trades are
- * held in memory only. The public methods are synchronized: requests arrive concurrently
- * from the REST endpoints and the auction scheduler.
+ * Prices and quantities are longs scaled by {@link #SCALE}. Orders and books are held in memory
+ * only. The public methods are synchronized: requests arrive concurrently from the REST endpoints
+ * and the auction scheduler.
+ *
+ * Trades must survive a host failure, so they are stored durably, and nobody hears of a trade before
+ * it is stored: the engine queues its bdx messages and trades in a {@link TradePersister} instead of
+ * publishing and storing them itself. The persister stores each batch of trades with one journaled
+ * write outside the engine's lock and then publishes the batch's messages in order. addOrder,
+ * modifyOrder and triggerAuction wait, after leaving the lock, until a trade they made is stored
+ * and its messages published (durable).
  *
  * An order's account is the firm that owns it; a firm can only see, modify and delete its own orders.
  * Orders are only accepted (added or modified) while the market is OPEN or PREOPEN and the
@@ -41,17 +48,19 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     public static final String INSTRUMENT_SUSPENDED = "SUSPENDED";
 
     private final InstrumentCache         mInstrumentCache;
-    private final BdxDistributor          mBdx;
     private final Map<Long, Orderbook>    mOrderbooks;
     private final List<InternalTrade>     mTrades;
     private final Database mDB;
+    private final TradePersister          mPersister;
 
     public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx) {
         mInstrumentCache = pInstrumentCache;
-        mBdx             = pBdx;
         mDB              = pDB;
         mOrderbooks      = new HashMap<>();
         mTrades          = new ArrayList<>();
+        // Without a database (unit tests) messages are published at once and trades are not stored
+        mPersister       = new TradePersister((mDB != null) ? mDB::saveTrades : null, pBdx::publish);
+        mPersister.startPersisting();
 
         mInstrumentCache.addMarketSubscription(new InstrumentCache.MarketCallbacks() {
             @Override
@@ -96,9 +105,35 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         cLog.info("{} trade(s) of today reloaded, prices restored for {} instrument(s)", pTrades.size(), tInstruments.size());
     }
 
+    /** Stores and publishes what is queued and stops the trade persister (server stop). */
+    public void stop() {
+        mPersister.stopPersisting(10000);
+    }
+
+    /**
+     * Runs pCall under the engine's lock and, if it traded, waits after leaving the lock until its
+     * trades are stored and its messages published, so the caller's answer never reports a trade that
+     * is not on disk. Other requests are matched meanwhile.
+     */
+    private <T> T durable(java.util.function.Supplier<T> pCall) {
+        T    tResult;
+        long tWaitFor = 0;
+        synchronized (this) {
+            long tTrades = mPersister.tradesQueued();
+            tResult = pCall.get();
+            if (mPersister.tradesQueued() != tTrades) tWaitFor = mPersister.lastQueued();
+        }
+        mPersister.awaitReleased(tWaitFor);
+        return tResult;
+    }
+
     // ── Public order operations ────────────────────────────────────────────
 
-    public synchronized OrderResponse addOrder(AddOrderRequest pReq) {
+    public OrderResponse addOrder(AddOrderRequest pReq) {
+        return durable(() -> addOrderLocked(pReq));
+    }
+
+    private synchronized OrderResponse addOrderLocked(AddOrderRequest pReq) {
         String tErr = checkTradingStatus(pReq.instrumentId());
         if (tErr != null) return OrderResponse.error(tErr);
         Orderbook tBook = getOrCreateOrderbook(pReq.instrumentId());
@@ -109,7 +144,11 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     /** Modifies one of the firm's resting orders; pPrice 0 keeps the current price, a null pUserRef the current userRef. */
-    public synchronized OrderResponse modifyOrder(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
+    public OrderResponse modifyOrder(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
+        return durable(() -> modifyOrderLocked(pFirm, pOrderId, pPrice, pQuantity, pUserRef));
+    }
+
+    private synchronized OrderResponse modifyOrderLocked(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
         Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
         if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
         String tErr = checkTradingStatus(tBook.getInstrumentId());
@@ -165,7 +204,11 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         return (tBook != null) ? tBook.getInstrumentId() : 0L;
     }
 
-    public synchronized AuctionResult triggerAuction(long pInstrumentId) {
+    public AuctionResult triggerAuction(long pInstrumentId) {
+        return durable(() -> triggerAuctionLocked(pInstrumentId));
+    }
+
+    private synchronized AuctionResult triggerAuctionLocked(long pInstrumentId) {
         Orderbook tBook = mOrderbooks.get(pInstrumentId);
         if (tBook == null) {
             return AuctionResult.error("No orderbook for instrument: " + pInstrumentId);
@@ -332,35 +375,33 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     @Override
     public void orderAdded(Order pOrder, long pSeqNo) {
-        cLog.debug("Order added: {}", pOrder);
+        cLog.debug("Bdx Order added: {}", pOrder);
         publishOrder(BdxMessage.ADD_ORDER, "ADDED", pOrder, pSeqNo);
     }
 
     @Override
     public void orderRemoved(Order pOrder, long pSeqNo) {
-        cLog.debug("Order removed: {}", pOrder);
+        cLog.debug("Bdx Order removed: {}", pOrder);
         publishOrder(BdxMessage.REMOVE_ORDER, "REMOVED", pOrder, pSeqNo);
     }
 
     @Override
     public void orderModified(Order pOrder, long pSeqNo) {
-        cLog.debug("Order modified: {}", pOrder);
+        cLog.debug("Bdx Order modified: {}", pOrder);
         publishOrder(BdxMessage.MODIFY_ORDER, "MODIFIED", pOrder, pSeqNo);
     }
 
     @Override
     public void trade(InternalTrade pTrade) {
         mTrades.add(pTrade);
-        cLog.info("{}", pTrade);
-
-
+        cLog.info("Bdx public trade {}", pTrade);
 
         int tMarketId = marketIdOf(pTrade.getInstrumentId());
 
-        // Trade to database
-        if (mDB != null) mDB.saveTrade(pTrade);
+        // Stored before the messages below are published (TradePersister)
+        mPersister.trade(pTrade);
 
-        mBdx.publish(BdxMessage.instrument(BdxMessage.TRADE, tMarketId, pTrade.getInstrumentId())
+        mPersister.publish(BdxMessage.instrument(BdxMessage.TRADE, tMarketId, pTrade.getInstrumentId())
                 .put("price",     unscale(pTrade.getPrice()))
                 .put("quantity",  unscale(pTrade.getQuantity()))
                 .put("tradeNo",   Long.toHexString(pTrade.getTradeNo()))
@@ -385,7 +426,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         boolean tTraded = tBook.getTradedVolume() > 0;
 
         // A full snapshot: null (empty book side, no trades yet) clears the client's value
-        mBdx.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, marketIdOf(pInstrumentId), pInstrumentId)
+        mPersister.publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, marketIdOf(pInstrumentId), pInstrumentId)
                 .put("bidVol", tBestBuy  != null ? unscale(tBook.getBestPriceVolume(Order.Side.BUY))  : null)
                 .put("bidPx",  tBestBuy  != null ? unscale(tBestBuy.getPrice())                        : null)
                 .put("askVol", tBestSell != null ? unscale(tBook.getBestPriceVolume(Order.Side.SELL)) : null)
@@ -399,8 +440,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     /** The public order book event and the private OwnOrder to the order's firm. */
     private void publishOrder(String pType, String pEvent, Order pOrder, long pSeqNo) {
         int tMarketId = marketIdOf(pOrder.getInstrumentId());
-        mBdx.publish(orderMessage(BdxMessage.instrument(pType, tMarketId, pOrder.getInstrumentId()), pOrder, pSeqNo));
-        mBdx.publish(orderMessage(BdxMessage.forFirm(BdxMessage.OWN_ORDER, tMarketId, pOrder.getInstrumentId(), pOrder.getAccount()), pOrder, pSeqNo)
+        mPersister.publish(orderMessage(BdxMessage.instrument(pType, tMarketId, pOrder.getInstrumentId()), pOrder, pSeqNo));
+        mPersister.publish(orderMessage(BdxMessage.forFirm(BdxMessage.OWN_ORDER, tMarketId, pOrder.getInstrumentId(), pOrder.getAccount()), pOrder, pSeqNo)
                 .put("event",   pEvent)
                 .put("userRef", pOrder.getUserRef()));
     }
@@ -416,7 +457,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     /** The private OwnTrade for one side of a trade, to the firm of that side's order. */
     private void publishOwnTrade(InternalTrade pTrade, int pMarketId, Order.Side pSide) {
         Order tOrder = (pSide == Order.Side.BUY) ? pTrade.getBuyOrder() : pTrade.getSellOrder();
-        mBdx.publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, pMarketId, pTrade.getInstrumentId(), tOrder.getAccount())
+        mPersister.publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, pMarketId, pTrade.getInstrumentId(), tOrder.getAccount())
                 .put("side",      pSide.name())
                 .put("price",     unscale(pTrade.getPrice()))
                 .put("quantity",  unscale(pTrade.getQuantity()))

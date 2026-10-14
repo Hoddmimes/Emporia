@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
 import org.bson.Document;
@@ -21,7 +22,9 @@ import java.util.Map;
  * 10, buying 5 and buying 10 is a position of +5. Instruments where the position is 0 are left out.
  * The value is the position times the instrument's last traded price: today's from the matching
  * engine, otherwise the latest stored trade's. Prices, quantities and values are longs scaled by
- * MatchingEngine.SCALE. Bulletin trades are not stored, so they are not included.
+ * MatchingEngine.SCALE. Bulletin trades (BulletinTrades) give positions of their own, per bulletin market
+ * and free text instrument ({@code bulletin} true, instrumentId null), valued at the instrument's latest
+ * bulletin trade price in that market.
  */
 public class PortfolioEndpoints implements RestEndpoint {
 
@@ -67,6 +70,26 @@ public class PortfolioEndpoints implements RestEndpoint {
                 }
                 tRows.add(tJson);
             }
+            for (BulletinPosition tPos : bulletinPositions(tFirm, mCtx.database.listBulletinTradesByFirm(tFirm, null))) {
+                if (tPos.position() == 0) continue;
+                long tLast = mCtx.database.lastBulletinTradePrice(tPos.marketId(), tPos.instrument());
+                BulletinMarket tMarket = mCtx.bulletinBoard.getMarket(tPos.marketId());
+                long tValue = value(tPos.position(), tLast);
+                tTotalValue += tValue;
+
+                JsonObject tJson = new JsonObject();
+                tJson.add("instrumentId", null);
+                tJson.addProperty("instrument",   tPos.instrument());
+                tJson.addProperty("marketId",     tPos.marketId());
+                tJson.addProperty("market",       tMarket != null ? tMarket.name() : String.valueOf(tPos.marketId()));
+                tJson.addProperty("bulletin",     true);
+                tJson.addProperty("position",     tPos.position());
+                tJson.addProperty("bought",       tPos.bought());
+                tJson.addProperty("sold",         tPos.sold());
+                tJson.addProperty("lastPrice",    tLast);
+                tJson.addProperty("value",        tValue);
+                tRows.add(tJson);
+            }
             tRows.sort(Comparator.comparing((JsonObject j) -> j.get("market").getAsString())
                                  .thenComparing(j -> j.get("instrument").getAsString()));
             JsonArray tArray = new JsonArray();
@@ -93,6 +116,26 @@ public class PortfolioEndpoints implements RestEndpoint {
             tPositions.put(tInstrumentId, (tOld == null)
                     ? new Position(tInstrumentId, (int) (tInstrumentId >>> 32), tBought, tSold)
                     : new Position(tInstrumentId, tOld.marketId(), tOld.bought() + tBought, tOld.sold() + tSold));
+        }
+        return new ArrayList<>(tPositions.values());
+    }
+
+    /** A position in a bulletin market's free text instrument, from its bulletin trades. */
+    record BulletinPosition(int marketId, String instrument, long bought, long sold) {
+        long position() { return bought - sold; }
+    }
+
+    /** The firm's position per bulletin market and instrument from its BulletinTrades documents. */
+    static List<BulletinPosition> bulletinPositions(String pFirm, List<Document> pTrades) {
+        Map<String, BulletinPosition> tPositions = new LinkedHashMap<>();
+        for (Document tTrade : pTrades) {
+            int    tMarketId   = tTrade.getInteger("marketId");
+            String tInstrument = tTrade.getString("instrument");
+            long   tQuantity   = tTrade.getLong("quantity");
+            long   tBought     = pFirm.equals(tTrade.getString("buyAccount"))  ? tQuantity : 0L;
+            long   tSold       = pFirm.equals(tTrade.getString("sellAccount")) ? tQuantity : 0L;
+            tPositions.merge(tMarketId + "/" + tInstrument, new BulletinPosition(tMarketId, tInstrument, tBought, tSold),
+                    (a, b) -> new BulletinPosition(a.marketId(), a.instrument(), a.bought() + b.bought(), a.sold() + b.sold()));
         }
         return new ArrayList<>(tPositions.values());
     }

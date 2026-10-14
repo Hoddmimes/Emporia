@@ -63,7 +63,7 @@ class BdxDistributorTest {
     private TestClient connect(String pHttpSessionId, String pFirm, Integer... pMarkets) {
         mBdx.dispatchQueued();
         TestClient tClient = new TestClient();
-        mBdx.addClient(tClient, pHttpSessionId, pFirm, Set.of(pMarkets),
+        mBdx.addClient(tClient, pHttpSessionId, "u-" + pFirm, pFirm, "127.0.0.1", Set.of(pMarkets),
                 tJson -> tClient.received.add(JsonParser.parseString(tJson).getAsJsonObject()),
                 tReason -> tClient.closedReason = tReason);
         return tClient;
@@ -97,6 +97,28 @@ class BdxDistributorTest {
         assertEquals("/Trade/1/" + INST1, tTrade.get("topic").getAsString());
         assertEquals(1, tTrade.get("marketId").getAsInt());
         assertEquals(INST1, tTrade.get("instrumentId").getAsLong());
+    }
+
+    @Test
+    void updatedAuthorizationsApplyToConnectedClients() {
+        publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 2, INST2).put("last", 20.0));
+        TestClient tA = connect("s1", "FirmA", 1);
+        TestClient tB = connect("s2", "FirmB", 1);
+        int tBReceived = tB.received.size();
+        assertTrue(tA.ofType(BdxMessage.PRICE_UPDATE).isEmpty());
+
+        // FirmA gains market 2 and loses market 1; FirmB is unchanged
+        mBdx.updateAuthorizations(f -> f.equals("FirmA") ? Set.of(2) : Set.of(1));
+        List<JsonObject> tPrices = tA.ofType(BdxMessage.PRICE_UPDATE);
+        assertEquals(1, tPrices.size());                                      // market 2's snapshot
+        assertEquals(20.0, tPrices.get(0).get("last").getAsDouble());
+        assertEquals(tBReceived, tB.received.size());
+
+        tA.received.clear();
+        publish(BdxMessage.instrument(BdxMessage.TRADE, 1, INST1).put("price", 10.0));
+        publish(BdxMessage.instrument(BdxMessage.TRADE, 2, INST2).put("price", 21.0));
+        assertEquals(List.of(2), tA.ofType(BdxMessage.TRADE).stream().map(j -> j.get("marketId").getAsInt()).toList());
+        assertEquals(List.of(1), tB.ofType(BdxMessage.TRADE).stream().map(j -> j.get("marketId").getAsInt()).toList());
     }
 
     @Test

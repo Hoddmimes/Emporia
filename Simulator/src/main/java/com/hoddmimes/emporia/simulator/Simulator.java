@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
  *   ],
  *   "bulletins": [                          // bulletins created and withdrawn at random times
  *     { "market": "OTC-Machinery", "instrument": "Old tractor",
- *       "side": "SELL",                     // optional, random if absent
+ *       "side": "SELL",                     // optional: BUY, SELL or NONE (no side); random if absent
  *       "midPrice": 1000, "maxPriceDeviation": 100,  // optional, no price if absent
  *       "minVolume": 1, "maxVolume": 5,     // optional, no quantity if absent
  *       "timeToCreate": 60,                 // created after a random 10..60 s

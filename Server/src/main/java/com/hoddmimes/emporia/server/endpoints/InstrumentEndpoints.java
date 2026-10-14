@@ -28,7 +28,7 @@ public class InstrumentEndpoints implements RestEndpoint {
             catch (NumberFormatException e) { ctx.status(400).json("{\"error\":\"marketId must be an integer\"}"); return; }
 
             String tFirm = (String) ctx.req().getSession().getAttribute(RestApiContext.FIRM);
-            if (!mCtx.authorizedMarkets(tFirm).contains(tMarketId)) {
+            if (!mCtx.isAuthorized(tFirm, tMarketId)) {
                 ctx.status(403).json("{\"error\":\"Not authorized for market " + tMarketId + "\"}"); return;
             }
             JsonArray tArray = new JsonArray();

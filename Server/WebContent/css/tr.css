@@ -442,6 +442,9 @@ body {
 .mv-order-side input { width: auto; }
 .mv-order-side label.buy.checked  { background: #e9f6ee; border-color: #1c7c44; color: #1c7c44; }
 .mv-order-side label.sell.checked { background: var(--error-bg); border-color: var(--error); color: var(--error); }
+/* A bulletin without a side (EITHER): neither buy green nor sell red */
+.mv-order-side label.any.checked  { background: #e3f4f4; border-color: var(--bulletin); color: var(--bulletin); }
+.mv-any { color: var(--bulletin); }
 .mv-order-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
 .mv-order-dialog.bulletin .btn-primary { background: var(--bulletin); }
 .mv-order-dialog.bulletin .btn-primary:hover { background: #0b6f73; }

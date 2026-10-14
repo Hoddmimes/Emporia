@@ -364,13 +364,21 @@ it has traded completely.</p>
 <div class="endpoint">
 <div class="sig"><span class="m GET">GET</span>/api/trades<span class="opt">?marketId=&amp;instrumentId=&amp;date=yyyy-MM-dd</span></div>
 <p>Your firm's trades, oldest first: today's, or with <code>date</code> those of that day. Optionally for one
-market and/or instrument. 400 for an invalid date.</p>
+market and/or instrument. 400 for an invalid date. The bulletin trades of the same day are listed apart, in
+<code>bulletinTrades</code>.</p>
 <pre><code>{ "date": "2026-10-12", "trades": [
   { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
     "side": "BUY", "price": 10000000, "quantity": 200000, "tradeNo": "1", "tradeTime": 1791899978208,
-    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17" } ] }</code></pre>
+    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17" } ],
+  "bulletinTrades": [
+  { "tradeNo": "6acf8b8700000001", "bulletinId": "6acf8b8700000001", "marketId": 2, "marketName": "OTC",
+    "instrument": "Brent Jan", "side": "SELL", "price": 8000000, "quantity": 400000,
+    "tradeTime": 1791986650009, "user": "ub", "ref": "o-3" } ] }</code></pre>
 <p><code>date</code> is only in the response when it was given. If your firm traded with itself, the trade is
-listed twice, once per side. Bulletin trades are not included.</p>
+listed twice, once per side. A bulletin trade has the bulletin's free text <code>instrument</code> and no
+<code>instrumentId</code>, so <code>instrumentId</code> leaves out all bulletin trades; <code>user</code> is the
+user of your firm that added the bulletin or made the offer, and <code>ref</code> that bulletin's
+<code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given).</p>
 </div>
 
 <h2 id="portfolio">Portfolio</h2>
@@ -384,8 +392,11 @@ left out. Sorted by market and instrument.</p>
     "lastPrice": 10200000, "value": 51000000 } ],
   "totalValue": 51000000 }</code></pre>
 <p><code>lastPrice</code> is the latest trade price (<code>null</code> if the instrument never traded);
-<code>value</code> = position &times; last price, negative for a short position. Bulletin trades are not
-included.</p>
+<code>value</code> = position &times; last price, negative for a short position.</p>
+<p>Bulletin trades give positions of their own, per bulletin market and <code>instrument</code> text (the same
+text in two bulletin markets is two positions), with <code>"bulletin": true</code> and
+<code>"instrumentId": null</code>; their <code>lastPrice</code> is the latest bulletin trade price of that
+instrument text in that bulletin market.</p>
 </div>
 
 <h2 id="bulletin-markets">Bulletin markets</h2>
@@ -405,8 +416,8 @@ included.</p>
 </div>
 
 <h2 id="bulletins">Bulletins</h2>
-<p>A bulletin is an announcement in a bulletin market: a side, a free-text instrument, and optionally a price and a
-quantity. It is never matched automatically; other firms make offers on it. A bulletin stays until it is fully
+<p>A bulletin is an announcement in a bulletin market: a free-text instrument, and optionally a side, a price and a
+quantity. A bulletin without a side says that its owner will buy or sell: whoever makes an offer chooses. It is never matched automatically; other firms make offers on it. A bulletin stays until it is fully
 traded, withdrawn or expired.</p>
 <table>
     <tr><th>State</th><th>Meaning</th></tr>
@@ -424,7 +435,8 @@ traded, withdrawn or expired.</p>
     <tr><th>Field</th><th>Description</th></tr>
     <tr><td><code>marketId</code></td><td>Required. A bulletin market.</td></tr>
     <tr><td><code>instrument</code></td><td>Required. Free text, allowed by the market's <code>instruments</code>.</td></tr>
-    <tr><td><code>side</code></td><td>Required. <code>BUY</code> or <code>SELL</code>.</td></tr>
+    <tr><td><code>side</code> <span class="opt">optional</span></td><td><code>BUY</code> or <code>SELL</code>;
+        left out, <code>null</code> or empty means no side.</td></tr>
     <tr><td><code>price</code>, <code>quantity</code> <span class="opt">optional</span></td><td>Scaled; left out or
         0 means not given.</td></tr>
     <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
@@ -441,8 +453,10 @@ traded, withdrawn or expired.</p>
     "price": 100000000, "quantity": 500000, "remainingQuantity": 500000, "state": "OFFER_PENDING",
     "createTime": 1791900000000, "expiresAt": 1792504800000, "own": true,
     "user": "trader1", "userRef": "t1",
-    "offer": { "price": 95000000, "quantity": 200000, "expiresAt": 1791900060000, "own": false } } ] }</code></pre>
-<p>Everyone sees the public fields; a <code>price</code> or <code>quantity</code> of 0 means not given.
+    "offer": { "side": "BUY", "price": 95000000, "quantity": 200000, "expiresAt": 1791900060000, "own": false } } ] }</code></pre>
+<p>Everyone sees the public fields; a <code>price</code> or <code>quantity</code> of 0 means not given, a
+<code>side</code> of <code>null</code> that the bulletin has no side. The offer's <code>side</code> is the side of
+the firm that made it.
 <code>own</code> is true for your firm's bulletins, which also show <code>user</code> and <code>userRef</code>.
 A pending <code>offer</code> is shown to the bulletin's owner and to the firm that made it (with
 <code>own: true</code> and its <code>offerRef</code>).</p>
@@ -458,10 +472,14 @@ every trading status.</p>
 <h2 id="offers">Offers</h2>
 <div class="endpoint">
 <div class="sig"><span class="m POST">POST</span>/api/bulletins/{bulletinId}/offer</div>
-<p>Makes an offer on another firm's bulletin, on the opposite side. Requires the market to be <code>OPEN</code>,
-the bulletin to be <code>ACTIVE</code> and not your own.</p>
+<p>Makes an offer on another firm's bulletin. On a bulletin with a side the offer is on the opposite side; on a
+bulletin without a side you choose it. Requires the market to be <code>OPEN</code>, the bulletin to be
+<code>ACTIVE</code> and not your own.</p>
 <table>
     <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>side</code></td><td>Your side, <code>BUY</code> or <code>SELL</code>. Required on a bulletin
+        without a side. Optional on a bulletin with a side, where it must be the opposite of the bulletin's
+        side.</td></tr>
     <tr><td><code>price</code></td><td>Required. Scaled, &gt; 0.</td></tr>
     <tr><td><code>quantity</code></td><td>Required. Scaled, &gt; 0, at most the bulletin's remaining quantity (if it
         has a quantity).</td></tr>
@@ -471,6 +489,14 @@ the bulletin to be <code>ACTIVE</code> and not your own.</p>
 </table>
 <p>200: <code>{ "bulletinId": "...", "state": "OFFER_PENDING", "remainingQuantity": 500000 }</code></p>
 <p>The owner's firm is told by a <code>BulletinOffer</code> message; you get the answer the same way.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m DELETE">DELETE</span>/api/bulletins/{bulletinId}/offer</div>
+<p>Withdraws your firm's pending offer on a bulletin, before the owner answers it. Possible in every trading
+status. Both firms get a <code>BulletinOffer</code> with event <code>CANCELLED</code>, and the bulletin is
+<code>ACTIVE</code> again. 404 if your firm has no pending offer on the bulletin.</p>
+<p>200: <code>{ "bulletinId": "...", "state": "ACTIVE", "remainingQuantity": 500000 }</code></p>
 </div>
 
 <div class="endpoint">
@@ -528,8 +554,9 @@ for instrument messages, <code>instrumentId</code>, followed by the type's own f
         message.</td></tr>
     <tr><td><code>Bulletin</code></td><td>A bulletin is added, changes or is removed (anonymous; a market message
         without <code>instrumentId</code>).</td><td><code>event</code> (ADDED, UPDATED, REMOVED),
-        <code>bulletinId</code>, <code>instrument</code>, <code>side</code>, <code>price</code>,
-        <code>quantity</code>, <code>remainingQuantity</code>, <code>state</code>, <code>expiresAt</code></td></tr>
+        <code>bulletinId</code>, <code>instrument</code>, <code>side</code> (<code>null</code> when the bulletin
+        has no side), <code>price</code>, <code>quantity</code>, <code>remainingQuantity</code>, <code>state</code>,
+        <code>expiresAt</code></td></tr>
     <tr><td><code>BulletinTrade</code></td><td>A bulletin offer was accepted (anonymous).</td><td><code>bulletinId</code>,
         <code>instrument</code>, <code>price</code>, <code>quantity</code>, <code>tradeNo</code>,
         <code>tradeTime</code></td></tr>
@@ -547,7 +574,7 @@ for instrument messages, <code>instrumentId</code>, followed by the type's own f
         <code>user</code> and <code>userRef</code>.</td></tr>
     <tr><td><code>BulletinOffer</code></td><td>An offer on your bulletin (<code>role</code> OWNER), or your own offer
         (<code>role</code> OFFERER), changes.</td><td><code>event</code> (OFFERED, ACCEPTED, REJECTED, EXPIRED,
-        CANCELLED), <code>role</code>, <code>bulletinId</code>, <code>instrument</code>, <code>side</code> (the
+        CANCELLED: withdrawn by the offering firm, or the bulletin was deleted by the administrator), <code>role</code>, <code>bulletinId</code>, <code>instrument</code>, <code>side</code> (the
         offer's side), <code>price</code>, <code>quantity</code>, <code>expiresAt</code> (when the offer expires),
         and <code>userRef</code> (OWNER) or <code>offerRef</code> (OFFERER)</td></tr>
     <tr><td><code>OwnBulletinTrade</code></td><td>A bulletin trade your firm took part in.</td><td>As BulletinTrade,

@@ -72,7 +72,8 @@ public class AdminFirmEndpoints implements RestEndpoint {
 
         app.delete("/api/admin/firms/{id}", ctx -> {
             try {
-                mCtx.database.deleteFirm(ctx.pathParam("id"));
+                // Also deletes the firm's authorizations
+                if (mCtx.database.deleteFirm(ctx.pathParam("id")) != null) mCtx.reloadAuthorizations();
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid firm ID\"}");

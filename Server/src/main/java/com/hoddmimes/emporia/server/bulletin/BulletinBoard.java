@@ -26,22 +26,24 @@ import java.util.function.Consumer;
  * apart from the continuous and auction markets of the InstrumentCache; the board holds them and is
  * updated by the admin endpoints after each database write, like the cache. A bulletin names its
  * tradable item with a free text {@code instrument}, which must be one of the market's instruments
- * (a literal name or a /regex/), has a side and an optional price and quantity, and is never matched.
- * Another firm makes an offer on it; the owner's firm accepts or rejects the offer, or the offer
+ * (a literal name or a /regex/), has an optional side (BUY or SELL) and an optional price and
+ * quantity, and is never matched. Another firm makes an offer on it: on a bulletin with a side the offer
+ * is on the opposite side, on one without a side the offering firm chooses BUY or SELL; the owner's firm accepts or rejects the offer, or the offer
  * expires. An accepted offer is a trade at the offer's price and quantity. A bulletin holds at most
  * one pending offer.
  *
  * Bulletins can stay in the book for more than a trading day: they are stored in the Bulletins
  * collection and reloaded at startup, and removed (state EXPIRED) when the market's maxOrderTime
  * has passed since they were added. A pending offer is not stored and is lost on restart. Bulletin
- * trades are not stored. Accounts are firms, as for orders: any user of the owner's firm may withdraw
+ * trades are stored in the BulletinTrades collection (not in Trades). The offering firm may withdraw
+ * its pending offer at any time. Accounts are firms, as for orders: any user of the owner's firm may withdraw
  * the bulletin or answer an offer, and a firm can't make an offer on its own bulletin. Adding a
  * bulletin, making an offer and accepting one require the market to be OPEN; withdrawing and
  * rejecting are always allowed.
  *
  * Every change is published as bdx messages (market topics, prices and quantities in display units):
  * a public, anonymous {@code Bulletin} (event ADDED/UPDATED/REMOVED) and a private {@code OwnBulletin}
- * to the owner's firm; a private {@code BulletinOffer} (event OFFERED/ACCEPTED/REJECTED/EXPIRED) to both
+ * to the owner's firm; a private {@code BulletinOffer} (event OFFERED/ACCEPTED/REJECTED/EXPIRED/CANCELLED) to both
  * the owner's and the offering firm; and for a trade a public, anonymous {@code BulletinTrade} and a
  * private {@code OwnBulletinTrade} to each side's firm. The firms never learn who the other side is.
  * A public {@code MarketState} is published for each bulletin market at load and on each status change.
@@ -174,7 +176,9 @@ public class BulletinBoard {
         if (!tMarket.allows(pInstrument.trim())) {
             return Result.error(400, "Instrument '" + pInstrument.trim() + "' is not traded in bulletin market " + tMarket.name());
         }
-        if (!"BUY".equals(pSide) && !"SELL".equals(pSide)) return Result.error(400, "side must be BUY or SELL");
+        if (pSide != null && !"BUY".equals(pSide) && !"SELL".equals(pSide)) {
+            return Result.error(400, "side must be BUY or SELL, or not given");
+        }
         if (pPrice < 0)    return Result.error(400, "price must not be negative");
         if (pQuantity < 0) return Result.error(400, "quantity must not be negative");
 
@@ -186,7 +190,7 @@ public class BulletinBoard {
         scheduleExpiry(tEntry);
         publishBulletin(EVENT_ADDED, tEntry);
         cLog.info("Bulletin {} added by {}/{}: market {} {} '{}' {}@{}", tEntry.bulletinId, pFirm, pUser,
-                pMarketId, pSide, tEntry.instrument, unscale(pQuantity), unscale(pPrice));
+                pMarketId, (pSide != null) ? pSide : "BUY/SELL", tEntry.instrument, unscale(pQuantity), unscale(pPrice));
 
         JsonObject tOut = new JsonObject();
         tOut.addProperty("bulletinId", tEntry.bulletinId);
@@ -208,12 +212,20 @@ public class BulletinBoard {
         return Result.ok(200, idAndState(tEntry));
     }
 
-    /**
-     * An offer from another firm, at the given price and quantity, valid for pValidSeconds
-     * (DEFAULT_OFFER_VALID_SECONDS if 0). The quantity can't exceed the bulletin's remaining quantity.
-     */
+    /** An offer on the opposite side of the bulletin's side, see below. */
     public synchronized Result makeOffer(String pFirm, String pUser, String pBulletinId, long pPrice, long pQuantity,
                                          String pOfferRef, long pValidSeconds) {
+        return makeOffer(pFirm, pUser, pBulletinId, null, pPrice, pQuantity, pOfferRef, pValidSeconds);
+    }
+
+    /**
+     * An offer from another firm, on side pSide, at the given price and quantity, valid for pValidSeconds
+     * (DEFAULT_OFFER_VALID_SECONDS if 0). The quantity can't exceed the bulletin's remaining quantity. On a
+     * bulletin with a side the offer is on the opposite side (pSide may be null, otherwise it must be that
+     * side); on a bulletin without a side pSide (BUY or SELL) is required.
+     */
+    public synchronized Result makeOffer(String pFirm, String pUser, String pBulletinId, String pSide,
+                                         long pPrice, long pQuantity, String pOfferRef, long pValidSeconds) {
         BulletinEntry tEntry = mBulletins.get(pBulletinId);
         if (tEntry == null) return notFound(pBulletinId);
         String tErr = checkMarketOpen(tEntry.marketId);
@@ -228,12 +240,25 @@ public class BulletinBoard {
             return Result.error(400, "quantity exceeds the bulletin's remaining quantity " + tEntry.remainingQuantity);
         }
         if (pValidSeconds < 0) return Result.error(400, "validTime must not be negative");
+        String tOfferSide;
+        if (tEntry.side != null) {
+            tOfferSide = BulletinEntry.opposite(tEntry.side);
+            if (pSide != null && !pSide.equals(tOfferSide)) {
+                return Result.error(400, "side must be " + tOfferSide + ", the opposite of the bulletin's side " + tEntry.side);
+            }
+        } else {
+            if (!"BUY".equals(pSide) && !"SELL".equals(pSide)) {
+                return Result.error(400, "side (BUY or SELL) is required for an offer on a bulletin without a side");
+            }
+            tOfferSide = pSide;
+        }
 
         long tValidSeconds = (pValidSeconds > 0) ? pValidSeconds : DEFAULT_OFFER_VALID_SECONDS;
         long tOfferSeq     = ++tEntry.offerSeq;
         tEntry.state          = BulletinEntry.STATE_OFFER_PENDING;
         tEntry.offerFirm      = pFirm;
         tEntry.offerUser      = pUser;
+        tEntry.offerSide      = tOfferSide;
         tEntry.offerPrice     = pPrice;
         tEntry.offerQuantity  = pQuantity;
         tEntry.offerRef       = pOfferRef;
@@ -243,8 +268,24 @@ public class BulletinBoard {
 
         publishBulletin(EVENT_UPDATED, tEntry);
         publishOffer("OFFERED", tEntry);
-        cLog.info("Offer on bulletin {} by {}/{}: {}@{}, valid {} s", pBulletinId, pFirm, pUser,
+        cLog.info("Offer on bulletin {} by {}/{}: {} {}@{}, valid {} s", pBulletinId, pFirm, pUser, tOfferSide,
                 unscale(pQuantity), unscale(pPrice), tValidSeconds);
+        return Result.ok(200, idAndState(tEntry));
+    }
+
+    /**
+     * The offering firm withdraws its pending offer (BulletinOffer event CANCELLED); any user of the firm
+     * may, in any market state. Another firm's offer, or no pending offer, is reported as not found.
+     */
+    public synchronized Result withdrawOffer(String pFirm, String pBulletinId) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null) return notFound(pBulletinId);
+        if (!BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state) || !pFirm.equals(tEntry.offerFirm)) {
+            return Result.error(404, "Your firm has no pending offer on bulletin " + pBulletinId);
+        }
+        publishOffer("CANCELLED", tEntry);
+        cLog.info("Offer on bulletin {} withdrawn by {}", pBulletinId, pFirm);
+        reopen(tEntry);
         return Result.ok(200, idAndState(tEntry));
     }
 
@@ -305,6 +346,7 @@ public class BulletinBoard {
             boolean tOfferer = pFirm.equals(tEntry.offerFirm);
             if ((tOwner || tOfferer) && BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) {
                 JsonObject tOffer = new JsonObject();
+                tOffer.addProperty("side",      tEntry.offerSide);
                 tOffer.addProperty("price",     tEntry.offerPrice);
                 tOffer.addProperty("quantity",  tEntry.offerQuantity);
                 tOffer.addProperty("expiresAt", tEntry.offerExpiresAt);
@@ -373,6 +415,8 @@ public class BulletinBoard {
     private void trade(BulletinEntry pEntry) {
         String tTradeNo   = Long.toHexString(mIdBase + mNextTrade++);
         long   tTradeTime = System.currentTimeMillis();
+        // Stored (journaled) before anyone is told about the trade
+        if (mDatabase != null) mDatabase.saveBulletinTrade(tradeDocument(pEntry, tTradeNo, tTradeTime));
         mPublisher.accept(BdxMessage.market(BdxMessage.BULLETIN_TRADE, pEntry.marketId)
                 .put("bulletinId", pEntry.bulletinId)
                 .put("instrument", pEntry.instrument)
@@ -380,11 +424,29 @@ public class BulletinBoard {
                 .put("quantity",   unscale(pEntry.offerQuantity))
                 .put("tradeNo",    tTradeNo)
                 .put("tradeTime",  tTradeTime));
-        publishOwnTrade(pEntry, pEntry.ownerFirm, pEntry.side,         "userRef",  pEntry.userRef,  tTradeNo, tTradeTime);
-        publishOwnTrade(pEntry, pEntry.offerFirm, pEntry.offerSide(),  "offerRef", pEntry.offerRef, tTradeNo, tTradeTime);
+        publishOwnTrade(pEntry, pEntry.ownerFirm, pEntry.ownerTradeSide(), "userRef",  pEntry.userRef,  tTradeNo, tTradeTime);
+        publishOwnTrade(pEntry, pEntry.offerFirm, pEntry.offerSide,        "offerRef", pEntry.offerRef, tTradeNo, tTradeTime);
         cLog.info("Bulletin {} traded {}@{}: {} {} / {} {}", pEntry.bulletinId,
                 unscale(pEntry.offerQuantity), unscale(pEntry.offerPrice),
-                pEntry.ownerFirm, pEntry.side, pEntry.offerFirm, pEntry.offerSide());
+                pEntry.ownerFirm, pEntry.ownerTradeSide(), pEntry.offerFirm, pEntry.offerSide);
+    }
+
+    /** The BulletinTrades document of a trade on the pending offer (see Database.saveBulletinTrade). */
+    static Document tradeDocument(BulletinEntry pEntry, String pTradeNo, long pTradeTime) {
+        boolean tOwnerBuys = "BUY".equals(pEntry.ownerTradeSide());
+        return new Document("tradeNo",     pTradeNo)
+                .append("bulletinId",  pEntry.bulletinId)
+                .append("marketId",    pEntry.marketId)
+                .append("instrument",  pEntry.instrument)
+                .append("price",       pEntry.offerPrice)
+                .append("quantity",    pEntry.offerQuantity)
+                .append("tradeTime",   Database.formatTradeTime(pTradeTime))
+                .append("buyAccount",  tOwnerBuys ? pEntry.ownerFirm : pEntry.offerFirm)
+                .append("buyUser",     tOwnerBuys ? pEntry.ownerUser : pEntry.offerUser)
+                .append("buyRef",      tOwnerBuys ? pEntry.userRef   : pEntry.offerRef)
+                .append("sellAccount", tOwnerBuys ? pEntry.offerFirm : pEntry.ownerFirm)
+                .append("sellUser",    tOwnerBuys ? pEntry.offerUser : pEntry.ownerUser)
+                .append("sellRef",     tOwnerBuys ? pEntry.offerRef  : pEntry.userRef);
     }
 
     private void publishOwnTrade(BulletinEntry pEntry, String pFirm, String pSide, String pRefName, String pRef,
@@ -412,7 +474,7 @@ public class BulletinBoard {
         return pMessage.put("event",             pEvent)
                        .put("bulletinId",        pEntry.bulletinId)
                        .put("instrument",        pEntry.instrument)
-                       .put("side",              pEntry.side)
+                       .put("side",              pEntry.side)   // null when the bulletin has no side
                        .put("price",             (pEntry.price    > 0) ? unscale(pEntry.price)    : null)
                        .put("quantity",          (pEntry.quantity > 0) ? unscale(pEntry.quantity) : null)
                        .put("remainingQuantity", (pEntry.quantity > 0) ? unscale(pEntry.remainingQuantity) : null)
@@ -434,7 +496,7 @@ public class BulletinBoard {
                 .put("role",       pRole)
                 .put("bulletinId", pEntry.bulletinId)
                 .put("instrument", pEntry.instrument)
-                .put("side",       pEntry.offerSide())   // the offer's side
+                .put("side",       pEntry.offerSide)     // the offer's side
                 .put("price",      unscale(pEntry.offerPrice))
                 .put("quantity",   unscale(pEntry.offerQuantity))
                 .put("expiresAt",  pEntry.offerExpiresAt);

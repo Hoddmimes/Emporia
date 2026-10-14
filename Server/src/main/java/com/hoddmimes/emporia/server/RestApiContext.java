@@ -23,16 +23,18 @@ public class RestApiContext {
     public static final String MARKETS    = "markets";     // JsonArray of authorized market ids
     public static final String ADMIN_USER = "admin-user";
 
-    public final Database        database;
-    public final InstrumentCache instrumentCache;
-    public final BdxDistributor  bdx;
-    public final MatchingEngine  matchingEngine;
-    public final BulletinBoard   bulletinBoard;
-    public final JsonObject      configuration;
-    public final int             sessionInactivitySeconds;
+    public final Database           database;
+    public final InstrumentCache    instrumentCache;
+    public final AuthorizationCache authorizations;
+    public final BdxDistributor     bdx;
+    public final MatchingEngine     matchingEngine;
+    public final BulletinBoard      bulletinBoard;
+    public final JsonObject         configuration;
+    public final int                sessionInactivitySeconds;
 
     public RestApiContext(Database pDatabase,
                           InstrumentCache pInstrumentCache,
+                          AuthorizationCache pAuthorizations,
                           BdxDistributor pBdx,
                           MatchingEngine pMatchingEngine,
                           BulletinBoard pBulletinBoard,
@@ -40,6 +42,7 @@ public class RestApiContext {
                           int pSessionInactivitySeconds) {
         database                 = pDatabase;
         instrumentCache          = pInstrumentCache;
+        authorizations           = pAuthorizations;
         bdx                      = pBdx;
         matchingEngine           = pMatchingEngine;
         bulletinBoard            = pBulletinBoard;
@@ -79,22 +82,40 @@ public class RestApiContext {
     // ── Authorization helpers ─────────────────────────────────────────────
 
     /**
-     * Market ids the firm is authorized for. Authorizations are read from the
-     * database on each call; a "*" authorization expands to all cached markets
-     * and all bulletin markets.
+     * Market ids the firm is authorized for, from the AuthorizationCache; a "*" authorization expands
+     * to all cached markets and all bulletin markets.
      */
     public Set<Integer> authorizedMarkets(String pFirm) {
+        return authorizations.authorizedMarkets(pFirm, this::allMarketIds);
+    }
+
+    /** True if the firm is authorized for the market (a "*" authorization covers every existing market). */
+    public boolean isAuthorized(String pFirm, int pMarketId) {
+        return authorizations.isAuthorized(pFirm, pMarketId, this::marketExists);
+    }
+
+    private Set<Integer> allMarketIds() {
         Set<Integer> tMarkets = new TreeSet<>();
-        for (var tDoc : database.listAuthorizationsByFirm(pFirm)) {
-            String tMarket = tDoc.getString("market");
-            if ("*".equals(tMarket)) {
-                instrumentCache.getAllMarkets().forEach(m -> tMarkets.add(m.marketId()));
-                bulletinBoard.getMarkets().forEach(m -> tMarkets.add(m.marketId()));
-            } else {
-                try { tMarkets.add(Integer.parseInt(tMarket)); } catch (NumberFormatException ignored) {}
-            }
-        }
+        instrumentCache.getAllMarkets().forEach(m -> tMarkets.add(m.marketId()));
+        bulletinBoard.getMarkets().forEach(m -> tMarkets.add(m.marketId()));
         return tMarkets;
+    }
+
+    /**
+     * Reloads the AuthorizationCache from the database after an admin change of the authorizations
+     * (or a firm delete) and updates the connected WebSocket clients.
+     */
+    public void reloadAuthorizations() {
+        authorizations.load(database);
+        refreshClientAuthorizations();
+    }
+
+    /**
+     * Gives the connected WebSocket clients their firm's current authorized markets, after an
+     * authorization change or a market added or deleted (which changes what "*" covers).
+     */
+    public void refreshClientAuthorizations() {
+        bdx.updateAuthorizations(this::authorizedMarkets);
     }
 
     /** True if a market (continuous/auction or bulletin) has the id. */

@@ -28,7 +28,8 @@ import java.util.concurrent.TimeUnit;
  * changed by the scheduler, in any mode. Market hours are read from the cache on every check, so edits and
  * new markets take effect without a restart.
  *
- * At startup (normal mode) a market that is OPEN is set to CLOSED and has to be opened manually.
+ * At startup (normal mode) a market that is OPEN or PREOPEN is set to CLOSED and has to be opened
+ * manually (or waits for its next scheduled transition).
  * Test mode overrides the scheduler: every market that is not SUSPENDED is set to OPEN at
  * startup and no market hours are applied.
  *
@@ -86,7 +87,7 @@ public class MarketStateScheduler {
                 cLog.warn("Market {} ({}) has no valid market hours (open='{}' close='{}'), its state is not scheduled",
                         tMarket.marketId(), tMarket.name(), tMarket.open(), tMarket.close());
             }
-            if (OPEN.equals(tMarket.tradingStatus())) {
+            if (OPEN.equals(tMarket.tradingStatus()) || PREOPEN.equals(tMarket.tradingStatus())) {
                 setStatus(tMarket, CLOSED, "server startup, must be opened manually");
             }
         }

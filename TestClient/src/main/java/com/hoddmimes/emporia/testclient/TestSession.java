@@ -101,7 +101,7 @@ public class TestSession implements Runnable {
             try {
                 if (!login()) return;
                 loadInstruments();
-                if (mBdx) mBdxConnection = BdxConnection.open(mHttp, mUrl, name());
+                if (mBdx) mBdxConnection = BdxConnection.open(mHttp, mUrl, name(), mVerbose);
                 tReady = true;
             } finally {
                 // Counted down also when the setup failed, so the other sessions don't wait forever

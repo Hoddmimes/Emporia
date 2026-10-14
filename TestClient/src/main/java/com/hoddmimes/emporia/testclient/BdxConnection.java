@@ -23,14 +23,16 @@ class BdxConnection implements WebSocket.Listener {
     private static final long PING_SECONDS = 25;
 
     private final String        mName;
+    private final boolean       mVerbose;                         // print every broadcast message
     private final StringBuilder mPartial  = new StringBuilder();   // a message split over several frames
     private final AtomicInteger mReceived = new AtomicInteger();
     private final CountDownLatch mFirstPong = new CountDownLatch(1);
     private final ScheduledExecutorService mPinger;
     private WebSocket mSocket;
 
-    private BdxConnection(String pName) {
-        mName   = pName;
+    private BdxConnection(String pName, boolean pVerbose) {
+        mName    = pName;
+        mVerbose = pVerbose;
         mPinger = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "bdx-ping-" + pName);
             t.setDaemon(true);
@@ -43,10 +45,11 @@ class BdxConnection implements WebSocket.Listener {
      * has registered the connection for broadcasts. The WebSocket handshake can complete before the
      * server has registered it, so this sends a "ping" and waits for its "pong": the server handles
      * the ping only after its connect handler, which registers the client, has run. Broadcasts
-     * caused by the session's first transactions are then not missed.
+     * caused by the session's first transactions are then not missed. pVerbose: print every broadcast
+     * message received (otherwise they are only counted).
      */
-    static BdxConnection open(HttpClient pHttp, String pUrl, String pName) throws Exception {
-        BdxConnection tConnection = new BdxConnection(pName);
+    static BdxConnection open(HttpClient pHttp, String pUrl, String pName, boolean pVerbose) throws Exception {
+        BdxConnection tConnection = new BdxConnection(pName, pVerbose);
         URI tUri = URI.create(pUrl.replaceFirst("^http", "ws") + "/ws");
         tConnection.mSocket = pHttp.newWebSocketBuilder().buildAsync(tUri, tConnection).get(10, TimeUnit.SECONDS);
         tConnection.mSocket.sendText("ping", true);
@@ -82,7 +85,7 @@ class BdxConnection implements WebSocket.Listener {
                 mFirstPong.countDown();
             } else {
                 mReceived.incrementAndGet();
-                System.out.println("[" + mName + "] bdx: " + tMessage);
+                if (mVerbose) System.out.println("[" + mName + "] bdx: " + tMessage);
             }
         }
         pSocket.request(1);

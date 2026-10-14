@@ -58,6 +58,7 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
                     ctx.status(409).json("{\"error\":\"Authorization already exists for this firm and market\"}"); return;
                 }
                 String tMongoId = mCtx.database.createAuthorization(tFirm, tMarket);
+                mCtx.reloadAuthorizations();
                 ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
             } catch (Exception e) {
                 cLog.error("POST /api/authorizations failed", e);
@@ -68,6 +69,7 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
         app.delete("/api/admin/authorizations/{id}", ctx -> {
             try {
                 mCtx.database.deleteAuthorization(ctx.pathParam("id"));
+                mCtx.reloadAuthorizations();
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid authorization ID\"}");
