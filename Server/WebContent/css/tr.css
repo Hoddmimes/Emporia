@@ -528,3 +528,64 @@ body {
     font-size: 11px;
     color: var(--text-light);
 }
+
+/* ── Top menu: the button of the active view ───────────────────────── */
+.mv-actions .btn-outline.active {
+    background: #e8f0fe;
+    border-color: var(--primary);
+    color: var(--primary);
+    font-weight: 600;
+}
+
+/* ── Market list: trading status badges ────────────────────────────── */
+.mv-market-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mv-status {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    color: #fff;
+    background: var(--text-light);
+}
+.mv-status-open      { background: var(--success); }
+.mv-status-preopen   { background: #d68910; }
+.mv-status-closed    { background: #95a1b5; }
+.mv-status-suspended { background: var(--error); }
+
+/* ── Price table: bid/ask quantity and price columns, flashing changes */
+.mv-price-table td.mv-px   { font-weight: 600; }
+.mv-price-table .mv-px-bid { border-right: 1px solid var(--border); }
+.mv-price-table td.mv-last { font-weight: 600; }
+@keyframes mv-flash-up   { from { background: rgba(39,174,96,.35); } to { background: transparent; } }
+@keyframes mv-flash-down { from { background: rgba(192,57,43,.30); } to { background: transparent; } }
+@keyframes mv-flash      { from { background: rgba(26,111,212,.22); } to { background: transparent; } }
+.mv-price-table td.mv-flash-up   { animation: mv-flash-up 1.2s ease-out; }
+.mv-price-table td.mv-flash-down { animation: mv-flash-down 1.2s ease-out; }
+.mv-price-table td.mv-flash      { animation: mv-flash 1.2s ease-out; }
+
+/* ── Market dashboard: prices on top, own orders and trades below ──── */
+.mv-dash { display: flex; flex-direction: column; gap: 14px; height: 100%; }
+.mv-dash-prices { flex: 0 1 auto; max-height: 55%; overflow: auto; }
+.mv-dash-bottom {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+.mv-dash-bottom .mv-split-pane { min-height: 0; overflow: auto; }
+.mv-split-pane thead th, .mv-dash-prices thead th { position: sticky; top: 0; z-index: 1; }
+.mv-pane-hint { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+@media (max-width: 1000px) {
+    .mv-dash-bottom { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+}
+
+/* ── Information popups: accepted orders and own trades ────────────── */
+.mv-toast-info { cursor: pointer; width: 260px; padding: 8px 12px; gap: 1px; font-size: 12px; }
+.mv-toast-info .mv-toast-title { font-size: 13px; }
+.mv-toast-buy  { border-left-color: #1c7c44; }
+.mv-toast-buy .mv-toast-title  { color: #1c7c44; }
+.mv-toast-sell { border-left-color: var(--error); }
+.mv-toast-sell .mv-toast-title { color: var(--error); }
