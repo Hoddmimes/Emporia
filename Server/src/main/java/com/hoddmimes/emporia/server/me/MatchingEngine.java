@@ -12,6 +12,8 @@ import org.bson.Document;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Matching Engine — manages a set of orderbooks, one per instrument, created on first use.
@@ -19,15 +21,22 @@ import java.util.*;
  * broadcasts every orderbook change as bdx messages (see {@link BdxMessage}).
  *
  * Prices and quantities are longs scaled by {@link #SCALE}. Orders and books are held in memory
- * only. The public methods are synchronized: requests arrive concurrently from the REST endpoints
- * and the auction scheduler.
+ * only. Requests arrive concurrently from the REST endpoints and the auction scheduler; each order
+ * book has its own lock (synchronized on the Orderbook), held around every call into the book, so
+ * orders in different instruments are matched in parallel and those in one instrument one at a time.
+ * The state shared by the books is thread-safe: the book map, the index of resting orders (order id
+ * to instrument, so a modify or delete goes straight to its book; checked again under the book's
+ * lock) and today's trades. A request spanning several books (a market's or a firm's orders, a
+ * market's prices, the uncross at open) locks one book at a time, so it is no atomic snapshot of
+ * them all.
  *
  * Trades must survive a host failure, so they are stored durably, and nobody hears of a trade before
  * it is stored: the engine queues its bdx messages and trades in a {@link TradePersister} instead of
  * publishing and storing them itself. The persister stores each batch of trades with one journaled
- * write outside the engine's lock and then publishes the batch's messages in order. addOrder,
- * modifyOrder and triggerAuction wait, after leaving the lock, until a trade they made is stored
- * and its messages published (durable).
+ * write outside the books' locks and then publishes the batch's messages in order (a book's messages
+ * are queued under its lock, so they keep its seqNo order). addOrder, modifyOrder and triggerAuction
+ * wait, after leaving the book's lock, until a trade they made is stored and its messages published
+ * (durable).
  *
  * An order's account is the firm that owns it; a firm can only see, modify and delete its own orders.
  * Orders are only accepted (added or modified) while the market is OPEN or PREOPEN and the
@@ -48,16 +57,18 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     public static final String INSTRUMENT_SUSPENDED = "SUSPENDED";
 
     private final InstrumentCache         mInstrumentCache;
-    private final Map<Long, Orderbook>    mOrderbooks;
-    private final List<InternalTrade>     mTrades;
+    private final Map<Long, Orderbook>    mOrderbooks;   // instrument id -> book
+    private final Map<Long, Long>         mOrderIndex;   // resting order id -> instrument id
+    private final List<InternalTrade>     mTrades;       // today's trades, synchronized list
     private final Database mDB;
     private final TradePersister          mPersister;
 
     public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx) {
         mInstrumentCache = pInstrumentCache;
         mDB              = pDB;
-        mOrderbooks      = new HashMap<>();
-        mTrades          = new ArrayList<>();
+        mOrderbooks      = new ConcurrentHashMap<>();
+        mOrderIndex      = new ConcurrentHashMap<>();
+        mTrades          = Collections.synchronizedList(new ArrayList<>());
         // Without a database (unit tests) messages are published at once and trades are not stored
         mPersister       = new TradePersister((mDB != null) ? mDB::saveTrades : null, pBdx::publish);
         mPersister.startPersisting();
@@ -90,19 +101,25 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * getPrices show the day's prices before the first new order. The order books themselves are
      * empty, since orders are not stored.
      */
-    synchronized void restoreTrades(List<InternalTrade> pTrades) {
+    void restoreTrades(List<InternalTrade> pTrades) {
         mTrades.addAll(pTrades);
         List<InternalTrade> tOldestFirst = new ArrayList<>(pTrades);
         tOldestFirst.sort(Comparator.comparingLong(InternalTrade::getTradeTime));
-        Set<Long> tInstruments = new LinkedHashSet<>();
+        Set<Orderbook> tBooks = new LinkedHashSet<>();
         for (InternalTrade tTrade : tOldestFirst) {
             Orderbook tBook = getOrCreateOrderbook(tTrade.getInstrumentId());
             if (tBook == null) continue;   // the instrument no longer exists
-            tBook.restoreTrade(tTrade.getPrice(), tTrade.getQuantity());
-            tInstruments.add(tTrade.getInstrumentId());
+            synchronized (tBook) {
+                tBook.restoreTrade(tTrade.getPrice(), tTrade.getQuantity());
+            }
+            tBooks.add(tBook);
         }
-        tInstruments.forEach(this::orderbookChanged);
-        cLog.info("{} trade(s) of today reloaded, prices restored for {} instrument(s)", pTrades.size(), tInstruments.size());
+        for (Orderbook tBook : tBooks) {
+            synchronized (tBook) {
+                orderbookChanged(tBook.getInstrumentId());
+            }
+        }
+        cLog.info("{} trade(s) of today reloaded, prices restored for {} instrument(s)", pTrades.size(), tBooks.size());
     }
 
     /** Stores and publishes what is queued and stops the trade persister (server stop). */
@@ -111,17 +128,18 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     /**
-     * Runs pCall under the engine's lock and, if it traded, waits after leaving the lock until its
+     * Runs pCall under the book's lock and, if the book traded, waits after leaving the lock until its
      * trades are stored and its messages published, so the caller's answer never reports a trade that
-     * is not on disk. Other requests are matched meanwhile.
+     * is not on disk. Other requests, in this book too, are matched meanwhile.
      */
-    private <T> T durable(java.util.function.Supplier<T> pCall) {
+    private <T> T durable(Orderbook pBook, Supplier<T> pCall) {
         T    tResult;
         long tWaitFor = 0;
-        synchronized (this) {
-            long tTrades = mPersister.tradesQueued();
+        synchronized (pBook) {
+            int tExecutions = pBook.getExecutionCount();
             tResult = pCall.get();
-            if (mPersister.tradesQueued() != tTrades) tWaitFor = mPersister.lastQueued();
+            // Taken after this call's items were queued; may also cover other books' items queued before
+            if (pBook.getExecutionCount() != tExecutions) tWaitFor = mPersister.lastQueued();
         }
         mPersister.awaitReleased(tWaitFor);
         return tResult;
@@ -130,42 +148,46 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     // ── Public order operations ────────────────────────────────────────────
 
     public OrderResponse addOrder(AddOrderRequest pReq) {
-        return durable(() -> addOrderLocked(pReq));
-    }
-
-    private synchronized OrderResponse addOrderLocked(AddOrderRequest pReq) {
-        String tErr = checkTradingStatus(pReq.instrumentId());
+        String tErr = checkTradingStatus(pReq.instrumentId());   // before a book is created for the order
         if (tErr != null) return OrderResponse.error(tErr);
         Orderbook tBook = getOrCreateOrderbook(pReq.instrumentId());
         if (tBook == null) {
             return OrderResponse.error("Instrument not found: " + pReq.instrumentId());
         }
-        return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()));
+        return durable(tBook, () -> {
+            // Checked again under the book's lock, which the uncross at open takes after the status changed
+            String tStatusErr = checkTradingStatus(pReq.instrumentId());
+            if (tStatusErr != null) return OrderResponse.error(tStatusErr);
+            return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()));
+        });
     }
 
     /** Modifies one of the firm's resting orders; pPrice 0 keeps the current price, a null pUserRef the current userRef. */
     public OrderResponse modifyOrder(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
-        return durable(() -> modifyOrderLocked(pFirm, pOrderId, pPrice, pQuantity, pUserRef));
+        long      tOrderId = parseOrderId(pOrderId);
+        Orderbook tBook    = orderbookOf(tOrderId);
+        if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
+        return durable(tBook, () -> {
+            if (!isFirmsOrder(tBook, pFirm, tOrderId)) return OrderResponse.error("Order not found: " + pOrderId);
+            String tErr = checkTradingStatus(tBook.getInstrumentId());
+            if (tErr != null) return OrderResponse.error(tErr);
+            return tBook.modifyOrder(tOrderId, pPrice, pQuantity, pUserRef, isMarketOpen(tBook.getInstrumentId()));
+        });
     }
 
-    private synchronized OrderResponse modifyOrderLocked(String pFirm, String pOrderId, long pPrice, long pQuantity, String pUserRef) {
-        Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
+    public OrderResponse deleteOrder(String pFirm, String pOrderId) {
+        long      tOrderId = parseOrderId(pOrderId);
+        Orderbook tBook    = orderbookOf(tOrderId);
         if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
-        String tErr = checkTradingStatus(tBook.getInstrumentId());
-        if (tErr != null) return OrderResponse.error(tErr);
-        return tBook.modifyOrder(Long.parseUnsignedLong(pOrderId, 16), pPrice, pQuantity, pUserRef,
-                isMarketOpen(tBook.getInstrumentId()));
-    }
-
-    public synchronized OrderResponse deleteOrder(String pFirm, String pOrderId) {
-        Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
-        if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
-        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(tBook.getInstrumentId());
-        InstrumentCache.MarketEntry tMarket = (tInstrument != null) ? mInstrumentCache.getMarket(tInstrument.marketId()) : null;
-        if (tMarket != null && MARKET_CLOSED.equals(tMarket.tradingStatus())) {
-            return OrderResponse.error("Market " + tMarket.name() + " is CLOSED, orders can not be deleted");
+        synchronized (tBook) {
+            if (!isFirmsOrder(tBook, pFirm, tOrderId)) return OrderResponse.error("Order not found: " + pOrderId);
+            InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(tBook.getInstrumentId());
+            InstrumentCache.MarketEntry tMarket = (tInstrument != null) ? mInstrumentCache.getMarket(tInstrument.marketId()) : null;
+            if (tMarket != null && MARKET_CLOSED.equals(tMarket.tradingStatus())) {
+                return OrderResponse.error("Market " + tMarket.name() + " is CLOSED, orders can not be deleted");
+            }
+            return tBook.deleteOrder(tOrderId);
         }
-        return tBook.deleteOrder(Long.parseUnsignedLong(pOrderId, 16));
     }
 
     /**
@@ -173,14 +195,16 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * state (no authorization or trading status checks). Each removal is published like a normal
      * delete. Returns the number of orders deleted.
      */
-    public synchronized int deleteAllOrders(int pMarketId) {
+    public int deleteAllOrders(int pMarketId) {
         int tDeleted = 0;
         for (Orderbook tBook : mOrderbooks.values()) {
             if (marketIdOf(tBook.getInstrumentId()) != pMarketId) continue;
-            List<Order> tOrders = new ArrayList<>(tBook.getBuySide().getOrders());
-            tOrders.addAll(tBook.getSellSide().getOrders());
-            for (Order tOrder : tOrders) {
-                if (tBook.deleteOrder(tOrder.getOrderId()).success()) tDeleted++;
+            synchronized (tBook) {
+                List<Order> tOrders = new ArrayList<>(tBook.getBuySide().getOrders());
+                tOrders.addAll(tBook.getSellSide().getOrders());
+                for (Order tOrder : tOrders) {
+                    if (tBook.deleteOrder(tOrder.getOrderId()).success()) tDeleted++;
+                }
             }
         }
         cLog.info("Admin deleted all orders in market {}: {} order(s)", pMarketId, tDeleted);
@@ -188,27 +212,29 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     /** The number of resting orders in the market's order books. */
-    public synchronized int orderCount(int pMarketId) {
+    public int orderCount(int pMarketId) {
         int tCount = 0;
         for (Orderbook tBook : mOrderbooks.values()) {
             if (marketIdOf(tBook.getInstrumentId()) == pMarketId) {
-                tCount += tBook.getBuySideDepth() + tBook.getSellSideDepth();
+                synchronized (tBook) {
+                    tCount += tBook.getBuySideDepth() + tBook.getSellSideDepth();
+                }
             }
         }
         return tCount;
     }
 
     /** The instrument an order belongs to, if it is one of the firm's resting orders; 0 otherwise. */
-    public synchronized long getOrderInstrumentId(String pFirm, String pOrderId) {
-        Orderbook tBook = findOrderbookForOrder(pFirm, pOrderId);
-        return (tBook != null) ? tBook.getInstrumentId() : 0L;
+    public long getOrderInstrumentId(String pFirm, String pOrderId) {
+        long      tOrderId = parseOrderId(pOrderId);
+        Orderbook tBook    = orderbookOf(tOrderId);
+        if (tBook == null) return 0L;
+        synchronized (tBook) {
+            return isFirmsOrder(tBook, pFirm, tOrderId) ? tBook.getInstrumentId() : 0L;
+        }
     }
 
     public AuctionResult triggerAuction(long pInstrumentId) {
-        return durable(() -> triggerAuctionLocked(pInstrumentId));
-    }
-
-    private synchronized AuctionResult triggerAuctionLocked(long pInstrumentId) {
         Orderbook tBook = mOrderbooks.get(pInstrumentId);
         if (tBook == null) {
             return AuctionResult.error("No orderbook for instrument: " + pInstrumentId);
@@ -216,7 +242,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         if (!Orderbook.TYPE_AUCTION.equals(tBook.getType())) {
             return AuctionResult.error("Not an auction book: " + pInstrumentId);
         }
-        AuctionResult tResult = tBook.triggerAuction();
+        AuctionResult tResult = durable(tBook, tBook::triggerAuction);
         if (tResult.success()) {
             cLog.info("Auction triggered for instrument {}, matched volume: {}",
                     pInstrumentId, tResult.matchedVolume());
@@ -225,42 +251,51 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     /** The firm's resting orders, for one instrument or (pInstrumentId 0) all instruments. */
-    public synchronized JsonArray getOrdersByFirm(String pFirm, long pInstrumentId) {
+    public JsonArray getOrdersByFirm(String pFirm, long pInstrumentId) {
         return getOrdersByFirm(pFirm, 0, pInstrumentId);
     }
 
     /** The firm's resting orders, optionally only for one market and/or one instrument (0 = all). */
-    public synchronized JsonArray getOrdersByFirm(String pFirm, int pMarketId, long pInstrumentId) {
+    public JsonArray getOrdersByFirm(String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
         for (Map.Entry<Long, Orderbook> tEntry : mOrderbooks.entrySet()) {
             if (pInstrumentId != 0 && tEntry.getKey() != pInstrumentId) continue;
             if (pMarketId != 0 && marketIdOf(tEntry.getKey()) != pMarketId) continue;
             Orderbook tBook = tEntry.getValue();
-            for (Order tOrder : tBook.getBuySide().getOrders()) {
-                if (pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
-            }
-            for (Order tOrder : tBook.getSellSide().getOrders()) {
-                if (pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
+            synchronized (tBook) {
+                for (Order tOrder : tBook.getBuySide().getOrders()) {
+                    if (pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
+                }
+                for (Order tOrder : tBook.getSellSide().getOrders()) {
+                    if (pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
+                }
             }
         }
         return tResult;
     }
 
     /** The firm's trades, for one instrument or (pInstrumentId 0) all instruments. */
-    public synchronized JsonArray getTradesByFirm(String pFirm, long pInstrumentId) {
+    public JsonArray getTradesByFirm(String pFirm, long pInstrumentId) {
         return getTradesByFirm(pFirm, 0, pInstrumentId);
     }
 
     /** The firm's trades, oldest first, optionally only for one market and/or one instrument (0 = all). */
-    public synchronized JsonArray getTradesByFirm(String pFirm, int pMarketId, long pInstrumentId) {
-        return tradesForFirm(mTrades, pFirm, pMarketId, pInstrumentId);
+    public JsonArray getTradesByFirm(String pFirm, int pMarketId, long pInstrumentId) {
+        return tradesForFirm(todaysTrades(), pFirm, pMarketId, pInstrumentId);
+    }
+
+    /** A copy of today's trades, in the order they were made. */
+    private List<InternalTrade> todaysTrades() {
+        synchronized (mTrades) {
+            return new ArrayList<>(mTrades);
+        }
     }
 
     /**
      * The firm's side of the given trades, in their order and filtered like getTradesByFirm; used for
      * the stored trades of a chosen day (Database.fromTradeDocument).
      */
-    public synchronized JsonArray tradesForFirm(List<InternalTrade> pTrades, String pFirm, int pMarketId, long pInstrumentId) {
+    public JsonArray tradesForFirm(List<InternalTrade> pTrades, String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
         for (InternalTrade tTrade : pTrades) {
             if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
@@ -278,9 +313,9 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * The market's trades, oldest first, optionally for one instrument (0 = all): anonymous, without
      * firms, order ids or userRefs.
      */
-    public synchronized JsonArray getPublicTrades(int pMarketId, long pInstrumentId) {
+    public JsonArray getPublicTrades(int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
-        for (InternalTrade tTrade : mTrades) {
+        for (InternalTrade tTrade : todaysTrades()) {
             if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
             if (marketIdOf(tTrade.getInstrumentId()) != pMarketId) continue;
             JsonObject tJson = instrumentJson(tTrade.getInstrumentId());
@@ -299,33 +334,47 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * open, high, last and traded volume. A value is JSON null when there is none (empty book side, no
      * trades yet, or no order book yet).
      */
-    public synchronized JsonArray getPrices(int pMarketId) {
+    public JsonArray getPrices(int pMarketId) {
         List<InstrumentCache.InstrumentEntry> tInstruments = new ArrayList<>(mInstrumentCache.getInstrumentsByMarket(pMarketId));
         tInstruments.sort(Comparator.comparing(InstrumentCache.InstrumentEntry::name));
         JsonArray tResult = new JsonArray();
         for (InstrumentCache.InstrumentEntry tInstrument : tInstruments) {
-            Orderbook tBook     = mOrderbooks.get(tInstrument.instrumentId());
-            Order     tBestBuy  = (tBook != null) ? tBook.getBuySide().peek()  : null;
-            Order     tBestSell = (tBook != null) ? tBook.getSellSide().peek() : null;
-            boolean   tTraded   = tBook != null && tBook.getTradedVolume() > 0;
-            JsonObject tJson = instrumentJson(tInstrument.instrumentId());
-            tJson.addProperty("bidVol", tBestBuy  != null ? tBook.getBestPriceVolume(Order.Side.BUY)  : null);
-            tJson.addProperty("bidPx",  tBestBuy  != null ? tBestBuy.getPrice()                       : null);
-            tJson.addProperty("askVol", tBestSell != null ? tBook.getBestPriceVolume(Order.Side.SELL) : null);
-            tJson.addProperty("askPx",  tBestSell != null ? tBestSell.getPrice()                      : null);
-            tJson.addProperty("open",   tTraded ? tBook.getOpenPrice()      : null);
-            tJson.addProperty("high",   tTraded ? tBook.getHighPrice()      : null);
-            tJson.addProperty("last",   tTraded ? tBook.getLastTradePrice() : null);
-            tJson.addProperty("volume", (tBook != null) ? tBook.getTradedVolume() : 0L);
-            tResult.add(tJson);
+            Orderbook tBook = mOrderbooks.get(tInstrument.instrumentId());
+            if (tBook == null) {
+                tResult.add(priceJson(tInstrument.instrumentId(), null));
+                continue;
+            }
+            synchronized (tBook) {
+                tResult.add(priceJson(tInstrument.instrumentId(), tBook));
+            }
         }
         return tResult;
     }
 
+    /** One instrument's entry in getPrices; pBook (null if none) locked by the caller. */
+    private JsonObject priceJson(long pInstrumentId, Orderbook pBook) {
+        Order     tBestBuy  = (pBook != null) ? pBook.getBuySide().peek()  : null;
+        Order     tBestSell = (pBook != null) ? pBook.getSellSide().peek() : null;
+        boolean   tTraded   = pBook != null && pBook.getTradedVolume() > 0;
+        JsonObject tJson = instrumentJson(pInstrumentId);
+        tJson.addProperty("bidVol", tBestBuy  != null ? pBook.getBestPriceVolume(Order.Side.BUY)  : null);
+        tJson.addProperty("bidPx",  tBestBuy  != null ? tBestBuy.getPrice()                       : null);
+        tJson.addProperty("askVol", tBestSell != null ? pBook.getBestPriceVolume(Order.Side.SELL) : null);
+        tJson.addProperty("askPx",  tBestSell != null ? tBestSell.getPrice()                      : null);
+        tJson.addProperty("open",   tTraded ? pBook.getOpenPrice()      : null);
+        tJson.addProperty("high",   tTraded ? pBook.getHighPrice()      : null);
+        tJson.addProperty("last",   tTraded ? pBook.getLastTradePrice() : null);
+        tJson.addProperty("volume", (pBook != null) ? pBook.getTradedVolume() : 0L);
+        return tJson;
+    }
+
     /** The instrument's last traded price today (scaled), 0 if it has not traded today. */
-    public synchronized long getLastTradePrice(long pInstrumentId) {
+    public long getLastTradePrice(long pInstrumentId) {
         Orderbook tBook = mOrderbooks.get(pInstrumentId);
-        return (tBook != null && tBook.getTradedVolume() > 0) ? tBook.getLastTradePrice() : 0L;
+        if (tBook == null) return 0L;
+        synchronized (tBook) {
+            return (tBook.getTradedVolume() > 0) ? tBook.getLastTradePrice() : 0L;
+        }
     }
 
     /**
@@ -334,16 +383,24 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * quantity of pFirm's orders at the level), plus open, high, last (JSON null if not traded today) and
      * volume. Prices and quantities scaled. Empty sides if the instrument has no order book yet.
      */
-    public synchronized JsonObject getOrderbook(long pInstrumentId, String pFirm) {
-        Orderbook tBook   = mOrderbooks.get(pInstrumentId);
-        boolean   tTraded = tBook != null && tBook.getTradedVolume() > 0;
+    public JsonObject getOrderbook(long pInstrumentId, String pFirm) {
+        Orderbook tBook = mOrderbooks.get(pInstrumentId);
+        if (tBook == null) return orderbookJson(pInstrumentId, null, pFirm);
+        synchronized (tBook) {
+            return orderbookJson(pInstrumentId, tBook, pFirm);
+        }
+    }
+
+    /** getOrderbook's snapshot; pBook (null if none) locked by the caller. */
+    private JsonObject orderbookJson(long pInstrumentId, Orderbook pBook, String pFirm) {
+        boolean   tTraded = pBook != null && pBook.getTradedVolume() > 0;
         JsonObject tJson = instrumentJson(pInstrumentId);
-        tJson.add("bids", priceLevels(tBook != null ? tBook.getBuySide().getOrders()  : List.of(), pFirm));
-        tJson.add("asks", priceLevels(tBook != null ? tBook.getSellSide().getOrders() : List.of(), pFirm));
-        tJson.addProperty("open",   tTraded ? tBook.getOpenPrice()      : null);
-        tJson.addProperty("high",   tTraded ? tBook.getHighPrice()      : null);
-        tJson.addProperty("last",   tTraded ? tBook.getLastTradePrice() : null);
-        tJson.addProperty("volume", (tBook != null) ? tBook.getTradedVolume() : 0L);
+        tJson.add("bids", priceLevels(pBook != null ? pBook.getBuySide().getOrders()  : List.of(), pFirm));
+        tJson.add("asks", priceLevels(pBook != null ? pBook.getSellSide().getOrders() : List.of(), pFirm));
+        tJson.addProperty("open",   tTraded ? pBook.getOpenPrice()      : null);
+        tJson.addProperty("high",   tTraded ? pBook.getHighPrice()      : null);
+        tJson.addProperty("last",   tTraded ? pBook.getLastTradePrice() : null);
+        tJson.addProperty("volume", (pBook != null) ? pBook.getTradedVolume() : 0L);
         tJson.addProperty("time",   System.currentTimeMillis());
         return tJson;
     }
@@ -371,17 +428,19 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     // ── MatchingEngineCallbackIf ───────────────────────────────────────────
     // Every book change is broadcast: an anonymous order book event (with the book's sequence
     // number) to all clients authorized for the market, an OwnOrder/OwnTrade to the owning firm,
-    // and a PriceUpdate snapshot after each request.
+    // and a PriceUpdate snapshot after each request. The books call them under their own lock.
 
     @Override
     public void orderAdded(Order pOrder, long pSeqNo) {
         cLog.debug("Bdx Order added: {}", pOrder);
+        mOrderIndex.put(pOrder.getOrderId(), pOrder.getInstrumentId());
         publishOrder(BdxMessage.ADD_ORDER, "ADDED", pOrder, pSeqNo);
     }
 
     @Override
     public void orderRemoved(Order pOrder, long pSeqNo) {
         cLog.debug("Bdx Order removed: {}", pOrder);
+        mOrderIndex.remove(pOrder.getOrderId());
         publishOrder(BdxMessage.REMOVE_ORDER, "REMOVED", pOrder, pSeqNo);
     }
 
@@ -497,12 +556,17 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     }
 
     /** Uncrosses the market's continuous books, which may hold crossing orders collected in PREOPEN. */
-    private synchronized void uncrossAtOpen(int pMarketId) {
+    private void uncrossAtOpen(int pMarketId) {
         for (Orderbook tBook : mOrderbooks.values()) {
             InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(tBook.getInstrumentId());
             if (tInstrument == null || tInstrument.marketId() != pMarketId) continue;
             if (Orderbook.TYPE_AUCTION.equals(tBook.getType())) continue;
-            AuctionResult tResult = tBook.uncross();
+            // The status is already OPEN: an order that got the lock first was put in the book without
+            // matching (PREOPEN) and is uncrossed here, one that gets it after this matches at once
+            AuctionResult tResult;
+            synchronized (tBook) {
+                tResult = tBook.uncross();
+            }
             if (tResult.matchedVolume() > 0) {
                 cLog.info("Market {} opened: instrument {} uncrossed at {}, matched volume: {}",
                         pMarketId, tBook.getInstrumentId(), tResult.clearingPrice(), tResult.matchedVolume());
@@ -523,24 +587,34 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             cLog.warn("Instrument {} not found in cache", pInstrumentId);
             return null;
         }
-        InstrumentCache.MarketEntry tMarket = mInstrumentCache.getMarket(tEntry.marketId());
-        String tType = tMarket != null ? tMarket.type() : "CONTINUOUS";
-        tBook = new Orderbook(pInstrumentId, tType, tEntry.tickSize(), tEntry.lotSize(), this);
-        mOrderbooks.put(pInstrumentId, tBook);
-        cLog.info("Orderbook created for instrument {} ({})", pInstrumentId, tType);
-        return tBook;
+        // Two first orders arriving at once get the same book
+        return mOrderbooks.computeIfAbsent(pInstrumentId, id -> {
+            InstrumentCache.MarketEntry tMarket = mInstrumentCache.getMarket(tEntry.marketId());
+            String tType = tMarket != null ? tMarket.type() : "CONTINUOUS";
+            cLog.info("Orderbook created for instrument {} ({})", id, tType);
+            return new Orderbook(id, tType, tEntry.tickSize(), tEntry.lotSize(), this);
+        });
     }
 
-    /** The book holding the given order, if the order exists and belongs to the firm. */
-    private Orderbook findOrderbookForOrder(String pFirm, String pOrderId) {
-        long tOrderId;
-        try { tOrderId = Long.parseUnsignedLong(pOrderId, 16); }
-        catch (NumberFormatException e) { return null; }
-        for (Orderbook tBook : mOrderbooks.values()) {
-            Order tOrder = tBook.getOrder(tOrderId);
-            if (tOrder != null) return pFirm.equals(tOrder.getAccount()) ? tBook : null;
-        }
-        return null;
+    /** An order id from its hex string, 0 (no order) if it is not one. */
+    private static long parseOrderId(String pOrderId) {
+        try { return Long.parseUnsignedLong(pOrderId, 16); }
+        catch (NumberFormatException | NullPointerException e) { return 0L; }
+    }
+
+    /**
+     * The book the order rests in according to the order index, null if none. The order may be removed
+     * before the caller gets the book's lock, so the caller checks it again under the lock (isFirmsOrder).
+     */
+    private Orderbook orderbookOf(long pOrderId) {
+        Long tInstrumentId = mOrderIndex.get(pOrderId);
+        return (tInstrumentId != null) ? mOrderbooks.get(tInstrumentId) : null;
+    }
+
+    /** True if the order rests in the book and belongs to the firm; the caller holds the book's lock. */
+    private static boolean isFirmsOrder(Orderbook pBook, String pFirm, long pOrderId) {
+        Order tOrder = pBook.getOrder(pOrderId);
+        return tOrder != null && tOrder.getAccount().equals(pFirm);
     }
 
     private JsonObject instrumentJson(long pInstrumentId) {

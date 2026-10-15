@@ -16,6 +16,9 @@ import java.util.TreeSet;
  * matches incoming orders immediately, unless told to only collect them (market in
  * PREOPEN); an AUCTION book always collects orders. Collected orders are matched by
  * {@link #uncross()} at a single clearing price.
+ *
+ * Not thread-safe by itself: the MatchingEngine locks the book (synchronized on the Orderbook
+ * object) around every call, so orders in different books are matched in parallel.
  */
 public class Orderbook {
 
@@ -315,6 +318,7 @@ public class Orderbook {
     public long              getOpenPrice()       { return mOpenPrice; }
     public long              getHighPrice()       { return mHighPrice; }
     public long              getTradedVolume()    { return mTradedVolume; }
+    public int               getExecutionCount()  { return mExecutionCount; }
     public OrderMapInterface getBuySide()         { return mBuySide; }
     public OrderMapInterface getSellSide()        { return mSellSide; }
 

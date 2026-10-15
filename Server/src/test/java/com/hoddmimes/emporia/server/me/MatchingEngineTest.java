@@ -8,6 +8,14 @@ import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class MatchingEngineTest {
@@ -398,5 +406,54 @@ class MatchingEngineTest {
         assertEquals(1100 * S / 100, tPrices.get("open").getAsLong());
         assertEquals(1200 * S / 100, tPrices.get("high").getAsLong());
         assertEquals(6 * S,          tPrices.get("volume").getAsLong());
+    }
+
+    @Test
+    void concurrentOrdersInSeveralBooksKeepEveryBookConsistent() throws Exception {
+        long tCont2 = (1L << 32) | 2;
+        mCache.putInstrument(instrument(tCont2, 1, "Barley", "ACTIVE"));
+        long[] tInstruments = { CONT, tCont2 };
+        int tThreads = 8, tOrdersPerThread = 500;
+
+        // Per instrument: quantity submitted and quantity removed by deletes
+        AtomicLong[] tSubmitted = { new AtomicLong(), new AtomicLong() };
+        AtomicLong[] tDeleted   = { new AtomicLong(), new AtomicLong() };
+        ExecutorService tPool = Executors.newFixedThreadPool(tThreads);
+        List<Future<?>> tDone = new ArrayList<>();
+        for (int t = 0; t < tThreads; t++) {
+            String tFirm = "F" + t;
+            tDone.add(tPool.submit(() -> {
+                for (int i = 0; i < tOrdersPerThread; i++) {
+                    int        tIdx  = i % 2;
+                    Order.Side tSide = ((i / 2) % 2 == 0) ? Order.Side.BUY : Order.Side.SELL;
+                    long       tQty  = 1 + (i % 3);
+                    OrderResponse tRsp = add(tInstruments[tIdx], tSide, 10.00, tQty, tFirm);
+                    assertTrue(tRsp.success(), tRsp.message());
+                    tSubmitted[tIdx].addAndGet(tQty * S);
+                    // Delete every third resting order; another thread may have filled it meanwhile
+                    if (tRsp.inserted() && i % 3 == 0) {
+                        OrderResponse tDel = mEngine.deleteOrder(tFirm, tRsp.orderId());
+                        if (tDel.success()) tDeleted[tIdx].addAndGet(tDel.remaining());
+                    }
+                }
+            }));
+        }
+        for (Future<?> f : tDone) f.get(30, TimeUnit.SECONDS);
+        tPool.shutdown();
+
+        for (int i = 0; i < tInstruments.length; i++) {
+            long tResting = 0;
+            for (int t = 0; t < tThreads; t++) {
+                for (var o : mEngine.getOrdersByFirm("F" + t, tInstruments[i])) {
+                    tResting += o.getAsJsonObject().get("quantity").getAsLong();
+                }
+            }
+            long tTraded = mEngine.getOrderbook(tInstruments[i], "F0").get("volume").getAsLong();
+            // Every submitted unit is traded (counted on both sides), resting or deleted
+            assertEquals(tSubmitted[i].get(), 2 * tTraded + tResting + tDeleted[i].get(), "instrument " + i);
+            // All orders are at one price, so a book never rests both sides
+            JsonObject tBook = mEngine.getOrderbook(tInstruments[i], "F0");
+            assertTrue(tBook.getAsJsonArray("bids").isEmpty() || tBook.getAsJsonArray("asks").isEmpty());
+        }
     }
 }

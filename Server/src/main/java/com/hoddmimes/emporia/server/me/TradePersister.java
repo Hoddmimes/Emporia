@@ -14,7 +14,8 @@ import java.util.function.Consumer;
  * The matching engine's output: its broadcast (bdx) messages and trades, in the order the engine
  * produced them. No trade is lost on a host failure and nobody hears of a trade before it is on disk:
  *
- * - The engine queues every message and trade here (under its lock) instead of publishing or
+ * - The engine queues every message and trade here (under the order book's lock, from several
+ *   threads when several books are busy; each book's items stay in order) instead of publishing or
  *   storing them itself, so matching never waits for the disk.
  * - The persister thread takes everything queued so far as one batch, stores the batch's trades
  *   with one durable write (the store function, Database.saveTrades: journaled, i.e. fsynced, so one
