@@ -4,10 +4,26 @@ import java.math.BigDecimal;
 
 /**
  * A new order for the matching engine. Price and quantity are longs scaled by
- * {@link MatchingEngine#SCALE}; the account is the firm that owns the order.
+ * {@link MatchingEngine#SCALE}; the account is the firm that owns the order. The optional
+ * clientAccount (free text) is the firm's own account for the order, carried on to its trades, so
+ * the firm's positions can be kept per client account; an order without one gets
+ * {@link #DEFAULT_CLIENT_ACCOUNT}.
  */
 public record AddOrderRequest(long instrumentId, Order.Side side, long price, long quantity,
-                              String account, String userRef) {
+                              String account, String userRef, String clientAccount) {
+
+    /** The client account of an order entered without one (and of trades stored before client accounts). */
+    public static final String DEFAULT_CLIENT_ACCOUNT = "omni";
+
+    public AddOrderRequest {
+        if (clientAccount == null) clientAccount = DEFAULT_CLIENT_ACCOUNT;
+    }
+
+    /** An order without a client account: it gets the default one. */
+    public AddOrderRequest(long instrumentId, Order.Side side, long price, long quantity,
+                           String account, String userRef) {
+        this(instrumentId, side, price, quantity, account, userRef, null);
+    }
 
     /**
      * A readable form for logging: the instrument as marketId/sequence (its id's high and low
@@ -21,7 +37,8 @@ public record AddOrderRequest(long instrumentId, Order.Side side, long price, lo
                 + ", price="    + unscaled(price)
                 + ", quantity=" + unscaled(quantity)
                 + ", account="  + account
-                + ", userRef="  + userRef + "]";
+                + ", userRef="  + userRef
+                + (DEFAULT_CLIENT_ACCOUNT.equals(clientAccount) ? "" : ", clientAccount=" + clientAccount) + "]";
     }
 
     // Exact decimal form of a scaled value, without trailing zeros (10550000 -> 105.5, 1000000 -> 10)

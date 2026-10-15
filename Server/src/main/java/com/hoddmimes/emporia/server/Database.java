@@ -9,6 +9,7 @@ import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.Order;
 import org.apache.logging.log4j.LogManager;
@@ -593,14 +594,16 @@ public class Database {
                 .append("buyOrderId",    Long.toHexString(tBuy.getOrderId()))
                 .append("buyAccount",    tBuy.getAccount())
                 .append("buyUserRef",    tBuy.getUserRef())
+                .append("buyClientAccount",  tBuy.getClientAccount())
                 .append("sellOrderId",   Long.toHexString(tSell.getOrderId()))
                 .append("sellAccount",   tSell.getAccount())
-                .append("sellUserRef",   tSell.getUserRef());
+                .append("sellUserRef",   tSell.getUserRef())
+                .append("sellClientAccount", tSell.getClientAccount());
     }
 
     /**
      * Converts a Trades document (as stored by saveTrade) back to an InternalTrade, with its stored
-     * trade number and time. The document holds only the order ids, accounts and user refs of the
+     * trade number and time. The document holds only the order ids, accounts, user refs and client accounts of the
      * two orders, so the trade's buy and sell orders are stand-ins (see InternalTrade).
      */
     public static InternalTrade fromTradeDocument(Document pDoc) {
@@ -613,9 +616,17 @@ public class Database {
                 Long.parseUnsignedLong(pDoc.getString("buyOrderId"), 16),
                 pDoc.getString("buyAccount"),
                 pDoc.getString("buyUserRef"),
+                clientAccountOf(pDoc, "buyClientAccount"),
                 Long.parseUnsignedLong(pDoc.getString("sellOrderId"), 16),
                 pDoc.getString("sellAccount"),
-                pDoc.getString("sellUserRef"));
+                pDoc.getString("sellUserRef"),
+                clientAccountOf(pDoc, "sellClientAccount"));
+    }
+
+    /** A side's client account in a Trades document; the default one in trades stored before client accounts. */
+    public static String clientAccountOf(Document pDoc, String pField) {
+        String tAccount = pDoc.getString(pField);
+        return (tAccount != null) ? tAccount : AddOrderRequest.DEFAULT_CLIENT_ACCOUNT;
     }
 
     /**

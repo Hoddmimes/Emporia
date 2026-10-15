@@ -13,15 +13,22 @@ import io.javalin.http.Context;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.regex.Pattern;
+
 /**
  * Order entry for trading users. The order's account is always the user's firm, and a firm
  * can only see, modify and delete its own orders. Adding or modifying an order requires the
  * firm to be authorized for the instrument's market. Prices and quantities are longs scaled
- * by MatchingEngine.SCALE.
+ * by MatchingEngine.SCALE. An order may have a clientAccount, the firm's own account for it (free
+ * text, see CLIENT_ACCOUNT; "omni" if not given), carried on to its trades for positions per client
+ * account; it is set when the order is added and can't be changed by a modify.
  */
 public class OrderEndpoints implements RestEndpoint {
 
     private static final Logger cLog = LogManager.getLogger(OrderEndpoints.class);
+
+    /** A client account: 1-32 letters, digits, spaces or . _ - / (after trimming), case-sensitive. */
+    static final Pattern CLIENT_ACCOUNT = Pattern.compile("[A-Za-z0-9 ._/-]{1,32}");
 
     private final RestApiContext mCtx;
 
@@ -52,8 +59,17 @@ public class OrderEndpoints implements RestEndpoint {
             catch (IllegalArgumentException e) { error(ctx, 400, "side must be BUY or SELL"); return; }
 
             String tUserRef = tBody.has("userRef") ? tBody.get("userRef").getAsString() : null;
+            String tClientAccount = null;   // not given or empty: the default one (AddOrderRequest)
+            if (tBody.has("clientAccount") && !tBody.get("clientAccount").isJsonNull()) {
+                tClientAccount = tBody.get("clientAccount").getAsString().trim();
+                if (tClientAccount.isEmpty()) {
+                    tClientAccount = null;
+                } else if (!CLIENT_ACCOUNT.matcher(tClientAccount).matches()) {
+                    error(ctx, 400, "clientAccount must be 1-32 letters, digits, spaces or . _ - /"); return;
+                }
+            }
             OrderResponse tRsp = mCtx.matchingEngine.addOrder(new AddOrderRequest(tInstrumentId, tSide,
-                    tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(), tFirm, tUserRef));
+                    tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(), tFirm, tUserRef, tClientAccount));
             respond(ctx, 201, tRsp);
         });
 
@@ -66,6 +82,7 @@ public class OrderEndpoints implements RestEndpoint {
             String tFirm    = firm(ctx);
             String tOrderId = ctx.pathParam("orderId");
             if (!tBody.has("quantity")) { error(ctx, 400, "quantity is required"); return; }
+            if (tBody.has("clientAccount")) { error(ctx, 400, "clientAccount can not be changed by a modify"); return; }
 
             long tInstrumentId = mCtx.matchingEngine.getOrderInstrumentId(tFirm, tOrderId);
             if (tInstrumentId == 0) { error(ctx, 404, "Order not found: " + tOrderId); return; }

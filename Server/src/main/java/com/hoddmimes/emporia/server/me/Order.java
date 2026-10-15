@@ -24,6 +24,7 @@ public class Order implements Comparable<Order> {
     private String mUserRef;
     private long   mOrderId;
     private String mAccount;
+    private String mClientAccount;   // the firm's own account for the order (AddOrderRequest.DEFAULT_CLIENT_ACCOUNT if not given)
 
     /** Construct from an incoming order request. */
     public Order(AddOrderRequest pReq) {
@@ -33,6 +34,7 @@ public class Order implements Comparable<Order> {
         mSide         = pReq.side();
         mUserRef      = pReq.userRef();
         mAccount      = pReq.account();
+        mClientAccount = pReq.clientAccount();
         mCreationTime = System.currentTimeMillis();
         mOrderId      = OrderId.get(mSide);
     }
@@ -52,7 +54,7 @@ public class Order implements Comparable<Order> {
 
     /** An order with a known order id, e.g. one side of a trade read back from the database. */
     Order(long pOrderId, long pInstrumentId, long pPrice, long pQuantity, Side pSide,
-          String pAccount, String pUserRef, long pCreationTime) {
+          String pAccount, String pUserRef, String pClientAccount, long pCreationTime) {
         mOrderId      = pOrderId;
         mInstrumentId = pInstrumentId;
         mPrice        = pPrice;
@@ -60,6 +62,7 @@ public class Order implements Comparable<Order> {
         mSide         = pSide;
         mAccount      = pAccount;
         mUserRef      = pUserRef;
+        mClientAccount = pClientAccount;
         mCreationTime = pCreationTime;
     }
 
@@ -100,6 +103,7 @@ public class Order implements Comparable<Order> {
     public String getUserRef()      { return mUserRef; }
     public long   getOrderId()      { return mOrderId; }
     public String getAccount()      { return mAccount; }
+    public String getClientAccount() { return mClientAccount; }
 
     public void setQuantity(long pQuantity) { mQuantity = pQuantity; }
     public void setPrice(long pPrice)       { mPrice = pPrice; }
@@ -111,6 +115,7 @@ public class Order implements Comparable<Order> {
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         return "inst:" + mInstrumentId + " " + mQuantity + "@" + mPrice
                 + " " + mSide + " acc:" + mAccount
+                + " client:" + mClientAccount
                 + " ref:" + mUserRef
                 + " t:" + sdf.format(mCreationTime)
                 + " id:" + Long.toHexString(mOrderId);

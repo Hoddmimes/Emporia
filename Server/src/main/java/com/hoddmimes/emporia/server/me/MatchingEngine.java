@@ -502,7 +502,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         mPersister.publish(orderMessage(BdxMessage.instrument(pType, tMarketId, pOrder.getInstrumentId()), pOrder, pSeqNo));
         mPersister.publish(orderMessage(BdxMessage.forFirm(BdxMessage.OWN_ORDER, tMarketId, pOrder.getInstrumentId(), pOrder.getAccount()), pOrder, pSeqNo)
                 .put("event",   pEvent)
-                .put("userRef", pOrder.getUserRef()));
+                .put("userRef", pOrder.getUserRef())
+                .put("clientAccount", pOrder.getClientAccount()));
     }
 
     private static BdxMessage orderMessage(BdxMessage pMessage, Order pOrder, long pSeqNo) {
@@ -523,7 +524,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
                 .put("tradeNo",   Long.toHexString(pTrade.getTradeNo()))
                 .put("tradeTime", pTrade.getTradeTime())
                 .put("orderId",   Long.toHexString(tOrder.getOrderId()))
-                .put("userRef",   tOrder.getUserRef()));
+                .put("userRef",   tOrder.getUserRef())
+                .put("clientAccount", tOrder.getClientAccount()));
     }
 
     private int marketIdOf(long pInstrumentId) {
@@ -640,6 +642,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tJson.addProperty("account",  pOrder.getAccount());
         tJson.addProperty("orderTime", pOrder.getCreationTime());
         if (pOrder.getUserRef() != null) tJson.addProperty("userRef", pOrder.getUserRef());
+        tJson.addProperty("clientAccount", pOrder.getClientAccount());
         return tJson;
     }
 
@@ -654,6 +657,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tJson.addProperty("orderId",   Long.toHexString(tFirmOrder.getOrderId()));
         tJson.addProperty("account",   tFirmOrder.getAccount());
         if (tFirmOrder.getUserRef() != null) tJson.addProperty("userRef", tFirmOrder.getUserRef());
+        tJson.addProperty("clientAccount", tFirmOrder.getClientAccount());
         return tJson;
     }
 }

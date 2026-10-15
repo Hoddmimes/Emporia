@@ -231,6 +231,23 @@ class MatchingEngineTest {
     }
 
     @Test
+    void clientAccountIsCarriedToTradesAndKeptByAReplacingModify() {
+        String tOrderId = mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 5 * S, "A", null, "acc1")).orderId();
+        assertEquals("acc1", onlyOrder("A").get("clientAccount").getAsString());
+
+        // Raising the quantity replaces the order: new order id, same client account
+        OrderResponse tRsp = mEngine.modifyOrder("A", tOrderId, 0, 6 * S, null);
+        assertNotEquals(tOrderId, tRsp.orderId());
+        assertEquals("acc1", onlyOrder("A").get("clientAccount").getAsString());
+
+        add(CONT, Order.Side.SELL, 10.00, 2, "B");   // no client account
+        JsonObject tBuyerTrade  = mEngine.getTradesByFirm("A", 0).get(0).getAsJsonObject();
+        JsonObject tSellerTrade = mEngine.getTradesByFirm("B", 0).get(0).getAsJsonObject();
+        assertEquals("acc1", tBuyerTrade.get("clientAccount").getAsString());
+        assertEquals("omni", tSellerTrade.get("clientAccount").getAsString());   // each side has its own; none given: the default
+    }
+
+    @Test
     void modifyInPlaceKeepsOrderIdAndKeepsOrReplacesUserRef() {
         String tOrderId = addWithRef(Order.Side.BUY, 10.00, 5, "r1").orderId();
 
@@ -387,8 +404,8 @@ class MatchingEngineTest {
     @Test
     void reloadedTradesRestoreTheDaysPrices() {
         // As reloaded from the database: latest first
-        InternalTrade tLater   = new InternalTrade(2, 2000, CONT, 1050 * S / 100, 3 * S, 11, "A", null, 12, "B", null);
-        InternalTrade tEarlier = new InternalTrade(1, 1000, CONT, 1100 * S / 100, 2 * S, 13, "A", null, 14, "B", null);
+        InternalTrade tLater   = new InternalTrade(2, 2000, CONT, 1050 * S / 100, 3 * S, 11, "A", null, null, 12, "B", null, null);
+        InternalTrade tEarlier = new InternalTrade(1, 1000, CONT, 1100 * S / 100, 2 * S, 13, "A", null, null, 14, "B", null, null);
         mEngine.restoreTrades(java.util.List.of(tLater, tEarlier));
 
         JsonObject tPrices = mEngine.getPrices(1).get(0).getAsJsonObject();

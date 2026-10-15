@@ -96,6 +96,13 @@
                 <div id="of-userRef-hint" class="form-hint"></div>
             </div>
 
+            <div class="form-group" id="of-clientAccount-group">
+                <label for="of-clientAccount">Client account</label>
+                <input type="text" id="of-clientAccount" autocomplete="off" maxlength="32"
+                       placeholder="omni">
+                <div class="form-hint">The account the position is kept in, omni if empty. Kept for the next order. Letters, digits, spaces and . _ - / (at most 32).</div>
+            </div>
+
             <div class="mv-order-buttons">
                 <button type="button" class="btn btn-outline" onclick="closeOrderDialog()">Close</button>
                 <button type="submit" id="of-submit" class="btn btn-primary">Submit</button>
@@ -225,6 +232,7 @@
             <tr><th>Instrument</th><td id="do-instrument"></td></tr>
             <tr><th>Order</th><td id="do-order"></td></tr>
             <tr><th>Reference</th><td id="do-userRef"></td></tr>
+            <tr><th>Account</th><td id="do-clientAccount"></td></tr>
             <tr><th>Entered</th><td id="do-time"></td></tr>
         </table>
 
@@ -381,7 +389,7 @@
                 }
                 el.innerHTML =
                     '<table class="mv-price-table">'
-                    +   '<thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th><th>Reference</th><th>Entered</th></tr></thead>'
+                    +   '<thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th><th>Reference</th><th>Account</th><th>Entered</th></tr></thead>'
                     +   '<tbody>' + dashOrders.map(o =>
                           '<tr class="mv-clickable" data-dash-order-id="' + escapeHtml(o.orderId) + '" title="Double click to delete the order">'
                           + '<td class="mv-instr-name">' + escapeHtml(o.instrumentName || String(o.instrumentId)) + '</td>'
@@ -389,9 +397,10 @@
                           + '<td>' + fmtVol(o.quantity / SCALE) + '</td>'
                           + '<td>' + fmtPx(o.price / SCALE) + '</td>'
                           + '<td>' + escapeHtml(o.userRef || '—') + '</td>'
+                          + '<td>' + escapeHtml(o.clientAccount || '—') + '</td>'
                           + '<td>' + (o.orderTime ? fmtTime(o.orderTime) : '—') + '</td>'
                           + '</tr>').join('') + '</tbody>'
-                    +   '<tfoot><tr><td colspan="6">' + dashOrders.length + ' orders</td></tr></tfoot>'
+                    +   '<tfoot><tr><td colspan="7">' + dashOrders.length + ' orders</td></tr></tfoot>'
                     + '</table>';
             } catch (e) {
                 console.error('Failed to load orders', e);
@@ -416,7 +425,7 @@
                 }
                 el.innerHTML =
                     '<table class="mv-price-table">'
-                    +   '<thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th><th>Time</th><th>Reference</th></tr></thead>'
+                    +   '<thead><tr><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th><th>Time</th><th>Reference</th><th>Account</th></tr></thead>'
                     +   '<tbody>' + trades.map(t =>
                           '<tr>'
                           + '<td class="mv-instr-name">' + escapeHtml(t.instrumentName || String(t.instrumentId)) + '</td>'
@@ -425,8 +434,9 @@
                           + '<td>' + fmtPx(t.price / SCALE) + '</td>'
                           + '<td>' + fmtTime(t.tradeTime) + '</td>'
                           + '<td>' + escapeHtml(t.userRef || '—') + '</td>'
+                          + '<td>' + escapeHtml(t.clientAccount || '—') + '</td>'
                           + '</tr>').join('') + '</tbody>'
-                    +   '<tfoot><tr><td colspan="6">' + trades.length + ' trades</td></tr></tfoot>'
+                    +   '<tfoot><tr><td colspan="7">' + trades.length + ' trades</td></tr></tfoot>'
                     + '</table>';
             } catch (e) {
                 console.error('Failed to load trades', e);
@@ -855,6 +865,10 @@
                 bulletin ? 'Optional: EITHER (or none chosen) is a bulletin without a side, the other firm chooses buy or sell.' : '';
             const anySide = document.querySelector('input[name="of-side"][value=""]');
             if (!bulletin && anySide.checked) { anySide.checked = false; syncSideLabels(); }
+            // Client accounts are for orders only (not bulletins yet); the field keeps the last one used
+            document.getElementById('of-clientAccount-group').style.display = bulletin ? 'none' : '';
+            const clientAccount = document.getElementById('of-clientAccount');
+            if (!clientAccount.value) clientAccount.value = loadClientAccount();
             document.getElementById('of-price-req').style.display    = bulletin ? 'none' : '';
             document.getElementById('of-quantity-req').style.display = bulletin ? 'none' : '';
             document.getElementById('of-submit').textContent = bulletin ? 'Submit Bulletin' : 'Submit Order';
@@ -1255,6 +1269,12 @@
                     bad('of-quantity', 'Quantity must be a multiple of the lot size ' + i.lotSize / SCALE + '.');
                 }
                 if (i) Object.assign(body, { instrumentId: i.id, side, price, quantity: qty });
+                const clientAccount = document.getElementById('of-clientAccount').value.trim();
+                if (clientAccount && !CLIENT_ACCOUNT_RE.test(clientAccount)) {
+                    bad('of-clientAccount', 'Client account must be at most 32 letters, digits, spaces or . _ - /');
+                } else if (clientAccount) {
+                    body.clientAccount = clientAccount;
+                }
             }
             if (userRef) body.userRef = userRef;
 
@@ -1292,7 +1312,20 @@
                     'Matched ' + d.matched / SCALE + ', ' + (d.inserted ? 'in the book ' + d.remaining / SCALE : 'nothing left in the book')] });
             }
             document.getElementById('of-userRef').value = '';   // a reference names one order
+            if (!bulletin) saveClientAccount(body.clientAccount || '');
             document.getElementById('order-dialog').close();
+        }
+
+        // The client account of the last accepted order, remembered in this browser (a convenience only:
+        // the field is empty when the storage is not available)
+        const CLIENT_ACCOUNT_RE  = /^[A-Za-z0-9 ._\/-]{1,32}$/;
+        const CLIENT_ACCOUNT_KEY = 'emporia.clientAccount';
+        function loadClientAccount() {
+            try { return localStorage.getItem(CLIENT_ACCOUNT_KEY) || ''; } catch (e) { return ''; }
+        }
+        function saveClientAccount(value) {
+            try { if (value) localStorage.setItem(CLIENT_ACCOUNT_KEY, value); else localStorage.removeItem(CLIENT_ACCOUNT_KEY); }
+            catch (e) { /* not available: the field still keeps it until the page is reloaded */ }
         }
 
         // ── Information popups ────────────────────────────────────────────
@@ -1338,7 +1371,9 @@
             const m = markets.find(x => x.id === msg.marketId);
             showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell', title: 'Trade',
                         lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' ' + name
-                                + ' @ ' + fmtPx(msg.price), (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)] });
+                                + ' @ ' + fmtPx(msg.price),
+                                (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)
+                                + (msg.clientAccount ? '  ·  ' + msg.clientAccount : '')] });
         }
 
         // An own bulletin trade (OwnBulletinTrade, display units): "Sold 10 Brent Jan @ 80.50"
@@ -1472,6 +1507,7 @@
                 + '<td>' + fmtVol(o.quantity / SCALE) + '</td>'
                 + '<td>' + fmtPx(o.price / SCALE) + '</td>'
                 + '<td>' + escapeHtml(o.userRef || '—') + '</td>'
+                + '<td>' + escapeHtml(o.clientAccount || '—') + '</td>'
                 + '<td>' + (o.orderTime ? new Date(o.orderTime).toLocaleString() : '—') + '</td>'
                 + '<td>' + escapeHtml(o.orderId) + '</td>'
                 + '</tr>').join('');
@@ -1479,10 +1515,10 @@
                 '<table class="mv-price-table">'
                 +   '<thead><tr>'
                 +     '<th>Market</th><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th>'
-                +     '<th>Reference</th><th>Entered</th><th>Order Id</th>'
+                +     '<th>Reference</th><th>Account</th><th>Entered</th><th>Order Id</th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
-                +   '<tfoot><tr><td colspan="8">' + myOrders.length + ' orders</td></tr></tfoot>'
+                +   '<tfoot><tr><td colspan="9">' + myOrders.length + ' orders</td></tr></tfoot>'
                 + '</table>';
         }
 
@@ -1502,6 +1538,7 @@
             orderEl.textContent = o.side + '  ' + (o.quantity / SCALE) + ' @ ' + fmtPx(o.price / SCALE);
             orderEl.className = (o.side === 'BUY') ? 'mv-bid' : 'mv-ask';
             document.getElementById('do-userRef').textContent = o.userRef || '—';
+            document.getElementById('do-clientAccount').textContent = o.clientAccount || '—';
             document.getElementById('do-time').textContent = o.orderTime ? new Date(o.orderTime).toLocaleString() : '—';
             document.getElementById('do-error').classList.add('alert-hidden');
             document.getElementById('do-delete').disabled = false;
@@ -2031,6 +2068,7 @@
                     + '<td>' + fmtValue(qty * price) + '</td>'
                     + '<td>' + escapeHtml(t.orderId) + '</td>'
                     + '<td>' + escapeHtml(t.userRef || '—') + '</td>'
+                    + '<td>' + escapeHtml(t.clientAccount || '—') + '</td>'
                     + '<td>' + escapeHtml(t.tradeNo) + '</td>'
                     + '</tr>';
             }).join('');
@@ -2038,10 +2076,10 @@
                 '<table class="mv-price-table">'
                 +   '<thead><tr>'
                 +     '<th>Time</th><th>Market</th><th>Instrument</th><th>Side</th><th>Quantity</th><th>Price</th>'
-                +     '<th>Value</th><th>Order Id</th><th>Reference</th><th>Trade No</th>'
+                +     '<th>Value</th><th>Order Id</th><th>Reference</th><th>Account</th><th>Trade No</th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
-                +   '<tfoot><tr><td colspan="10">' + trades.length + ' trades  ·  bought ' + bought / SCALE + '  ·  sold ' + sold / SCALE + '</td></tr></tfoot>'
+                +   '<tfoot><tr><td colspan="11">' + trades.length + ' trades  ·  bought ' + bought / SCALE + '  ·  sold ' + sold / SCALE + '</td></tr></tfoot>'
                 + '</table>';
         }
 
@@ -2051,9 +2089,14 @@
         // trades give positions per bulletin market and instrument text (market in the bulletin color).
         // Reloaded on each OwnTrade and OwnBulletinTrade; a PriceUpdate with a new last price, or a
         // BulletinTrade, revalues its instrument. Selecting a market
-        // leaves the view.
-        let portfolioView = false;
-        let portfolio     = [];                  // { instrumentId, market, instrument, position, bought, sold, lastPrice, value } in display units
+        // leaves the view. The server keeps positions per instrument and client account (omni for orders
+        // without one, and for bulletin positions); the Account selector shows them per account (one row per
+        // instrument and account), added up per instrument (the firm's total), or for one account only.
+        const PF_PER_ACCOUNT = '*per-account', PF_TOTAL = '*total';   // '*' is not allowed in a client account
+        let portfolioView    = false;
+        let portfolio        = [];               // { instrumentId, market, instrument, clientAccount, position, bought, sold, lastPrice, value } in display units
+        let portfolioAccount = PF_PER_ACCOUNT;   // the Account selector's choice, kept while the page is open
+        let portfolioSort    = 'instrument';     // per account: 'instrument' (market, instrument, account) or 'account' (account first)
 
         async function onMyPortfolio() {
             setActiveView('portfolio');
@@ -2078,7 +2121,7 @@
                 const unscale = (v) => (v == null) ? null : v / SCALE;
                 portfolio = (data.positions || []).map(p => ({
                     instrumentId: p.instrumentId, market: p.market, instrument: p.instrument,
-                    marketId: p.marketId, bulletin: !!p.bulletin,
+                    marketId: p.marketId, bulletin: !!p.bulletin, clientAccount: p.clientAccount,
                     position: unscale(p.position), bought: unscale(p.bought), sold: unscale(p.sold),
                     lastPrice: unscale(p.lastPrice), value: unscale(p.value)
                 }));
@@ -2089,21 +2132,57 @@
             }
         }
 
-        function updatePortfolioPrice(instrumentId, last) {
-            const p = portfolio.find(x => x.instrumentId === instrumentId);
-            if (!p || p.lastPrice === last) return;
-            p.lastPrice = last;
-            p.value     = p.position * last;
+        // Revalues the positions (one per client account) that match at a new price
+        function revaluePortfolio(match, price) {
+            const rows = portfolio.filter(p => match(p) && p.lastPrice !== price);
+            if (rows.length === 0) return;
+            rows.forEach(p => { p.lastPrice = price; p.value = p.position * price; });
             renderPortfolio();
+        }
+
+        function updatePortfolioPrice(instrumentId, last) {
+            revaluePortfolio(p => p.instrumentId === instrumentId, last);
         }
 
         // A bulletin trade (BulletinTrade, display units) revalues the position in its market and instrument
         function updatePortfolioBulletinPrice(marketId, instrument, price) {
-            const p = portfolio.find(x => x.bulletin && x.marketId === marketId && x.instrument === instrument);
-            if (!p || p.lastPrice === price) return;
-            p.lastPrice = price;
-            p.value     = p.position * price;
+            revaluePortfolio(p => p.bulletin && p.marketId === marketId && p.instrument === instrument, price);
+        }
+
+        // The rows for the Account selector's choice: all positions, one account's, or added up per instrument
+        function portfolioRows() {
+            if (portfolioAccount === PF_PER_ACCOUNT) return portfolio;
+            if (portfolioAccount !== PF_TOTAL) return portfolio.filter(p => p.clientAccount === portfolioAccount);
+            const totals = new Map();
+            for (const p of portfolio) {
+                const key = p.bulletin ? 'b/' + p.marketId + '/' + p.instrument : 'i/' + p.instrumentId;
+                const t = totals.get(key);
+                if (!t) { totals.set(key, Object.assign({}, p, { clientAccount: null })); continue; }
+                const add = (a, b) => Math.round((a + b) * SCALE) / SCALE;   // display units: no float residue
+                t.position = add(t.position, p.position);
+                t.bought   = add(t.bought, p.bought);
+                t.sold     = add(t.sold, p.sold);
+            }
+            const rows = [...totals.values()].filter(t => t.position !== 0);   // e.g. moved between two accounts
+            rows.forEach(t => { t.value = (t.lastPrice == null) ? null : t.position * t.lastPrice; });
+            return rows;
+        }
+
+        function setPortfolioAccount(value) {
+            portfolioAccount = value;
             renderPortfolio();
+        }
+
+        function setPortfolioSort(value) {
+            portfolioSort = value;
+            renderPortfolio();
+        }
+
+        // The server's order is market, instrument, account; sorting by account gives each account's
+        // positions together, by market and instrument
+        function sortByAccount(rows) {
+            return rows.slice().sort((a, b) => a.clientAccount.localeCompare(b.clientAccount)
+                || a.market.localeCompare(b.market) || a.instrument.localeCompare(b.instrument));
         }
 
         function fmtValue(v) {
@@ -2117,27 +2196,53 @@
                 container.innerHTML = '<div class="mv-empty">You have no holdings.</div>';
                 return;
             }
+            const accounts = [...new Set(portfolio.map(p => p.clientAccount))].sort();
+            if (portfolioAccount !== PF_PER_ACCOUNT && portfolioAccount !== PF_TOTAL && !accounts.includes(portfolioAccount)) {
+                portfolioAccount = PF_PER_ACCOUNT;   // no positions left in the chosen account
+            }
+            const option = (value, text) => '<option value="' + escapeHtml(value) + '"'
+                + (value === portfolioAccount ? ' selected' : '') + '>' + escapeHtml(text) + '</option>';
+            const toolbar =
+                '<div class="mv-toolbar">'
+                + '<label for="pf-account">Account</label>'
+                + '<select id="pf-account" onchange="setPortfolioAccount(this.value)">'
+                +   option(PF_PER_ACCOUNT, 'Per account') + option(PF_TOTAL, 'Total per instrument')
+                +   accounts.map(a => option(a, a)).join('')
+                + '</select>'
+                + (portfolioAccount === PF_PER_ACCOUNT
+                    ? '<label for="pf-sort">Sort by</label>'
+                      + '<select id="pf-sort" onchange="setPortfolioSort(this.value)">'
+                      +   '<option value="instrument"' + (portfolioSort === 'instrument' ? ' selected' : '') + '>Instrument</option>'
+                      +   '<option value="account"' + (portfolioSort === 'account' ? ' selected' : '') + '>Account</option>'
+                      + '</select>'
+                    : '')
+                + '</div>';
+            const showAccount = portfolioAccount === PF_PER_ACCOUNT;
+            const shown       = (showAccount && portfolioSort === 'account') ? sortByAccount(portfolioRows()) : portfolioRows();
             const signed = (v) => '<span class="' + (v > 0 ? 'mv-bid' : 'mv-ask') + '">' + (v > 0 ? '+' : '') + v + '</span>';
-            const total  = portfolio.reduce((sum, p) => sum + (p.value || 0), 0);
-            const rows = portfolio.map(p =>
+            const total  = shown.reduce((sum, p) => sum + (p.value || 0), 0);
+            const rows = shown.map(p =>
                 '<tr>'
                 + '<td class="mv-instr-name' + (p.bulletin ? ' mv-any' : '') + '">' + escapeHtml(p.market) + '</td>'
                 + '<td>' + escapeHtml(p.instrument) + '</td>'
+                + (showAccount ? '<td>' + escapeHtml(p.clientAccount) + '</td>' : '')
                 + '<td>' + signed(p.position) + '</td>'
                 + '<td>' + fmtVol(p.bought) + '</td>'
                 + '<td>' + fmtVol(p.sold) + '</td>'
                 + '<td>' + fmtPx(p.lastPrice) + '</td>'
                 + '<td>' + fmtValue(p.value) + '</td>'
                 + '</tr>').join('');
-            container.innerHTML =
-                '<table class="mv-price-table">'
+            container.innerHTML = toolbar + (shown.length === 0
+                ? '<div class="mv-empty">No holdings in this account.</div>'
+                : '<table class="mv-price-table">'
                 +   '<thead><tr>'
-                +     '<th>Market</th><th>Instrument</th><th>Position</th><th>Bought</th><th>Sold</th>'
+                +     '<th>Market</th><th>Instrument</th>' + (showAccount ? '<th>Account</th>' : '')
+                +     '<th>Position</th><th>Bought</th><th>Sold</th>'
                 +     '<th>Last Price</th><th>Value</th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
-                +   '<tfoot><tr class="mv-total"><td colspan="6">Total value</td><td>' + fmtValue(total) + '</td></tr></tfoot>'
-                + '</table>';
+                +   '<tfoot><tr class="mv-total"><td colspan="' + (showAccount ? 7 : 6) + '">Total value</td><td>' + fmtValue(total) + '</td></tr></tfoot>'
+                + '</table>');
         }
 
         // ── Boot ──────────────────────────────────────────────────────────

@@ -34,7 +34,8 @@ import java.util.concurrent.CountDownLatch;
  *       "txRate": 5,                     // directives per second, 0 = as fast as possible
  *       "directives": [
  *         { "type": "AddOrder", "instrument": "ABB", "side": "BUY",
- *           "price": 101.50, "quantity": 100, "userRef": "b1" },   // userRef is optional
+ *           "price": 101.50, "quantity": 100, "userRef": "b1",     // userRef is optional
+ *           "clientAccount": "c1" },                               // clientAccount is optional
  *         { "type": "DeleteOrder", "userRef": "b1" } ] } ]
  * }
  * </pre>

@@ -143,6 +143,10 @@ lot size <code>100000</code> (1) the price 101.505 and the quantity 2.5 are refu
     <li><code>userRef</code> (orders and bulletins) and <code>offerRef</code> (offers): optional free text that you
         choose. It is returned on everything that concerns the order, so you can match responses and messages to
         your own records.</li>
+    <li><code>clientAccount</code> (orders): optional free text naming your firm's own account for the order, e.g.
+        a client or a trader's book. An order without one is in the default account <code>omni</code>. It is carried
+        on to the order's trades and your portfolio keeps a position per instrument and client account. It is
+        private: never shown to other firms.</li>
 </ul>
 
 <h3>Times</h3>
@@ -310,8 +314,13 @@ suspended.</p>
     <tr><td><code>price</code></td><td>Required. Scaled, &gt; 0, a multiple of the tick size.</td></tr>
     <tr><td><code>quantity</code></td><td>Required. Scaled, &gt; 0, a multiple of the lot size.</td></tr>
     <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+    <tr><td><code>clientAccount</code> <span class="opt">optional</span></td><td>Your firm's account for the order:
+        1&ndash;32 letters, digits, spaces or <code>. _ - /</code> (leading and trailing spaces are removed; left
+        out or empty: <code>omni</code>; case-sensitive, so <code>c1</code> and <code>C1</code> are two accounts). Set once:
+        it can't be changed by a modify. 400 if invalid.</td></tr>
 </table>
-<pre><code>{ "instrumentId": 4294967297, "side": "BUY", "price": 10000000, "quantity": 500000, "userRef": "b-17" }</code></pre>
+<pre><code>{ "instrumentId": 4294967297, "side": "BUY", "price": 10000000, "quantity": 500000, "userRef": "b-17",
+  "clientAccount": "client-7" }</code></pre>
 <p>201:</p>
 <pre><code>{ "orderId": "6ace393800000001", "inserted": true, "matched": 200000, "remaining": 300000, "userRef": "b-17" }</code></pre>
 <table>
@@ -336,6 +345,8 @@ suspended.</p>
     <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>A new reference; left out keeps the
         current one.</td></tr>
 </table>
+<p>The order keeps its <code>clientAccount</code>, also when it is replaced; a request with a
+<code>clientAccount</code> field is rejected with 400.</p>
 <p>The response has the same fields as for a new order. Lowering the quantity, or moving the price away from the
 other side, changes the order in place: it keeps its <code>orderId</code> and its original entry time for time
 priority. Raising the quantity, or moving the price towards the other side, replaces the order: it gets a
@@ -356,8 +367,9 @@ it has traded completely.</p>
 <pre><code>{ "orders": [
   { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
     "orderId": "6ace393800000001", "side": "BUY", "price": 10000000, "quantity": 300000,
-    "account": "ThinAir", "orderTime": 1791878914356, "userRef": "b-17" } ] }</code></pre>
-<p><code>quantity</code> is the remaining quantity; <code>account</code> is your firm.</p>
+    "account": "ThinAir", "orderTime": 1791878914356, "userRef": "b-17", "clientAccount": "client-7" } ] }</code></pre>
+<p><code>quantity</code> is the remaining quantity; <code>account</code> is your firm. <code>userRef</code> is
+missing if none was given.</p>
 </div>
 
 <h2 id="trades">Own trades</h2>
@@ -369,7 +381,7 @@ market and/or instrument. 400 for an invalid date. The bulletin trades of the sa
 <pre><code>{ "date": "2026-10-12", "trades": [
   { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
     "side": "BUY", "price": 10000000, "quantity": 200000, "tradeNo": "1", "tradeTime": 1791899978208,
-    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17" } ],
+    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17", "clientAccount": "client-7" } ],
   "bulletinTrades": [
   { "tradeNo": "6acf8b8700000001", "bulletinId": "6acf8b8700000001", "marketId": 2, "marketName": "OTC",
     "instrument": "Brent Jan", "side": "SELL", "price": 8000000, "quantity": 400000,
@@ -378,21 +390,27 @@ market and/or instrument. 400 for an invalid date. The bulletin trades of the sa
 listed twice, once per side. A bulletin trade has the bulletin's free text <code>instrument</code> and no
 <code>instrumentId</code>, so <code>instrumentId</code> leaves out all bulletin trades; <code>user</code> is the
 user of your firm that added the bulletin or made the offer, and <code>ref</code> that bulletin's
-<code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given).</p>
+<code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given). A trade's
+<code>clientAccount</code> is that of your firm's order (<code>omni</code> for trades made before client
+accounts existed); bulletin trades have none.</p>
 </div>
 
 <h2 id="portfolio">Portfolio</h2>
 <div class="endpoint">
 <div class="sig"><span class="m GET">GET</span>/api/portfolio</div>
-<p>Your firm's position per instrument, from all its trades on every day: bought minus sold. Positions of 0 are
-left out. Sorted by market and instrument.</p>
+<p>Your firm's position per instrument and client account, from all its trades on every day: bought minus sold.
+Positions of 0 are left out. Sorted by market, instrument and client account.</p>
 <pre><code>{ "positions": [
   { "instrumentId": 4294967297, "instrument": "ABB", "marketId": 1, "market": "Equities",
-    "position": 500000, "bought": 1500000, "sold": 1000000,
+    "clientAccount": "client-7", "position": 500000, "bought": 1500000, "sold": 1000000,
     "lastPrice": 10200000, "value": 51000000 } ],
   "totalValue": 51000000 }</code></pre>
 <p><code>lastPrice</code> is the latest trade price (<code>null</code> if the instrument never traded);
 <code>value</code> = position &times; last price, negative for a short position.</p>
+<p><code>clientAccount</code> is the client account of your firm's orders in the trades (<code>omni</code> for
+trades made before client accounts existed, and for bulletin positions). Add the rows of an instrument up for
+your firm's total position in it. A trade between two of your own orders with different client accounts moves
+the position from one account to the other; your firm's total is unchanged.</p>
 <p>Bulletin trades give positions of their own, per bulletin market and <code>instrument</code> text (the same
 text in two bulletin markets is two positions), with <code>"bulletin": true</code> and
 <code>"instrumentId": null</code>; their <code>lastPrice</code> is the latest bulletin trade price of that
@@ -566,10 +584,12 @@ for instrument messages, <code>instrumentId</code>, followed by the type's own f
 <table>
     <tr><th>Type</th><th>When</th><th>Fields</th></tr>
     <tr><td><code>OwnOrder</code></td><td>One of your firm's orders is added, changed or removed.</td><td>As
-        AddOrder, plus <code>event</code> (ADDED, MODIFIED, REMOVED) and <code>userRef</code>.</td></tr>
+        AddOrder, plus <code>event</code> (ADDED, MODIFIED, REMOVED), <code>userRef</code> and
+        <code>clientAccount</code>.</td></tr>
     <tr><td><code>OwnTrade</code></td><td>One of your firm's orders traded (one message per side; both if you
         traded with yourself).</td><td><code>side</code>, <code>price</code>, <code>quantity</code>,
-        <code>tradeNo</code>, <code>tradeTime</code>, <code>orderId</code>, <code>userRef</code></td></tr>
+        <code>tradeNo</code>, <code>tradeTime</code>, <code>orderId</code>, <code>userRef</code>,
+        <code>clientAccount</code></td></tr>
     <tr><td><code>OwnBulletin</code></td><td>One of your firm's bulletins changes.</td><td>As Bulletin, plus
         <code>user</code> and <code>userRef</code>.</td></tr>
     <tr><td><code>BulletinOffer</code></td><td>An offer on your bulletin (<code>role</code> OWNER), or your own offer

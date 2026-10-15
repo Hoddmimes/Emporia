@@ -2,9 +2,11 @@ package com.hoddmimes.emporia.server.endpoints;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
+import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
 import org.bson.Document;
@@ -19,12 +21,15 @@ import java.util.Map;
 /**
  * The logged-in user's firm's holdings: GET /api/portfolio. A position per instrument is the sum of
  * all the firm's stored trades in it, of every day (bought quantity minus sold quantity), so selling
- * 10, buying 5 and buying 10 is a position of +5. Instruments where the position is 0 are left out.
+ * 10, buying 5 and buying 10 is a position of +5. Positions are kept per instrument and client account
+ * (the clientAccount of the firm's order in each trade; trades stored before client accounts count as
+ * the default account "omni"), so the client can show them per account or add them up per instrument.
+ * Positions of 0 are left out.
  * The value is the position times the instrument's last traded price: today's from the matching
  * engine, otherwise the latest stored trade's. Prices, quantities and values are longs scaled by
  * MatchingEngine.SCALE. Bulletin trades (BulletinTrades) give positions of their own, per bulletin market
  * and free text instrument ({@code bulletin} true, instrumentId null), valued at the instrument's latest
- * bulletin trade price in that market.
+ * bulletin trade price in that market; bulletins have no client account, so they are in the default one.
  */
 public class PortfolioEndpoints implements RestEndpoint {
 
@@ -34,8 +39,8 @@ public class PortfolioEndpoints implements RestEndpoint {
         mCtx = ctx;
     }
 
-    /** A position: the quantities bought and sold (scaled), position = bought - sold. */
-    record Position(long instrumentId, int marketId, long bought, long sold) {
+    /** A position in an instrument and client account: the quantities bought and sold (scaled), position = bought - sold. */
+    record Position(long instrumentId, int marketId, String clientAccount, long bought, long sold) {
         long position() { return bought - sold; }
     }
 
@@ -57,6 +62,7 @@ public class PortfolioEndpoints implements RestEndpoint {
                 tJson.addProperty("instrument",   tInstrument != null ? tInstrument.name() : String.valueOf(tPos.instrumentId()));
                 tJson.addProperty("marketId",     tPos.marketId());
                 tJson.addProperty("market",       tMarket != null ? tMarket.name() : String.valueOf(tPos.marketId()));
+                tJson.addProperty("clientAccount", tPos.clientAccount());
                 tJson.addProperty("position",     tPos.position());
                 tJson.addProperty("bought",       tPos.bought());
                 tJson.addProperty("sold",         tPos.sold());
@@ -83,6 +89,7 @@ public class PortfolioEndpoints implements RestEndpoint {
                 tJson.addProperty("marketId",     tPos.marketId());
                 tJson.addProperty("market",       tMarket != null ? tMarket.name() : String.valueOf(tPos.marketId()));
                 tJson.addProperty("bulletin",     true);
+                tJson.addProperty("clientAccount", AddOrderRequest.DEFAULT_CLIENT_ACCOUNT);
                 tJson.addProperty("position",     tPos.position());
                 tJson.addProperty("bought",       tPos.bought());
                 tJson.addProperty("sold",         tPos.sold());
@@ -91,7 +98,8 @@ public class PortfolioEndpoints implements RestEndpoint {
                 tRows.add(tJson);
             }
             tRows.sort(Comparator.comparing((JsonObject j) -> j.get("market").getAsString())
-                                 .thenComparing(j -> j.get("instrument").getAsString()));
+                                 .thenComparing(j -> j.get("instrument").getAsString())
+                                 .thenComparing(j -> j.get("clientAccount").getAsString()));
             JsonArray tArray = new JsonArray();
             tRows.forEach(tArray::add);
             JsonObject tOut = new JsonObject();
@@ -102,22 +110,30 @@ public class PortfolioEndpoints implements RestEndpoint {
     }
 
     /**
-     * The firm's position per instrument from its Trades documents, in the order the instruments
-     * first appear. A trade between two orders of the firm itself counts on both sides (net 0).
+     * The firm's position per instrument and client account from its Trades documents, in the order
+     * they first appear. A trade between two orders of the firm itself counts on both sides: it nets 0
+     * if both orders have the same client account, otherwise it moves the position from one to the other.
      */
     static List<Position> positions(String pFirm, List<Document> pTrades) {
-        Map<Long, Position> tPositions = new LinkedHashMap<>();
+        Map<List<Object>, Position> tPositions = new LinkedHashMap<>();   // key: instrument id, client account
         for (Document tTrade : pTrades) {
             long tInstrumentId = Long.parseLong(tTrade.getString("instrumentId"));
             long tQuantity     = tTrade.getLong("quantity");
-            long tBought       = pFirm.equals(tTrade.getString("buyAccount"))  ? tQuantity : 0L;
-            long tSold         = pFirm.equals(tTrade.getString("sellAccount")) ? tQuantity : 0L;
-            Position tOld = tPositions.get(tInstrumentId);
-            tPositions.put(tInstrumentId, (tOld == null)
-                    ? new Position(tInstrumentId, (int) (tInstrumentId >>> 32), tBought, tSold)
-                    : new Position(tInstrumentId, tOld.marketId(), tOld.bought() + tBought, tOld.sold() + tSold));
+            if (pFirm.equals(tTrade.getString("buyAccount"))) {
+                addTo(tPositions, tInstrumentId, Database.clientAccountOf(tTrade, "buyClientAccount"), tQuantity, 0L);
+            }
+            if (pFirm.equals(tTrade.getString("sellAccount"))) {
+                addTo(tPositions, tInstrumentId, Database.clientAccountOf(tTrade, "sellClientAccount"), 0L, tQuantity);
+            }
         }
         return new ArrayList<>(tPositions.values());
+    }
+
+    private static void addTo(Map<List<Object>, Position> pPositions, long pInstrumentId, String pClientAccount,
+                              long pBought, long pSold) {
+        pPositions.merge(List.of(pInstrumentId, pClientAccount),
+                new Position(pInstrumentId, (int) (pInstrumentId >>> 32), pClientAccount, pBought, pSold),
+                (a, b) -> new Position(a.instrumentId(), a.marketId(), a.clientAccount(), a.bought() + b.bought(), a.sold() + b.sold()));
     }
 
     /** A position in a bulletin market's free text instrument, from its bulletin trades. */

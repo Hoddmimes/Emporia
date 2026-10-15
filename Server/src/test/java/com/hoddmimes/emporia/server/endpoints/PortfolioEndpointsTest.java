@@ -46,6 +46,30 @@ class PortfolioEndpointsTest {
         assertEquals(4 * S, tPositions.get(0).bought());
     }
 
+    private static Document trade(long pInstrumentId, long pQuantity, String pBuyer, String pBuyerAccount,
+                                  String pSeller, String pSellerAccount) {
+        return trade(pInstrumentId, pQuantity, pBuyer, pSeller)
+                .append("buyClientAccount", pBuyerAccount).append("sellClientAccount", pSellerAccount);
+    }
+
+    @Test
+    void positionsArePerClientAccount() {
+        List<PortfolioEndpoints.Position> tPositions = PortfolioEndpoints.positions("FA", List.of(
+                trade(ABB, 10, "FA", "c1",  "FB", null),
+                trade(ABB,  4, "FB", null,  "FA", "c2"),
+                trade(ABB,  3, "FA", null,  "FB", "x"),     // stored without a client account: omni
+                trade(ABB,  2, "FA", "c2",  "FA", "c1")));  // between two of FA's accounts: c1 -> c2
+        assertEquals(3, tPositions.size());
+        assertEquals("c1", tPositions.get(0).clientAccount());
+        assertEquals(8 * S, tPositions.get(0).position());
+        assertEquals(10 * S, tPositions.get(0).bought());
+        assertEquals(2 * S, tPositions.get(0).sold());
+        assertEquals("c2", tPositions.get(1).clientAccount());
+        assertEquals(-2 * S, tPositions.get(1).position());
+        assertEquals("omni", tPositions.get(2).clientAccount());
+        assertEquals(3 * S, tPositions.get(2).position());
+    }
+
     private static Document bulletinTrade(int pMarketId, String pInstrument, long pQuantity, String pBuyer, String pSeller) {
         return new Document("marketId", pMarketId).append("instrument", pInstrument)
                 .append("price", 80 * S).append("quantity", pQuantity * S)

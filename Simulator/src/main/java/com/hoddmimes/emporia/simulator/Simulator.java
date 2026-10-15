@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
  *     { "instrument": "ABB",
  *       "market": "Equities",               // optional, only needed if the name is in several markets
  *       "tradeRate": 20,                    // every 20th order is a matching order (0 = never)
+ *       "clientAccount": "sim",             // optional, the client account of every order
  *       "minDepth": 5, "maxDepth": 15,      // own orders per side kept within these limits
  *       "midPrice": 100.0,                  // passive orders are placed around this price
  *       "maxPriceDeviation": 2.0,           // ... at most this far from it

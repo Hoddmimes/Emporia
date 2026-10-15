@@ -203,6 +203,7 @@ public class TestSession implements Runnable {
         tBody.addProperty("price",        Math.round(pDirective.get("price").getAsDouble()    * SCALE));
         tBody.addProperty("quantity",     Math.round(pDirective.get("quantity").getAsDouble() * SCALE));
         if (pDirective.has("userRef")) tBody.addProperty("userRef", pDirective.get("userRef").getAsString());
+        if (pDirective.has("clientAccount")) tBody.addProperty("clientAccount", pDirective.get("clientAccount").getAsString());
 
         HttpResponse<String> tRsp = timed(() -> post("/api/orders", tBody.toString()));
 

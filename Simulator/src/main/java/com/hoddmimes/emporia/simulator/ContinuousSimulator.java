@@ -36,6 +36,7 @@ class ContinuousSimulator implements Runnable {
     private final long   mLotSize;
 
     private final int    mTradeRate;
+    private final String mClientAccount;         // optional, sent with every order; null if not configured
     private final int    mMinDepth;
     private final int    mMaxDepth;
     private final long   mMidPrice;              // scaled
@@ -57,6 +58,7 @@ class ContinuousSimulator implements Runnable {
         mLotSize      = Math.max(1, pInstrument.get("lotSize").getAsLong());
 
         mTradeRate    = Config.integer(pConfig, "tradeRate", 0);
+        mClientAccount = pConfig.has("clientAccount") ? pConfig.get("clientAccount").getAsString() : null;
         mMinDepth     = Config.integer(pConfig, "minDepth", 5);
         mMaxDepth     = Config.integer(pConfig, "maxDepth", 15);
         mMidPrice     = Config.scaled(pConfig, "midPrice");
@@ -178,6 +180,7 @@ class ContinuousSimulator implements Runnable {
         tBody.addProperty("price",        pPrice);
         tBody.addProperty("quantity",     pQuantity);
         tBody.addProperty("userRef",      "sim-" + mOrders);
+        if (mClientAccount != null) tBody.addProperty("clientAccount", mClientAccount);
         Api.Reply tReply = mApi.post("/api/orders", tBody);
         if (!tReply.ok()) { error("add " + pSide + " " + fmt(pQuantity) + " @ " + fmt(pPrice) + ": " + tReply.error()); return; }
         mLastError = null;
