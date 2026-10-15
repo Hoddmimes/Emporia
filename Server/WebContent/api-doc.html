@@ -86,6 +86,8 @@ td:first-child { white-space: nowrap; }
     <a href="#bulletin-markets">Bulletin markets</a>
     <a href="#bulletins">Bulletins</a>
     <a href="#offers">Offers</a>
+    <div class="group">Chat</div>
+    <a href="#chat">Chat</a>
     <div class="group">Streaming</div>
     <a href="#websocket">WebSocket</a>
     <a href="#bdx-messages">Messages</a>
@@ -532,6 +534,50 @@ quantity. Otherwise, and after a reject, it is <code>ACTIVE</code> again. Reject
 <p>200: <code>{ "bulletinId": "...", "state": "TRADED", "remainingQuantity": 0 }</code></p>
 </div>
 
+<h2 id="chat">Chat</h2>
+<p>A chat between the trading users of all firms. Every message is stored with the time and the sender's firm and
+user, and sent to every connected trading user as a <code>Chat</code> message on the WebSocket, whatever their
+markets.</p>
+
+<div class="endpoint">
+<div class="sig"><span class="m POST">POST</span>/api/chat</div>
+<p>Sends a chat message.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>text</code></td><td>Required. Free text, at most 512 bytes in UTF-8 (e.g. 512 ASCII characters,
+        256 &aring;). Leading and trailing white space is removed; line breaks are kept.</td></tr>
+    <tr><td><code>tag</code> <span class="opt">optional</span></td><td>Free text, at most 64 bytes in UTF-8, e.g. a
+        topic to filter on. Left out: empty.</td></tr>
+</table>
+<pre><code>{ "text": "Anyone selling Brent Jan?", "tag": "oil" }</code></pre>
+<p>201, the stored message, also as broadcast:</p>
+<pre><code>{ "chatId": "6ad07f87c1ce2a3a51f8ddf3", "time": 1792049031393, "firm": "ThinAir", "user": "Geek",
+  "text": "Anyone selling Brent Jan?", "tag": "oil" }</code></pre>
+<p><code>time</code> is the server's time in epoch milliseconds. The message is stored (on disk) before it is
+broadcast and answered. 400 if the text is missing or too long or the tag too long.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/chat<span class="opt">?date=&amp;fromDate=&amp;tag=&amp;limit=</span></div>
+<p>The stored chat messages, oldest first.</p>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>date</code> <span class="opt">optional</span></td><td><code>yyyy-MM-dd</code>: the messages
+        created on and before this day (server local time). Default today.</td></tr>
+    <tr><td><code>fromDate</code> <span class="opt">optional</span></td><td><code>yyyy-MM-dd</code>: only the
+        messages from this day on. With <code>fromDate</code> = <code>date</code>, one day's messages.</td></tr>
+    <tr><td><code>tag</code> <span class="opt">optional</span></td><td>Only the messages whose tag contains this
+        text (case-insensitive; plain text, not a pattern). Left out or empty: all.</td></tr>
+    <tr><td><code>limit</code> <span class="opt">optional</span></td><td>At most this many messages, the latest
+        ones; 1&ndash;5000, default 1000.</td></tr>
+</table>
+<pre><code>{ "date": "2026-10-15", "fromDate": "2026-10-15", "tag": "oil", "more": false, "messages": [
+  { "chatId": "6ad07f87c1ce2a3a51f8ddf3", "time": 1792049031393, "firm": "ThinAir", "user": "Geek",
+    "text": "Anyone selling Brent Jan?", "tag": "oil" } ] }</code></pre>
+<p><code>more</code> is true if older messages were left out because of the limit. 400 for an invalid date or
+limit.</p>
+</div>
+
 <h2 id="websocket">WebSocket</h2>
 <p>Connect to <code>wss://&lt;host&gt;/&lt;base&gt;/ws</code> (e.g. <code>wss://hoddmimes.com/emporia/ws</code>)
 <b>after logging in</b>, sending the session cookie with the connection request. There is nothing to subscribe to:
@@ -553,7 +599,8 @@ your firm.</p>
 
 <h2 id="bdx-messages">Messages</h2>
 <p>Every message is a JSON object that starts with <code>type</code>, <code>topic</code>, <code>marketId</code> and,
-for instrument messages, <code>instrumentId</code>, followed by the type's own fields. Prices and quantities are
+for instrument messages, <code>instrumentId</code>, followed by the type's own fields (a <code>Chat</code> message
+has no <code>marketId</code>: its topic is <code>/Chat</code>). Prices and quantities are
 <b>decimals</b> here, not scaled. A field that is <code>null</code> has no value (clear any previous value).</p>
 <pre><code>{ "type": "PriceUpdate", "topic": "/PriceUpdate/1/4294967297", "marketId": 1, "instrumentId": 4294967297,
   "bidVol": 15.0, "bidPx": 99.0, "askVol": 1.0, "askPx": 100.0,
@@ -606,6 +653,14 @@ for instrument messages, <code>instrumentId</code>, followed by the type's own f
     <tr><td><code>OwnBulletinTrade</code></td><td>A bulletin trade your firm took part in.</td><td>As BulletinTrade,
         plus <code>side</code>, <code>userRef</code> (owner) or <code>offerRef</code> (offerer), and
         <code>clientAccount</code> (your firm's bulletin's or offer's)</td></tr>
+</table>
+
+<h3>Messages to everyone</h3>
+<table>
+    <tr><th>Type</th><th>When</th><th>Fields</th></tr>
+    <tr><td><code>Chat</code></td><td>A chat message was sent (also your own), to every connected trading
+        user.</td><td><code>chatId</code>, <code>time</code> (epoch ms), <code>firm</code>, <code>user</code>,
+        <code>text</code>, <code>tag</code> (empty if none)</td></tr>
 </table>
 <p>The counterparty of a trade or offer is never revealed. New message types or fields may be added; ignore what
 you don't recognize.</p>

@@ -25,6 +25,7 @@
             <button class="btn btn-outline btn-sm" data-view="trades" onclick="onMyTrades()">My Trades</button>
             <button class="btn btn-outline btn-sm" data-view="bulletins" onclick="onMyBulletins()">Bulletin Orders</button>
             <button class="btn btn-outline btn-sm" data-view="portfolio" onclick="onMyPortfolio()">My Portfolio</button>
+            <button class="btn btn-outline btn-sm" data-view="chat" onclick="onChat()">Chat</button>
         </nav>
 
         <aside class="mv-sidebar">
@@ -191,6 +192,7 @@
 
     <!-- Popups for new offers received on the firm's bulletins -->
     <div id="mv-toasts" class="mv-toasts"></div>
+    <div id="mv-chat-toasts" class="mv-toasts mv-chat-toasts"></div>
 
     <!-- Offer response dialog: accept or reject an offer received on one of the firm's bulletins
          (click on a row of Received Offers in the Bulletin Orders view) -->
@@ -331,6 +333,7 @@
             ordersView    = false;
             portfolioView = false;
             tradesView    = false;
+            chatView = false;
             selectedMarket = market;
             setActiveView(null);
             renderMarketList();
@@ -706,11 +709,16 @@
             // own bulletin, and for the answer to an own offer; reloads the Bulletin Orders view),
             // OwnBulletinTrade (a popup; reloads the portfolio and today's My Trades), BulletinTrade
             // (revalues the portfolio) and, in the portfolio view and today's My Trades,
-            // OwnTrade (reloads them) and, in the My Orders view, OwnOrder (reloads it) are used here:
+            // OwnTrade (reloads them) and, in the My Orders view, OwnOrder (reloads it), and Chat (a popup,
+            // added to the Chat view) are used here:
             //   { type: "PriceUpdate", instrumentId, bidVol, bidPx, askVol, askPx, open, high, last, volume }
             // Other types (Trade, AddOrder/ModifyOrder/RemoveOrder and OwnBulletin) are ignored.
             let msg;
             try { msg = JSON.parse(raw); } catch (_) { return; }
+            if (msg && msg.type === 'Chat') {
+                chatReceived(msg);
+                return;
+            }
             if (msg && msg.type === 'MarketState') {
                 updateMarketState(msg.marketId, msg.tradingStatus);
                 return;
@@ -1343,13 +1351,16 @@
         // ── Information popups ────────────────────────────────────────────
         // A short popup in the top right corner (with the bulletin offer popups): an accepted order or
         // bulletin, and each own trade. It closes by itself after TOAST_MS or on a click; at most
-        // MAX_INFO_TOASTS are shown, a new one removes the oldest.
+        // MAX_INFO_TOASTS are shown, a new one removes the oldest. Chat popups are shown apart, centered
+        // below the top menu, and longer (CHAT_TOAST_MS).
         const TOAST_MS        = 5000;
+        const CHAT_TOAST_MS   = 12000;
         const MAX_INFO_TOASTS = 3;
 
-        // { kind: buy|sell|bulletin, title, lines: [text, ...] }
+        // { kind: buy|sell|bulletin|chat, title, lines: [text, ...] }
         function showToast(t) {
-            const box = document.getElementById('mv-toasts');
+            const chat = t.kind === 'chat';
+            const box = document.getElementById(chat ? 'mv-chat-toasts' : 'mv-toasts');
             const shown = box.querySelectorAll('.mv-toast-info');
             if (shown.length >= MAX_INFO_TOASTS) shown[0].remove();
             const toast = document.createElement('div');
@@ -1357,7 +1368,7 @@
             toast.title = 'Click to close';
             toast.innerHTML = '<div class="mv-toast-title">' + escapeHtml(t.title) + '</div>'
                 + t.lines.map(l => '<div>' + escapeHtml(l) + '</div>').join('');
-            const timer = setTimeout(() => toast.remove(), TOAST_MS);
+            const timer = setTimeout(() => toast.remove(), chat ? CHAT_TOAST_MS : TOAST_MS);
             toast.onclick = () => { clearTimeout(timer); toast.remove(); };
             box.appendChild(toast);
         }
@@ -1452,6 +1463,7 @@
             leaveMyBulletins();
             portfolioView  = false;
             tradesView     = false;
+            chatView = false;
             ordersView     = true;
             ordersMarketId = 0;
             selectedMarket = null;
@@ -1677,6 +1689,7 @@
             setActiveView('bulletins');
             portfolioView   = false;
             tradesView      = false;
+            chatView = false;
             myBulletinsView = true;
             ordersView      = false;
             selectedMarket  = null;
@@ -1988,6 +2001,7 @@
             ordersView     = false;
             portfolioView  = false;
             tradesView     = true;
+            chatView = false;
             selectedMarket = null;
             instruments    = [];
             renderMarketList();
@@ -2118,6 +2132,7 @@
             leaveMyBulletins();
             ordersView     = false;
             tradesView     = false;
+            chatView = false;
             portfolioView  = true;
             selectedMarket = null;
             instruments    = [];
@@ -2258,6 +2273,215 @@
                 +   '<tbody>' + rows + '</tbody>'
                 +   '<tfoot><tr class="mv-total"><td colspan="' + (showAccount ? 7 : 6) + '">Total value</td><td>' + fmtValue(total) + '</td></tr></tfoot>'
                 + '</table>');
+        }
+
+        // ── Chat view ─────────────────────────────────────────────────────
+        // Chat between the trading users of all firms. The view lists the messages (GET /api/chat) of one
+        // day, by default today, or (with "and earlier days") up to and including that day, optionally only
+        // those whose tag contains a text; a Chat message (bdx, to every client) that matches is added at the
+        // bottom. Below the list a message (at most 512 bytes in UTF-8) is sent with an optional tag (at most
+        // 64 bytes; kept for the next message): POST /api/chat. Every Chat message from someone else shows a
+        // popup, in any view.
+        const CHAT_TEXT_BYTES = 512, CHAT_TAG_BYTES = 64;
+        let chatView    = false;
+        let chatDate    = null;      // yyyy-MM-dd
+        let chatEarlier = false;     // also the days before chatDate
+        let chatTag     = '';        // the tag filter: tag contains (case-insensitive), '' = all
+        let chatMessages = [];       // { chatId, time, firm, user, text, tag }, oldest first
+
+        const utf8Bytes = (s) => new TextEncoder().encode(s).length;
+
+        async function onChat() {
+            setActiveView('chat');
+            leaveMyBulletins();
+            ordersView     = false;
+            portfolioView  = false;
+            tradesView     = false;
+            chatView       = true;
+            selectedMarket = null;
+            instruments    = [];
+            renderMarketList();
+            document.getElementById('mv-market-name').textContent = 'Chat';
+            chatDate = todayString();
+            chatEarlier = false;
+            chatTag = '';
+            document.getElementById('mv-price-container').innerHTML =
+                '<form class="mv-toolbar" onsubmit="event.preventDefault(); showChatFilter();">'
+                + '<label for="ch-date">Date</label>'
+                + '<input type="text" id="ch-date" placeholder="yyyy-MM-dd" maxlength="10" autocomplete="off" value="' + chatDate + '">'
+                + '<label class="mv-check"><input type="checkbox" id="ch-earlier"> and earlier days</label>'
+                + '<label for="ch-filter-tag">Tag</label>'
+                + '<input type="text" id="ch-filter-tag" placeholder="contains" autocomplete="off">'
+                + '<button type="submit" class="btn btn-primary btn-sm">Show</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="shiftChatDate(-1)" title="Previous day">&larr;</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="shiftChatDate(1)" title="Next day">&rarr;</button>'
+                + '<button type="button" class="btn btn-outline btn-sm" onclick="setChatDate(todayString())">Today</button>'
+                + '<span id="ch-error" class="mv-toolbar-error"></span>'
+                + '</form>'
+                + '<div id="ch-messages" class="mv-chat-list"></div>'
+                + '<form class="mv-chat-compose" onsubmit="sendChat(event)">'
+                +   '<input type="text" id="ch-tag" placeholder="Tag (optional)" autocomplete="off" value="' + escapeHtml(chatSendTag) + '">'
+                +   '<textarea id="ch-text" rows="2" placeholder="Message (Enter sends, Shift+Enter for a new line)"></textarea>'
+                +   '<span id="ch-count" class="mv-chat-count">0/' + CHAT_TEXT_BYTES + '</span>'
+                +   '<button type="submit" id="ch-send" class="btn btn-primary">Send</button>'
+                + '</form>'
+                + '<div id="ch-send-error" class="mv-toolbar-error"></div>';
+            const text = document.getElementById('ch-text');
+            text.addEventListener('input', updateChatCount);
+            text.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(e); }
+            });
+            setChatMeta();
+            await loadChat();
+            text.focus();
+        }
+
+        let chatSendTag = '';   // the tag of the last message sent, kept while the page is open
+
+        function setChatMeta() {
+            document.getElementById('mv-market-meta').textContent =
+                (chatEarlier ? 'Up to ' + chatDate : chatDate) + (chatTag ? '  ·  tag contains "' + chatTag + '"' : '');
+        }
+
+        function showChatFilter() {
+            const input = document.getElementById('ch-date');
+            const date  = input.value.trim();
+            if (!isValidDate(date)) {
+                input.classList.add('invalid');
+                document.getElementById('ch-error').textContent = 'The date must be a valid date as yyyy-MM-dd.';
+                return;
+            }
+            setChatDate(date);
+        }
+
+        function setChatDate(date) {
+            const input = document.getElementById('ch-date');
+            input.value = date;
+            input.classList.remove('invalid');
+            document.getElementById('ch-error').textContent = '';
+            chatDate    = date;
+            chatEarlier = document.getElementById('ch-earlier').checked;
+            chatTag     = document.getElementById('ch-filter-tag').value.trim();
+            setChatMeta();
+            loadChat();
+        }
+
+        function shiftChatDate(days) {
+            const [y, m, d] = chatDate.split('-').map(Number);
+            const t = new Date(y, m - 1, d + days);
+            setChatDate(t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'));
+        }
+
+        async function loadChat() {
+            const key = chatDate + '|' + chatEarlier + '|' + chatTag;
+            const el = document.getElementById('ch-messages');
+            const params = new URLSearchParams({ date: chatDate });
+            if (!chatEarlier) params.set('fromDate', chatDate);
+            if (chatTag) params.set('tag', chatTag);
+            try {
+                const r = await fetch('api/chat?' + params);
+                const data = await r.json().catch(() => null);
+                if (!r.ok) throw new Error('HTTP ' + r.status + ((data && data.error) ? ': ' + data.error : ''));
+                if (!chatView || key !== chatDate + '|' + chatEarlier + '|' + chatTag) return;   // changed meanwhile
+                chatMessages = data.messages || [];
+                renderChat(data.more);
+            } catch (e) {
+                console.error('Failed to load chat messages', e);
+                if (el) el.innerHTML = '<div class="mv-empty">Failed to load chat messages: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        function isOwnChat(m) {
+            const s = trSession._session;
+            return !!s && m.firm === s.firm && m.user === s.userId;
+        }
+
+        function chatMessageHtml(m) {
+            const d = new Date(m.time);
+            const when = (chatEarlier || todayString() !== chatDate) ? d.toLocaleDateString() + ' ' : '';
+            return '<div class="mv-chat-msg' + (isOwnChat(m) ? ' mv-chat-own' : '') + '">'
+                + '<div class="mv-chat-head">'
+                +   '<span>' + escapeHtml(when + d.toLocaleTimeString(undefined, { hour12: false })) + '</span>'
+                +   '<span class="mv-chat-who">' + escapeHtml(m.user) + ' (' + escapeHtml(m.firm) + ')</span>'
+                +   (m.tag ? '<span class="mv-chat-tag">' + escapeHtml(m.tag) + '</span>' : '')
+                + '</div>'
+                + '<div class="mv-chat-text">' + escapeHtml(m.text) + '</div>'
+                + '</div>';
+        }
+
+        function renderChat(more) {
+            const el = document.getElementById('ch-messages');
+            if (!el) return;
+            if (chatMessages.length === 0) {
+                el.innerHTML = '<div class="mv-empty">No chat messages.</div>';
+                return;
+            }
+            el.innerHTML = (more ? '<div class="mv-chat-note">Only the latest ' + chatMessages.length + ' messages are shown.</div>' : '')
+                + chatMessages.map(chatMessageHtml).join('');
+            el.scrollTop = el.scrollHeight;   // the latest at the bottom
+        }
+
+        // A Chat message (bdx): a popup unless it is the user's own, and added to the Chat view if it matches
+        function chatReceived(m) {
+            if (!isOwnChat(m)) {
+                const text = (m.text.length > 200) ? m.text.slice(0, 200) + '…' : m.text;
+                showToast({ kind: 'chat', title: 'Chat: ' + m.user + ' (' + m.firm + ')',
+                            lines: (m.tag ? ['[' + m.tag + ']'] : []).concat([text]) });
+            }
+            if (!chatView || chatMessages.some(x => x.chatId === m.chatId)) return;
+            const today = todayString();
+            const inRange = chatEarlier ? today <= chatDate : today === chatDate;
+            if (!inRange || (chatTag && !(m.tag || '').toLowerCase().includes(chatTag.toLowerCase()))) return;
+            const el = document.getElementById('ch-messages');
+            const atBottom = el && el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            chatMessages.push(m);
+            if (chatMessages.length === 1) { renderChat(false); return; }
+            el.insertAdjacentHTML('beforeend', chatMessageHtml(m));
+            if (atBottom || isOwnChat(m)) el.scrollTop = el.scrollHeight;
+        }
+
+        function updateChatCount() {
+            const n = utf8Bytes(document.getElementById('ch-text').value.trim());
+            const count = document.getElementById('ch-count');
+            count.textContent = n + '/' + CHAT_TEXT_BYTES;
+            count.classList.toggle('over', n > CHAT_TEXT_BYTES);
+            if (n <= CHAT_TEXT_BYTES && document.getElementById('ch-text').classList.contains('invalid')) {
+                document.getElementById('ch-text').classList.remove('invalid');   // no longer too long
+                document.getElementById('ch-send-error').textContent = '';
+            }
+        }
+
+        async function sendChat(event) {
+            event.preventDefault();
+            const textEl = document.getElementById('ch-text');
+            const tagEl  = document.getElementById('ch-tag');
+            const errEl  = document.getElementById('ch-send-error');
+            const text = textEl.value.trim();
+            const tag  = tagEl.value.trim();
+            textEl.classList.remove('invalid');
+            tagEl.classList.remove('invalid');
+            errEl.textContent = '';
+            if (!text) return;
+            if (utf8Bytes(text) > CHAT_TEXT_BYTES) {
+                textEl.classList.add('invalid');
+                errEl.textContent = 'The message must be at most ' + CHAT_TEXT_BYTES + ' bytes (UTF-8).';
+                return;
+            }
+            if (utf8Bytes(tag) > CHAT_TAG_BYTES) {
+                tagEl.classList.add('invalid');
+                errEl.textContent = 'The tag must be at most ' + CHAT_TAG_BYTES + ' bytes (UTF-8).';
+                return;
+            }
+            const button = document.getElementById('ch-send');
+            button.disabled = true;
+            const r = await postJson('api/chat', tag ? { text, tag } : { text });
+            button.disabled = false;
+            if (!r.ok) { errEl.textContent = 'Not sent: ' + r.error; return; }
+            chatSendTag = tag;
+            textEl.value = '';
+            updateChatCount();
+            textEl.focus();
+            chatReceived(r.data);   // shown at once; the Chat broadcast of it is then ignored
         }
 
         // ── Boot ──────────────────────────────────────────────────────────

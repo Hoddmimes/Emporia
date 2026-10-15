@@ -9,6 +9,7 @@ import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.ReturnDocument;
+import com.mongodb.client.model.Sorts;
 import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.Order;
@@ -28,6 +29,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -69,6 +71,42 @@ public class Database {
                 tTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")));
+        cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("time", "_id")));
+    }
+
+    // ── Chat ──────────────────────────────────────────────────────────────
+
+    /**
+     * Stores a chat message in the Chat collection: chatId, time ("yyyy-MM-dd HH:mm:ss.SSS" in server local
+     * time, formatTradeTime), firm, user, text and tag. The write is journaled (on disk before it returns),
+     * and the message is broadcast only afterwards.
+     */
+    public void saveChatMessage(Document pDoc) {
+        mDatabase.getCollection("Chat").withWriteConcern(WriteConcern.JOURNALED).insertOne(pDoc);
+    }
+
+    /**
+     * The chat messages up to and including pToDate (yyyy-MM-dd), and from pFromDate (null: no lower bound),
+     * whose tag contains pTag (case-insensitive; null or empty: all). At most pLimit, the latest ones, returned
+     * oldest first. Throws IllegalArgumentException for an invalid date.
+     */
+    public List<Document> listChatMessages(String pFromDate, String pToDate, String pTag, int pLimit) {
+        Document tTime = new Document("$lte", tradeDay(pToDate).get("$lte"));
+        if (pFromDate != null) tTime.append("$gte", tradeDay(pFromDate).get("$gte"));
+        Document tFilter = new Document("time", tTime);
+        if (pTag != null && !pTag.isEmpty()) {
+            tFilter.append("tag", new Document("$regex", escapeRegex(pTag)).append("$options", "i"));
+        }
+        List<Document> tOut = new ArrayList<>();
+        mDatabase.getCollection("Chat").find(tFilter).sort(Sorts.descending("time", "_id")).limit(pLimit)
+                .projection(new Document("_id", 0)).into(tOut);
+        Collections.reverse(tOut);
+        return tOut;
+    }
+
+    /** The text with the regular expression's special characters escaped, so it matches literally. */
+    static String escapeRegex(String pText) {
+        return pText.replaceAll("[\\\\^$.|?*+()\\[\\]{}]", "\\\\$0");
     }
 
     /** Closes the MongoDB connection (web application undeploy). */

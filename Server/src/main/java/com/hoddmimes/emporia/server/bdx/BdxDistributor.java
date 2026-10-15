@@ -78,6 +78,7 @@ public class BdxDistributor extends Thread {
         }
 
         boolean receives(BdxMessage pMessage) {
+            if (pMessage.global()) return true;
             return (pMessage.firm() != null) ? pMessage.firm().equals(firm)
                     : authorizedMarkets.contains(pMessage.marketId());
         }

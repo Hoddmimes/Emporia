@@ -100,6 +100,19 @@ class BdxDistributorTest {
     }
 
     @Test
+    void globalMessagesGoToEveryClient() {
+        TestClient tA = connect("s1", "FirmA", 1);
+        TestClient tB = connect("s2", "FirmB");   // no markets at all
+        publish(BdxMessage.global(BdxMessage.CHAT).put("text", "hello"));
+        assertEquals(List.of(BdxMessage.CHAT), tA.types());
+        assertEquals(List.of(BdxMessage.CHAT), tB.types());
+        JsonObject tChat = tB.received.get(0);
+        assertEquals("/Chat", tChat.get("topic").getAsString());
+        assertFalse(tChat.has("marketId"));
+        assertEquals("hello", tChat.get("text").getAsString());
+    }
+
+    @Test
     void updatedAuthorizationsApplyToConnectedClients() {
         publish(BdxMessage.instrument(BdxMessage.PRICE_UPDATE, 2, INST2).put("last", 20.0));
         TestClient tA = connect("s1", "FirmA", 1);

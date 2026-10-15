@@ -249,6 +249,7 @@ public class RestApi {
             new TradeEndpoints(mCtx),
             new PortfolioEndpoints(mCtx),
             new BulletinEndpoints(mCtx),
+            new ChatEndpoints(mCtx),
             new AdminSessionEndpoint(mCtx),
             new AdminLoginEndpoint(mCtx),
             new AdminLogoutEndpoint(mCtx),

@@ -64,4 +64,11 @@ class DatabaseTradeTest {
         Database.fromTradeDocument(Database.toTradeDocument(new InternalTrade(INST, S, S, tBuy, tSell)));
         assertEquals(tFirst + 2, new InternalTrade(INST, S, S, tBuy, tSell).getTradeNo());
     }
+
+    @Test
+    void escapedRegexMatchesTheTextLiterally() {
+        String tPattern = Database.escapeRegex("a.b*(c)[d]{e}|f?g+h^i$j\\k");
+        assertTrue("xa.b*(c)[d]{e}|f?g+h^i$j\\ky".matches(".*" + tPattern + ".*"));
+        assertFalse("aXb*(c)[d]{e}|f?g+h^i$j\\k".matches(".*" + tPattern + ".*"));
+    }
 }

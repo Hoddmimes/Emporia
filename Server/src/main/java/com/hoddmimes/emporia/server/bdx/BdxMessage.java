@@ -9,7 +9,8 @@ import com.google.gson.JsonObject;
  * {@code marketId}, {@code instrumentId} (instrument messages only) and the message's own fields.
  * The topic is {@code /<type>/<marketId>/<instrumentId>}, or {@code /<type>/<marketId>} for market
  * messages. A public message goes to every client whose firm is authorized for the market; a
- * private message ({@link #forFirm}) only to the clients of that firm.
+ * private message ({@link #forFirm}) only to the clients of that firm; a global message
+ * ({@link #global}, e.g. a chat message) to every client, with topic {@code /<type>} and no marketId.
  */
 public final class BdxMessage {
 
@@ -30,21 +31,41 @@ public final class BdxMessage {
     public static final String BULLETIN_TRADE     = "BulletinTrade";     // public, anonymous
     public static final String OWN_BULLETIN_TRADE = "OwnBulletinTrade";  // private to the firm of one trade side
 
+    // Global message types (to every connected trading client, no marketId)
+    public static final String CHAT = "Chat";
+
     private final String     mType;
     private final String     mTopic;
     private final int        mMarketId;
     private final String     mFirm;
+    private final boolean    mGlobal;
     private final JsonObject mJson = new JsonObject();
 
     private BdxMessage(String pType, int pMarketId, Long pInstrumentId, String pFirm) {
         mType     = pType;
         mMarketId = pMarketId;
         mFirm     = pFirm;
+        mGlobal   = false;
         mTopic    = "/" + pType + "/" + pMarketId + (pInstrumentId != null ? "/" + pInstrumentId : "");
         mJson.addProperty("type",     pType);
         mJson.addProperty("topic",    mTopic);
         mJson.addProperty("marketId", pMarketId);
         if (pInstrumentId != null) mJson.addProperty("instrumentId", pInstrumentId);
+    }
+
+    private BdxMessage(String pType) {
+        mType     = pType;
+        mMarketId = 0;
+        mFirm     = null;
+        mGlobal   = true;
+        mTopic    = "/" + pType;
+        mJson.addProperty("type",  pType);
+        mJson.addProperty("topic", mTopic);
+    }
+
+    /** A message to every connected trading client, whatever its firm's markets. */
+    public static BdxMessage global(String pType) {
+        return new BdxMessage(pType);
     }
 
     /** A public message about an instrument. */
@@ -75,8 +96,10 @@ public final class BdxMessage {
     public String type()     { return mType; }
     public String topic()    { return mTopic; }
     public int    marketId() { return mMarketId; }
-    /** The firm a private message is for; null for a public message. */
+    /** The firm a private message is for; null for a public or global message. */
     public String firm()     { return mFirm; }
+    /** True for a message to every client (global). */
+    public boolean global()  { return mGlobal; }
 
     /** A copy of the message as JSON. */
     public JsonObject toJson() { return mJson.deepCopy(); }

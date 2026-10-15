@@ -592,3 +592,45 @@ body {
 .mv-toast-buy .mv-toast-title  { color: #1c7c44; }
 .mv-toast-sell { border-left-color: var(--error); }
 .mv-toast-sell .mv-toast-title { color: var(--error); }
+.mv-toast-chat { border-left-color: var(--primary); }
+.mv-toast-chat .mv-toast-title { color: var(--primary); }
+.mv-toast-chat div:not(.mv-toast-title) { overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* Chat view: the messages above, the message entry below */
+.mv-toolbar label.mv-check { font-weight: 400; display: flex; align-items: center; gap: 4px; }
+.mv-toolbar label.mv-check input { width: auto; }
+.mv-chat-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 12px;
+    max-height: calc(100vh - 330px);
+    min-height: 160px;
+    overflow-y: auto;
+}
+.mv-chat-msg { padding: 7px 0; border-bottom: 1px solid var(--border); }
+.mv-chat-msg:last-child { border-bottom: none; }
+.mv-chat-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; color: var(--text-light); }
+.mv-chat-who  { font-weight: 700; color: var(--text); }
+.mv-chat-own .mv-chat-who { color: var(--primary); }
+.mv-chat-tag  { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; color: var(--text); }
+.mv-chat-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.mv-chat-note { color: var(--text-light); font-size: 12px; padding: 6px 0; }
+.mv-chat-compose { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; flex-wrap: wrap; }
+.mv-chat-compose input, .mv-chat-compose textarea {
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 14px;
+    background: var(--surface);
+    color: var(--text);
+}
+.mv-chat-compose input    { width: 150px; }
+.mv-chat-compose textarea { flex: 1; min-width: 200px; resize: vertical; }
+.mv-chat-compose .invalid { border-color: var(--error); }
+.mv-chat-count { font-size: 12px; color: var(--text-light); align-self: center; font-variant-numeric: tabular-nums; }
+.mv-chat-count.over { color: var(--error); }
+/* Chat popups: centered below the top menu, apart from the trade and offer popups in the right corner */
+.mv-chat-toasts { right: auto; left: 50%; transform: translateX(-50%); top: 120px; }
+.mv-chat-toasts .mv-toast-info { width: 400px; font-size: 13px; }
