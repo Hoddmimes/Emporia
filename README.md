@@ -52,11 +52,11 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
   on one server.
 
 ### Documentation
-- [User guide](Server/WebContent/user-guide.html): the web trading interface, with screenshots.
-- [Trading API](Server/WebContent/api-doc.html): REST endpoints and WebSocket messages for developers.
-- Both pages are part of the web application and are served by the running server, e.g.
-  `https://<host>/emporia/user-guide.html` and `.../api-doc.html`. The trading page links to the guide
-  under Help.
+- [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
+- [Trading API](https://hoddmimes.com/emporia/api-doc.html): REST endpoints and WebSocket messages for developers.
+- Both pages are part of the web application (`Server/WebContent/user-guide.html` and `api-doc.html`) and
+  are served by every running server at `/emporia/user-guide.html` and `/emporia/api-doc.html`; the
+  links above go to the demo server. The trading page links to the guide under Help.
 
 ### Also in the project
 - `TestClient`: a load and test client driven by JSON scripts, using only the REST API and WebSocket.
