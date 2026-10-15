@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emporia User Guide</title>
+<!-- The screenshots in guide/ are made by tools/user-guide/make-screenshots.sh; run it again after a change of the UI -->
+<style>
+:root {
+    --bg: #f6f7fa; --surface: #ffffff; --text: #1f2a3c; --muted: #5d6b82; --border: #dde2ea;
+    --accent: #1f5fae; --code-bg: #f0f2f6; --buy: #1c7c44; --sell: #b3261e; --bulletin: #0f8b8d;
+    --note-bg: #eef4fc; --mark: #e8590c;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+        --accent: #6aa5ee; --code-bg: #232b36; --buy: #5cc48a; --sell: #ef7a72; --bulletin: #4fc2c4;
+        --note-bg: #1c2838;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+    --accent: #6aa5ee; --code-bg: #232b36; --buy: #5cc48a; --sell: #ef7a72; --bulletin: #4fc2c4;
+    --note-bg: #1c2838;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.layout { display: flex; max-width: 1240px; margin: 0 auto; }
+nav { position: sticky; top: 0; align-self: flex-start; width: 240px; flex-shrink: 0; height: 100vh; overflow-y: auto;
+      padding: 28px 16px 28px 20px; border-right: 1px solid var(--border); font-size: 14px; }
+nav .title { font-weight: 700; letter-spacing: 1px; font-size: 16px; margin-bottom: 14px; }
+nav a { display: block; color: var(--muted); text-decoration: none; padding: 2px 0; }
+nav a:hover { color: var(--accent); }
+nav .group { margin-top: 12px; font-weight: 600; color: var(--text); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+main { flex: 1; min-width: 0; padding: 28px 40px 80px; max-width: 980px; }
+h1 { font-size: 28px; margin: 0 0 4px; }
+h2 { font-size: 21px; margin: 44px 0 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+h3 { font-size: 16px; margin: 28px 0 6px; }
+p, ul, ol { margin: 8px 0; }
+li { margin: 3px 0; }
+a { color: var(--accent); }
+.subtitle { color: var(--muted); margin-bottom: 20px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+       background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+kbd { font-family: inherit; font-size: 13px; border: 1px solid var(--border); border-bottom-width: 2px;
+      border-radius: 4px; padding: 0 5px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 14px; background: var(--surface); }
+th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+figure { margin: 14px 0 22px; }
+figure img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px;
+             box-shadow: 0 2px 10px rgba(0,0,0,.08); background: #fff; }
+figure.dialog img { max-width: 470px; }
+figure.popup img { max-width: 340px; }
+figure.small img { max-width: 430px; }
+figure a { display: block; width: fit-content; max-width: 100%; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+.row figure { margin: 6px 0 16px; }
+.note { background: var(--note-bg); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 4px; margin: 12px 0; }
+.mark { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: var(--mark); color: #fff;
+        font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; margin-right: 4px; }
+.buy { color: var(--buy); font-weight: 600; } .sell { color: var(--sell); font-weight: 600; }
+.bulletin { color: var(--bulletin); font-weight: 600; }
+ol.marks { list-style: none; padding-left: 0; }
+ol.marks li { margin: 6px 0; }
+@media (max-width: 860px) {
+    .layout { display: block; }
+    nav { position: static; width: auto; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 16px; }
+    main { padding: 20px 16px 60px; }
+    figure.dialog img, figure.popup img, figure.small img { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+    <div class="title">EMPORIA GUIDE</div>
+    <a href="#start">Getting started</a>
+    <a href="#screen">The screen</a>
+    <div class="group">Trading</div>
+    <a href="#prices">Prices and the order book</a>
+    <a href="#enter-order">Entering an order</a>
+    <a href="#delete-order">Deleting an order</a>
+    <a href="#trades">Trades and popups</a>
+    <div class="group">Overviews</div>
+    <a href="#my-orders">My Orders</a>
+    <a href="#my-trades">My Trades</a>
+    <a href="#portfolio">My Portfolio</a>
+    <a href="#accounts">Client accounts</a>
+    <div class="group">Bulletin markets</div>
+    <a href="#bulletins">Bulletins</a>
+    <a href="#enter-bulletin">Entering a bulletin</a>
+    <a href="#withdraw-bulletin">Withdrawing a bulletin</a>
+    <a href="#make-offer">Making an offer</a>
+    <a href="#answer-offer">Answering an offer</a>
+    <a href="#bulletin-orders">Bulletin Orders</a>
+    <div class="group">More</div>
+    <a href="#chat">Chat</a>
+    <a href="#states">Market states</a>
+    <a href="#connection">Connection and session</a>
+    <a href="api-doc.html">Trading API (developers)</a>
+</nav>
+<main>
+
+<h1>Emporia User Guide</h1>
+<div class="subtitle">The web trading interface: markets, orders, trades, bulletins, portfolio and chat</div>
+
+<p>Emporia is a marketplace for commodities. It has two kinds of markets:</p>
+<ul>
+    <li><b>Order book markets</b> (continuous or auction): you enter buy and sell orders, and the system
+        matches them automatically by price and time.</li>
+    <li><b>Bulletin markets</b> <span class="bulletin">(shown in teal)</span>: you post a bulletin saying what
+        you would like to buy or sell. Another firm makes an offer on it, and you accept or reject the offer.
+        Nothing is matched automatically.</li>
+</ul>
+<p>All orders, trades and positions belong to your <b>firm</b>, so every user of the firm sees them.
+Other firms never see who you are; prices and volumes in the market are anonymous.</p>
+<div class="note">Click a picture to see it full size. The pictures show demo data: firm NORDAGRI with user anna, trading against
+the firms BALTCOM and WESTFARM.</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="start">Getting started</h2>
+<p>Open the Emporia address in your browser and sign in with your <b>firm</b>, <b>username</b> and
+<b>password</b>. You get them from your Emporia administrator. The version of the system is shown below
+the form.</p>
+<figure class="small">
+    <a href="guide/login.png" target="_blank" title="Open full size"><img src="guide/login.png" alt="The login page with Firm, Username and Password"></a>
+    <figcaption>The login page.</figcaption>
+</figure>
+<p>After signing in you see the trading screen. To end your session, click <b>Logout</b> in the top
+right corner. If you are idle for a while, the session ends by itself and you have to sign in again.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="screen">The screen</h2>
+<figure>
+    <a href="guide/dashboard.png" target="_blank" title="Open full size"><img src="guide/dashboard.png" alt="The trading screen with a market selected"></a>
+    <figcaption>The trading screen with the Grains market selected.</figcaption>
+</figure>
+<ol class="marks">
+    <li><span class="mark">1</span><b>Markets.</b> The markets your firm may trade in, each with its state
+        (OPEN, PREOPEN, CLOSED or SUSPENDED, see <a href="#states">Market states</a>). The bulletin markets
+        are listed under their own heading. Click a market to show it.</li>
+    <li><span class="mark">2</span><b>Top menu.</b> <b>Enter Order</b> opens the order dialog for the
+        selected market. The other buttons open views that cover all markets: <a href="#my-orders">My Orders</a>,
+        <a href="#my-trades">My Trades</a>, <a href="#bulletin-orders">Bulletin Orders</a>,
+        <a href="#portfolio">My Portfolio</a> and <a href="#chat">Chat</a>. The button of the view you are
+        in is highlighted.</li>
+    <li><span class="mark">3</span><b>The selected market</b>, its type and its state.</li>
+    <li><span class="mark">4</span><b>Connection.</b> Green <i>Connected</i> means you receive live prices
+        and events. See <a href="#connection">Connection and session</a>.</li>
+    <li><span class="mark">5</span><b>Price table.</b> One row per instrument, updated live, see
+        <a href="#prices">Prices and the order book</a>.</li>
+    <li><span class="mark">6</span><b>My Orders.</b> Your firm's resting orders in this market.</li>
+    <li><span class="mark">7</span><b>My Trades Today.</b> Your firm's trades in this market today, newest first.</li>
+</ol>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="prices">Prices and the order book</h2>
+<p>The price table shows for each instrument:</p>
+<table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td>Bid Qty / Bid</td><td>The best (highest) buy price and the total quantity at that price.</td></tr>
+    <tr><td>Ask / Ask Qty</td><td>The best (lowest) sell price and the total quantity at that price.</td></tr>
+    <tr><td>Open, High, Last</td><td>Today's first, highest and latest trade price.</td></tr>
+    <tr><td>Volume</td><td>The quantity traded today.</td></tr>
+</table>
+<p>A value that changes flashes <span class="buy">green</span> when it went up and
+<span class="sell">red</span> when it went down. A dash (—) means there is no value, for example no buy
+orders.</p>
+<p>What you can do in the table:</p>
+<ul>
+    <li><b>Click a row</b> to see the instrument's whole order book.</li>
+    <li><b>Double click the bid</b> to sell at the best bid, or <b>the ask</b> to buy at the best ask. This
+        opens the order dialog filled in with that price and quantity (see <a href="#enter-order">Entering an order</a>).</li>
+</ul>
+<figure class="dialog">
+    <a href="guide/order-book.png" target="_blank" title="Open full size"><img src="guide/order-book.png" alt="The order book dialog of WHEAT-DEC"></a>
+    <figcaption>The order book: every price level, best prices at the top.</figcaption>
+</figure>
+<p>The order book shows each price level with the number of orders and the total quantity. Your firm's
+own quantity at a level is shown in brackets, e.g. <i>550 (150)</i>. The book is a snapshot: click
+<b>Refresh</b> to update it. Click a level to enter an order against the best price on that side.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="enter-order">Entering an order</h2>
+<p>Select a market and click <b>Enter Order</b> in the top menu, or double click a price in the price
+table to get the dialog filled in.</p>
+<figure class="dialog">
+    <a href="guide/enter-order.png" target="_blank" title="Open full size"><img src="guide/enter-order.png" alt="The Enter Order dialog"></a>
+    <figcaption>The Enter Order dialog, opened by a double click on the ask of WHEAT-DEC.</figcaption>
+</figure>
+<table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>Instrument</td><td>What you buy or sell.</td></tr>
+    <tr><td>Side</td><td><span class="buy">BUY</span> or <span class="sell">SELL</span>.</td></tr>
+    <tr><td>Price</td><td>Your limit price. It must be a multiple of the instrument's <b>tick size</b>, shown
+        below the field. A buy order trades at this price or lower, a sell order at this price or higher.</td></tr>
+    <tr><td>Quantity</td><td>A multiple of the instrument's <b>lot size</b>, shown below the field.</td></tr>
+    <tr><td>Reference</td><td>Optional, your own text. It is shown with the order and its trades.</td></tr>
+    <tr><td>Client account</td><td>Optional, the account the trades are booked in, see
+        <a href="#accounts">Client accounts</a>. The dialog remembers the last one you used.</td></tr>
+</table>
+<p>Click <b>Submit Order</b>. A short popup confirms the order and the dialog closes. If something is
+wrong, the dialog shows the reason and stays open.</p>
+<p>The order trades at once with orders on the other side at your price or better. The trade is at the
+resting order's price. Whatever is not traded stays in the book as a resting order and is shown under
+<b>My Orders</b>. Orders can only be entered while the market is OPEN or PREOPEN.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="delete-order">Deleting an order</h2>
+<p><b>Double click</b> an order in My Orders (in the market or in the <a href="#my-orders">My Orders view</a>)
+and confirm with <b>Delete Order</b>. Any user of your firm can delete the firm's orders.</p>
+<figure class="dialog">
+    <a href="guide/delete-order.png" target="_blank" title="Open full size"><img src="guide/delete-order.png" alt="The Delete Order dialog"></a>
+    <figcaption>Deleting an order.</figcaption>
+</figure>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="trades">Trades and popups</h2>
+<p>When one of your firm's orders trades, a popup appears in the top right corner. It shows what was
+bought or sold, the market, the time and the client account. The trade is added to My Trades and to the
+portfolio at once.</p>
+<figure class="popup">
+    <a href="guide/trade-popup.png" target="_blank" title="Open full size"><img src="guide/trade-popup.png" alt="A trade popup"></a>
+    <figcaption>A trade popup.</figcaption>
+</figure>
+<p>Popups close by themselves after a few seconds, or when you click them. At most three are shown at a
+time. Popups for new bulletin offers stay until the offer is answered or expires, see
+<a href="#answer-offer">Answering an offer</a>.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="my-orders">My Orders</h2>
+<p>The <b>My Orders</b> view lists the resting orders of all users in your firm, in all markets or in the
+market you choose in its list. Double click an order to delete it.</p>
+<figure>
+    <a href="guide/my-orders.png" target="_blank" title="Open full size"><img src="guide/my-orders.png" alt="The My Orders view"></a>
+    <figcaption>My Orders.</figcaption>
+</figure>
+
+<h2 id="my-trades">My Trades</h2>
+<p>The <b>My Trades</b> view lists your firm's trades in all markets for one day, today by default. Enter
+another date (<code>yyyy-MM-dd</code>) and click <b>Show</b>, or step a day back or forward with the
+arrows. <b>Today</b> goes back to today. Bulletin trades are listed too, with their market in teal.</p>
+<figure>
+    <a href="guide/my-trades.png" target="_blank" title="Open full size"><img src="guide/my-trades.png" alt="The My Trades view"></a>
+    <figcaption>My Trades, today.</figcaption>
+</figure>
+
+<h2 id="portfolio">My Portfolio</h2>
+<p>The <b>My Portfolio</b> view shows your firm's position in each instrument. It is computed from all
+trades of every day: bought minus sold. Each position is valued at the latest trade price (Last Price),
+and the total value of all positions is shown at the bottom. Positions from bulletin trades are shown
+per bulletin market and instrument, in teal.</p>
+<figure>
+    <a href="guide/portfolio.png" target="_blank" title="Open full size"><img src="guide/portfolio.png" alt="My Portfolio per client account"></a>
+    <figcaption>My Portfolio, one row per instrument and client account.</figcaption>
+</figure>
+<p>The <b>Account</b> list chooses how the positions are shown:</p>
+<ul>
+    <li><b>Per account</b>: one row per instrument and client account. <b>Sort by</b> orders the rows by
+        instrument or by account.</li>
+    <li><b>Total per instrument</b>: the accounts added up, one row per instrument.</li>
+    <li><b>One account</b>: only that account's positions.</li>
+</ul>
+<figure>
+    <a href="guide/portfolio-total.png" target="_blank" title="Open full size"><img src="guide/portfolio-total.png" alt="My Portfolio, total per instrument"></a>
+    <figcaption>Total per instrument.</figcaption>
+</figure>
+
+<h2 id="accounts">Client accounts</h2>
+<p>A client account tells which client, fund or book an order or bulletin is for. It is your firm's own
+text, e.g. <code>fund-1</code> or <code>hedge</code>: up to 32 letters, digits, spaces and
+<code>. _ - /</code>. Upper and lower case are different. If you leave it empty, the account is
+<code>omni</code>.</p>
+<p>Each trade is booked in the account of your order, bulletin or offer. The portfolio can therefore show
+a position per account. A trade between two of your own accounts moves the position from one account to
+the other. Client accounts are private to your firm: other firms never see them.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="bulletins">Bulletins</h2>
+<p>Select a bulletin market (under <span class="bulletin">Bulletin Markets</span> in the market list) to
+see its bulletins. A bulletin says what a firm wants to do. It may leave out the side, the price or the
+quantity:</p>
+<figure>
+    <a href="guide/bulletin-market.png" target="_blank" title="Open full size"><img src="guide/bulletin-market.png" alt="The bulletins of a bulletin market"></a>
+    <figcaption>The bulletins of OTC-Energy.</figcaption>
+</figure>
+<ul>
+    <li><b>Side</b> <span class="buy">BUY</span> or <span class="sell">SELL</span> is the bulletin owner's
+        side. <span class="bulletin">EITHER</span> means the owner will buy or sell, and the firm making the
+        offer chooses.</li>
+    <li><b>Remaining</b> is the quantity left after earlier trades on the bulletin.</li>
+    <li><b>State</b>: ACTIVE (open for offers) or OFFER_PENDING (an offer is waiting for the owner's
+        answer; only one offer at a time).</li>
+    <li><b>Expires</b>: a bulletin is removed automatically after the market's maximum time.</li>
+    <li><i>(own)</i> marks your firm's bulletins (click one to withdraw it), and <i>(your offer)</i> a bulletin
+        where your firm's offer is waiting.</li>
+</ul>
+<p>The other firms never see who posted a bulletin or made an offer.</p>
+
+<h3 id="enter-bulletin">Entering a bulletin</h3>
+<p>With a bulletin market selected, click <b>Enter Order</b>. The dialog becomes <b>Enter Bulletin</b>:</p>
+<figure class="dialog">
+    <a href="guide/enter-bulletin.png" target="_blank" title="Open full size"><img src="guide/enter-bulletin.png" alt="The Enter Bulletin dialog"></a>
+    <figcaption>Entering a bulletin.</figcaption>
+</figure>
+<ul>
+    <li><b>Instrument</b> is free text. It must be one of the names the market allows, which are listed below
+        the field. An entry between slashes, like <code>/Brent .*/</code>, is a pattern: here any text
+        starting with "Brent ".</li>
+    <li><b>Side</b>, <b>price</b> and <b>quantity</b> are optional.</li>
+    <li><b>Reference</b> and <b>Client account</b> work as for orders.</li>
+</ul>
+<p>Bulletins can only be entered while the market is OPEN. A bulletin stays until it is fully traded,
+expires or is withdrawn.</p>
+
+<h3 id="withdraw-bulletin">Withdrawing a bulletin</h3>
+<p>Click <b>Withdraw</b> next to the bulletin in <a href="#bulletin-orders">Bulletin Orders</a>, or click
+your own bulletin in its bulletin market, and confirm with <b>Withdraw Bulletin</b>. Any user of your firm
+can withdraw the firm's bulletins, in any market state. While an offer on the bulletin is waiting, it
+can't be withdrawn: accept or reject the offer first.</p>
+<figure class="dialog">
+    <a href="guide/withdraw-bulletin.png" target="_blank" title="Open full size"><img src="guide/withdraw-bulletin.png" alt="The Withdraw Bulletin dialog"></a>
+    <figcaption>Withdrawing a bulletin.</figcaption>
+</figure>
+
+<h3 id="make-offer">Making an offer</h3>
+<p>Click another firm's bulletin to make an offer on it.</p>
+<figure class="dialog">
+    <a href="guide/make-offer.png" target="_blank" title="Open full size"><img src="guide/make-offer.png" alt="The Make Offer dialog"></a>
+    <figcaption>An offer on a SELL bulletin: your side is BUY.</figcaption>
+</figure>
+<ul>
+    <li><b>Your side</b> is the opposite of the bulletin's. On an EITHER bulletin you choose BUY or SELL.</li>
+    <li><b>Price</b> and <b>quantity</b> are filled in from the bulletin when it has them. You can change
+        them, but the quantity can be at most the remaining quantity.</li>
+    <li><b>Valid Time</b> is how long, in seconds, the owner has to answer. If they don't, the offer expires.</li>
+</ul>
+<p>The bulletin then shows <i>(your offer)</i>. Click it again to <b>withdraw</b> your offer. When the
+owner answers, you get a popup: a trade if the offer was accepted, otherwise <i>Offer rejected</i> or
+<i>Offer expired</i>.</p>
+
+<h3 id="answer-offer">Answering an offer</h3>
+<p>When another firm makes an offer on one of your firm's bulletins, every user of your firm gets a
+popup in any view. It counts down the time left to answer. If the browser allows it, a desktop
+notification is shown as well. (The browser asks for permission the first time you click on the
+page.)</p>
+<div class="row">
+    <figure class="popup">
+        <a href="guide/offer-popup.png" target="_blank" title="Open full size"><img src="guide/offer-popup.png" alt="The popup of a new bulletin offer"></a>
+        <figcaption>A new offer.</figcaption>
+    </figure>
+    <figure class="dialog">
+        <a href="guide/offer-response.png" target="_blank" title="Open full size"><img src="guide/offer-response.png" alt="The Offer Received dialog"></a>
+        <figcaption>Accept or reject.</figcaption>
+    </figure>
+</div>
+<p>Click <b>Answer</b> to open the offer, then <b>Accept</b> or <b>Reject</b>. When you accept, the
+trade is made at the offer's price and quantity, and both firms get a trade popup. The bulletin stays with
+its remaining quantity, or is removed when nothing is left.</p>
+
+<h3 id="bulletin-orders">Bulletin Orders</h3>
+<p>The <b>Bulletin Orders</b> view collects your firm's bulletin work across all bulletin markets:</p>
+<ul>
+    <li><b>Top:</b> your firm's bulletins, each with a <b>Withdraw</b> button (greyed out while an offer is waiting).</li>
+    <li><b>Bottom:</b> the offers received on them, with a countdown. Click an offer to accept or reject it.</li>
+</ul>
+<figure>
+    <a href="guide/bulletin-orders.png" target="_blank" title="Open full size"><img src="guide/bulletin-orders.png" alt="The Bulletin Orders view"></a>
+    <figcaption>Bulletin Orders: own bulletins and received offers.</figcaption>
+</figure>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="chat">Chat</h2>
+<p>The <b>Chat</b> view is a message board shared by the users of all firms. Each message shows its time,
+the sender and the sender's firm, and an optional tag. Your own messages are highlighted.</p>
+<figure>
+    <a href="guide/chat.png" target="_blank" title="Open full size"><img src="guide/chat.png" alt="The Chat view with a new message popup"></a>
+    <figcaption>The Chat view. A new message from another user also shows a popup in the middle of the screen.</figcaption>
+</figure>
+<ul>
+    <li><b>Reading:</b> the view shows the messages from the date in <b>From</b> up to now, today by default.
+        Choose an earlier date to see older messages. Type in <b>Tag</b> to show only messages whose tag
+        contains that text, then click <b>Show</b>.</li>
+    <li><b>Writing:</b> type the message at the bottom, optionally with a tag, and press <kbd>Enter</kbd> or
+        click <b>Send</b>. <kbd>Shift</kbd>+<kbd>Enter</kbd> starts a new line. A message can be up to 512
+        characters (fewer if you use special characters), and a tag up to 64.</li>
+    <li><b>New messages:</b> a message from someone else shows a popup in the middle of the screen in every
+        view. The popup stays a bit longer than the other popups.</li>
+</ul>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="states">Market states</h2>
+<table>
+    <tr><th>State</th><th>Meaning</th></tr>
+    <tr><td>OPEN</td><td>Trading. Orders are matched at once.</td></tr>
+    <tr><td>PREOPEN</td><td>Orders can be entered and deleted, but nothing is matched. When the market
+        opens, the orders that cross are traded at one common price, and then normal trading starts.</td></tr>
+    <tr><td>CLOSED</td><td>No trading. Orders can't be entered or deleted.</td></tr>
+    <tr><td>SUSPENDED</td><td>Trading is stopped by the operator. Orders can be deleted but not entered.</td></tr>
+</table>
+<p>The markets open and close by themselves at their trading hours on weekdays. In an <b>auction</b>
+market, orders are collected and traded at set times instead of continuously. A bulletin market is either
+OPEN, CLOSED or SUSPENDED. Offers can only be made and accepted while it is OPEN, but rejecting and
+withdrawing are always possible.</p>
+
+<h2 id="connection">Connection and session</h2>
+<p>Prices, popups and view updates come over a live connection, shown next to the market name. If it is
+lost, it shows <i>Disconnected</i> and the page reconnects by itself. After reconnecting it reloads the
+view and shows any offers received meanwhile. If the page cannot reconnect because your session has
+ended, sign in again.</p>
+<p>Your session ends when you log out, or after a period without activity. Logging out in one tab ends
+the session in all tabs of that browser.</p>
+
+</main>
+</div>
+</body>
+</html>

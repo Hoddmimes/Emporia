@@ -11,6 +11,7 @@
         <span class="logo">EMPORIA</span>
         <span class="subtitle">Trading Interface</span>
         <div class="spacer"></div>
+        <a href="user-guide.html" target="_blank" rel="noopener" class="mv-help-link" title="User guide">Help</a>
         <span class="user-info" id="user-info"></span>
         <button class="btn btn-outline btn-sm" onclick="trSession.logout()"
                 style="margin-left:14px;color:#fff;border-color:rgba(255,255,255,.4);">
@@ -187,6 +188,27 @@
         <div class="mv-order-buttons">
             <button type="button" class="btn btn-outline" onclick="closeWithdrawOfferDialog()">Keep Offer</button>
             <button type="button" id="wo-withdraw" class="btn btn-danger" onclick="withdrawOffer()">Withdraw Offer</button>
+        </div>
+    </dialog>
+
+    <!-- Withdraw bulletin dialog: one of the firm's own bulletins (its Withdraw button in Bulletin Orders,
+         or a click on it in a bulletin market) -->
+    <dialog id="withdraw-bulletin-dialog" class="mv-order-dialog bulletin">
+        <h3>Withdraw Bulletin?</h3>
+        <div id="wb-sub" class="mv-order-sub"></div>
+        <div id="wb-error" class="alert alert-error alert-hidden"></div>
+
+        <table class="mv-offer-info">
+            <tr><th>Instrument</th><td id="wb-instrument"></td></tr>
+            <tr><th>Bulletin</th><td id="wb-bulletin"></td></tr>
+            <tr><th>Reference</th><td id="wb-userRef"></td></tr>
+            <tr><th>Account</th><td id="wb-clientAccount"></td></tr>
+            <tr><th>Expires</th><td id="wb-expires"></td></tr>
+        </table>
+
+        <div class="mv-order-buttons">
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('withdraw-bulletin-dialog').close()">Keep Bulletin</button>
+            <button type="button" id="wb-withdraw" class="btn btn-danger" onclick="withdrawBulletin()">Withdraw Bulletin</button>
         </div>
     </dialog>
 
@@ -491,7 +513,7 @@
             const ownOffer = (b) => b.offer && b.offer.own;
             const rows = bulletins.map(b =>
                 '<tr class="mv-clickable" data-bulletin-id="' + escapeHtml(b.bulletinId) + '"'
-                + (b.own ? '' : ' title="' + (ownOffer(b) ? 'Click to withdraw your offer' : 'Click to make an offer') + '"') + '>'
+                + ' title="' + (b.own ? 'Click to withdraw your bulletin' : ownOffer(b) ? 'Click to withdraw your offer' : 'Click to make an offer') + '">'
                 + '<td class="mv-instr-name">' + escapeHtml(b.instrument) + (b.own ? ' <em>(own)</em>' : '') + '</td>'
                 + '<td class="' + sideClass(b.side) + '">' + escapeHtml(sideText(b.side)) + '</td>'
                 + '<td>' + fmtPx(given(b.price)) + '</td>'
@@ -1046,7 +1068,8 @@
             if (!tr || !selectedMarket || !selectedMarket.bulletin) return;
             const b = bulletins.find(x => x.bulletinId === tr.dataset.bulletinId);
             if (!b) return;
-            if (b.offer && b.offer.own) openWithdrawOfferDialog(b);   // the firm's own pending offer
+            if (b.own) openWithdrawBulletinDialog(b);                    // the firm's own bulletin
+            else if (b.offer && b.offer.own) openWithdrawOfferDialog(b);   // the firm's own pending offer
             else openOfferDialog(b);
         });
 
@@ -1353,7 +1376,7 @@
         // bulletin, and each own trade. It closes by itself after TOAST_MS or on a click; at most
         // MAX_INFO_TOASTS are shown, a new one removes the oldest. Chat popups are shown apart, centered
         // below the top menu, and longer (CHAT_TOAST_MS).
-        const TOAST_MS        = 5000;
+        const TOAST_MS        = 8000;
         const CHAT_TOAST_MS   = 12000;
         const MAX_INFO_TOASTS = 3;
 
@@ -1602,6 +1625,72 @@
             if (dashboardShown()) loadDashOrders();
         }
 
+        // ── Withdraw bulletin dialog ──────────────────────────────────────
+        // One of the firm's own bulletins (its Withdraw button in Bulletin Orders, or a click on it in its
+        // bulletin market): withdraw it (DELETE /api/bulletins/{bulletinId}), allowed in any market state
+        // but not while an offer on it is pending (the owner answers the offer first).
+        let withdrawingBulletin = null;
+
+        document.getElementById('mv-price-container').addEventListener('click', (e) => {
+            const button = e.target.closest('button[data-withdraw-bulletin-id]');
+            if (!button) return;
+            const b = myBulletins.find(x => x.bulletinId === button.dataset.withdrawBulletinId);
+            if (b) openWithdrawBulletinDialog(b);
+        });
+
+        function openWithdrawBulletinDialog(b) {
+            withdrawingBulletin = b;
+            const m = markets.find(x => x.id === b.marketId);
+            document.getElementById('wb-sub').textContent = (m ? m.name : String(b.marketId)) + '  ·  bulletin ' + b.bulletinId;
+            document.getElementById('wb-instrument').textContent = b.instrument;
+            const bulletinEl = document.getElementById('wb-bulletin');
+            bulletinEl.textContent = sideText(b.side) + '  ' + qtyAtPrice(b.quantity > 0 ? b.remainingQuantity : 0, b.price);
+            bulletinEl.className = sideClass(b.side);
+            document.getElementById('wb-userRef').textContent = b.userRef || '—';
+            document.getElementById('wb-clientAccount').textContent = b.clientAccount || '—';
+            document.getElementById('wb-expires').textContent = new Date(b.expiresAt).toLocaleString();
+            const error = document.getElementById('wb-error');
+            const pending = b.state === 'OFFER_PENDING';
+            error.textContent = pending ? 'An offer on the bulletin is pending: accept or reject it before withdrawing the bulletin.' : '';
+            error.classList.toggle('alert-hidden', !pending);
+            document.getElementById('wb-withdraw').disabled = pending;
+            document.getElementById('withdraw-bulletin-dialog').showModal();
+        }
+
+        async function withdrawBulletin() {
+            const b = withdrawingBulletin;
+            if (!b) return;
+            const button = document.getElementById('wb-withdraw');
+            button.disabled = true;
+            let error = null;
+            try {
+                const r = await fetch('api/bulletins/' + encodeURIComponent(b.bulletinId), { method: 'DELETE' });
+                if (!r.ok) {
+                    const text = await r.text().catch(() => '');
+                    let data = null;
+                    try { data = JSON.parse(text); } catch (_) { /* not JSON */ }
+                    const reply = (data && data.error) || text.trim().slice(0, 500);
+                    error = 'HTTP ' + r.status + (reply ? ': ' + reply : '');
+                }
+            } catch (e) {
+                error = 'Connection error: ' + (e.message || e);
+            }
+            if (error) {
+                const el = document.getElementById('wb-error');
+                el.textContent = 'Failed to withdraw the bulletin: ' + error;
+                el.classList.remove('alert-hidden');
+                button.disabled = false;
+                return;
+            }
+            document.getElementById('withdraw-bulletin-dialog').close();
+            withdrawingBulletin = null;
+            showToast({ kind: 'bulletin', title: 'Bulletin withdrawn',
+                        lines: [sideText(b.side) + ' ' + b.instrument + '  ' + qtyAtPrice(b.quantity > 0 ? b.remainingQuantity : 0, b.price)] });
+            // The Bulletin message reloads the views too
+            if (myBulletinsView) loadMyBulletins();
+            if (selectedMarket && selectedMarket.bulletin) loadBulletins(selectedMarket.id);
+        }
+
         // ── Withdraw offer dialog ─────────────────────────────────────────
         // The firm's own pending offer on another firm's bulletin (a click on the bulletin), with a
         // countdown: withdraw it (DELETE /api/bulletins/{bulletinId}/offer), allowed in any market state.
@@ -1765,12 +1854,15 @@
                 + '<td>' + escapeHtml(b.clientAccount || '—') + '</td>'
                 + '<td>' + escapeHtml(b.user || '') + '</td>'
                 + '<td>' + new Date(b.expiresAt).toLocaleString() + '</td>'
+                + '<td><button type="button" class="btn btn-danger btn-sm" data-withdraw-bulletin-id="' + escapeHtml(b.bulletinId) + '"'
+                +   (b.state === 'OFFER_PENDING' ? ' disabled title="Answer the pending offer first"' : ' title="Withdraw the bulletin"')
+                +   '>Withdraw</button></td>'
                 + '</tr>').join('');
             el.innerHTML =
                 '<table class="mv-price-table">'
                 +   '<thead><tr>'
                 +     '<th>Market</th><th>Instrument</th><th>Side</th><th>Price</th><th>Quantity</th>'
-                +     '<th>Remaining</th><th>State</th><th>Reference</th><th>Account</th><th>User</th><th>Expires</th>'
+                +     '<th>Remaining</th><th>State</th><th>Reference</th><th>Account</th><th>User</th><th>Expires</th><th></th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
                 + '</table>';
@@ -2276,16 +2368,14 @@
         }
 
         // ── Chat view ─────────────────────────────────────────────────────
-        // Chat between the trading users of all firms. The view lists the messages (GET /api/chat) of one
-        // day, by default today, or (with "and earlier days") up to and including that day, optionally only
-        // those whose tag contains a text; a Chat message (bdx, to every client) that matches is added at the
-        // bottom. Below the list a message (at most 512 bytes in UTF-8) is sent with an optional tag (at most
-        // 64 bytes; kept for the next message): POST /api/chat. Every Chat message from someone else shows a
-        // popup, in any view.
+        // Chat between the trading users of all firms. The view lists the messages (GET /api/chat with
+        // fromDate) from the day in the Date field (default today) up to now, optionally only those whose tag
+        // contains a text; a Chat message (bdx, to every client) that matches is added at the bottom. Below the
+        // list a message (at most 512 bytes in UTF-8) is sent with an optional tag (at most 64 bytes; kept for
+        // the next message): POST /api/chat. Every Chat message from someone else shows a popup, in any view.
         const CHAT_TEXT_BYTES = 512, CHAT_TAG_BYTES = 64;
         let chatView    = false;
-        let chatDate    = null;      // yyyy-MM-dd
-        let chatEarlier = false;     // also the days before chatDate
+        let chatDate    = null;      // yyyy-MM-dd: the messages from this day on
         let chatTag     = '';        // the tag filter: tag contains (case-insensitive), '' = all
         let chatMessages = [];       // { chatId, time, firm, user, text, tag }, oldest first
 
@@ -2303,13 +2393,11 @@
             renderMarketList();
             document.getElementById('mv-market-name').textContent = 'Chat';
             chatDate = todayString();
-            chatEarlier = false;
             chatTag = '';
             document.getElementById('mv-price-container').innerHTML =
                 '<form class="mv-toolbar" onsubmit="event.preventDefault(); showChatFilter();">'
-                + '<label for="ch-date">Date</label>'
+                + '<label for="ch-date">From</label>'
                 + '<input type="text" id="ch-date" placeholder="yyyy-MM-dd" maxlength="10" autocomplete="off" value="' + chatDate + '">'
-                + '<label class="mv-check"><input type="checkbox" id="ch-earlier"> and earlier days</label>'
                 + '<label for="ch-filter-tag">Tag</label>'
                 + '<input type="text" id="ch-filter-tag" placeholder="contains" autocomplete="off">'
                 + '<button type="submit" class="btn btn-primary btn-sm">Show</button>'
@@ -2340,7 +2428,7 @@
 
         function setChatMeta() {
             document.getElementById('mv-market-meta').textContent =
-                (chatEarlier ? 'Up to ' + chatDate : chatDate) + (chatTag ? '  ·  tag contains "' + chatTag + '"' : '');
+                (chatDate === todayString() ? 'Today' : 'From ' + chatDate) + (chatTag ? '  ·  tag contains "' + chatTag + '"' : '');
         }
 
         function showChatFilter() {
@@ -2360,7 +2448,6 @@
             input.classList.remove('invalid');
             document.getElementById('ch-error').textContent = '';
             chatDate    = date;
-            chatEarlier = document.getElementById('ch-earlier').checked;
             chatTag     = document.getElementById('ch-filter-tag').value.trim();
             setChatMeta();
             loadChat();
@@ -2373,16 +2460,15 @@
         }
 
         async function loadChat() {
-            const key = chatDate + '|' + chatEarlier + '|' + chatTag;
+            const key = chatDate + '|' + chatTag;
             const el = document.getElementById('ch-messages');
-            const params = new URLSearchParams({ date: chatDate });
-            if (!chatEarlier) params.set('fromDate', chatDate);
+            const params = new URLSearchParams({ fromDate: chatDate });   // date: the server's today
             if (chatTag) params.set('tag', chatTag);
             try {
                 const r = await fetch('api/chat?' + params);
                 const data = await r.json().catch(() => null);
                 if (!r.ok) throw new Error('HTTP ' + r.status + ((data && data.error) ? ': ' + data.error : ''));
-                if (!chatView || key !== chatDate + '|' + chatEarlier + '|' + chatTag) return;   // changed meanwhile
+                if (!chatView || key !== chatDate + '|' + chatTag) return;   // changed meanwhile
                 chatMessages = data.messages || [];
                 renderChat(data.more);
             } catch (e) {
@@ -2398,7 +2484,7 @@
 
         function chatMessageHtml(m) {
             const d = new Date(m.time);
-            const when = (chatEarlier || todayString() !== chatDate) ? d.toLocaleDateString() + ' ' : '';
+            const when = (todayString() !== chatDate) ? d.toLocaleDateString() + ' ' : '';   // several days shown
             return '<div class="mv-chat-msg' + (isOwnChat(m) ? ' mv-chat-own' : '') + '">'
                 + '<div class="mv-chat-head">'
                 +   '<span>' + escapeHtml(when + d.toLocaleTimeString(undefined, { hour12: false })) + '</span>'
@@ -2430,8 +2516,7 @@
             }
             if (!chatView || chatMessages.some(x => x.chatId === m.chatId)) return;
             const today = todayString();
-            const inRange = chatEarlier ? today <= chatDate : today === chatDate;
-            if (!inRange || (chatTag && !(m.tag || '').toLowerCase().includes(chatTag.toLowerCase()))) return;
+            if (chatDate > today || (chatTag && !(m.tag || '').toLowerCase().includes(chatTag.toLowerCase()))) return;
             const el = document.getElementById('ch-messages');
             const atBottom = el && el.scrollHeight - el.scrollTop - el.clientHeight < 40;
             chatMessages.push(m);

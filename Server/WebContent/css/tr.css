@@ -135,6 +135,8 @@ body {
 .tr-header .subtitle { font-size: 13px; color: rgba(255,255,255,.6); }
 .tr-header .spacer   { flex: 1; }
 .tr-header .user-info { font-size: 13px; color: rgba(255,255,255,.8); }
+.tr-header .mv-help-link { font-size: 13px; color: rgba(255,255,255,.8); text-decoration: none; margin-right: 18px; }
+.tr-header .mv-help-link:hover { color: #fff; text-decoration: underline; }
 
 .tr-content {
     max-width: 960px;
@@ -597,8 +599,6 @@ body {
 .mv-toast-chat div:not(.mv-toast-title) { overflow-wrap: anywhere; white-space: pre-wrap; }
 
 /* Chat view: the messages above, the message entry below */
-.mv-toolbar label.mv-check { font-weight: 400; display: flex; align-items: center; gap: 4px; }
-.mv-toolbar label.mv-check input { width: auto; }
 .mv-chat-list {
     background: var(--surface);
     border: 1px solid var(--border);
