@@ -6,7 +6,6 @@ import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
-import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
 import org.bson.Document;
@@ -29,7 +28,7 @@ import java.util.Map;
  * engine, otherwise the latest stored trade's. Prices, quantities and values are longs scaled by
  * MatchingEngine.SCALE. Bulletin trades (BulletinTrades) give positions of their own, per bulletin market
  * and free text instrument ({@code bulletin} true, instrumentId null), valued at the instrument's latest
- * bulletin trade price in that market; bulletins have no client account, so they are in the default one.
+ * bulletin trade price in that market; they are kept per client account too.
  */
 public class PortfolioEndpoints implements RestEndpoint {
 
@@ -89,7 +88,7 @@ public class PortfolioEndpoints implements RestEndpoint {
                 tJson.addProperty("marketId",     tPos.marketId());
                 tJson.addProperty("market",       tMarket != null ? tMarket.name() : String.valueOf(tPos.marketId()));
                 tJson.addProperty("bulletin",     true);
-                tJson.addProperty("clientAccount", AddOrderRequest.DEFAULT_CLIENT_ACCOUNT);
+                tJson.addProperty("clientAccount", tPos.clientAccount());
                 tJson.addProperty("position",     tPos.position());
                 tJson.addProperty("bought",       tPos.bought());
                 tJson.addProperty("sold",         tPos.sold());
@@ -136,22 +135,27 @@ public class PortfolioEndpoints implements RestEndpoint {
                 (a, b) -> new Position(a.instrumentId(), a.marketId(), a.clientAccount(), a.bought() + b.bought(), a.sold() + b.sold()));
     }
 
-    /** A position in a bulletin market's free text instrument, from its bulletin trades. */
-    record BulletinPosition(int marketId, String instrument, long bought, long sold) {
+    /** A position in a bulletin market's free text instrument and a client account, from its bulletin trades. */
+    record BulletinPosition(int marketId, String instrument, String clientAccount, long bought, long sold) {
         long position() { return bought - sold; }
     }
 
-    /** The firm's position per bulletin market and instrument from its BulletinTrades documents. */
+    /**
+     * The firm's position per bulletin market, instrument and client account from its BulletinTrades
+     * documents. A firm can't trade with its own bulletin, so it is on one side of each trade.
+     */
     static List<BulletinPosition> bulletinPositions(String pFirm, List<Document> pTrades) {
-        Map<String, BulletinPosition> tPositions = new LinkedHashMap<>();
+        Map<List<Object>, BulletinPosition> tPositions = new LinkedHashMap<>();   // key: market, instrument, client account
         for (Document tTrade : pTrades) {
             int    tMarketId   = tTrade.getInteger("marketId");
             String tInstrument = tTrade.getString("instrument");
             long   tQuantity   = tTrade.getLong("quantity");
-            long   tBought     = pFirm.equals(tTrade.getString("buyAccount"))  ? tQuantity : 0L;
-            long   tSold       = pFirm.equals(tTrade.getString("sellAccount")) ? tQuantity : 0L;
-            tPositions.merge(tMarketId + "/" + tInstrument, new BulletinPosition(tMarketId, tInstrument, tBought, tSold),
-                    (a, b) -> new BulletinPosition(a.marketId(), a.instrument(), a.bought() + b.bought(), a.sold() + b.sold()));
+            boolean tBuyer     = pFirm.equals(tTrade.getString("buyAccount"));
+            if (!tBuyer && !pFirm.equals(tTrade.getString("sellAccount"))) continue;
+            String tAccount    = Database.clientAccountOf(tTrade, tBuyer ? "buyClientAccount" : "sellClientAccount");
+            tPositions.merge(List.of(tMarketId, tInstrument, tAccount),
+                    new BulletinPosition(tMarketId, tInstrument, tAccount, tBuyer ? tQuantity : 0L, tBuyer ? 0L : tQuantity),
+                    (a, b) -> new BulletinPosition(a.marketId(), a.instrument(), a.clientAccount(), a.bought() + b.bought(), a.sold() + b.sold()));
         }
         return new ArrayList<>(tPositions.values());
     }

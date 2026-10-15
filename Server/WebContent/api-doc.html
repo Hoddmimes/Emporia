@@ -143,9 +143,10 @@ lot size <code>100000</code> (1) the price 101.505 and the quantity 2.5 are refu
     <li><code>userRef</code> (orders and bulletins) and <code>offerRef</code> (offers): optional free text that you
         choose. It is returned on everything that concerns the order, so you can match responses and messages to
         your own records.</li>
-    <li><code>clientAccount</code> (orders): optional free text naming your firm's own account for the order, e.g.
-        a client or a trader's book. An order without one is in the default account <code>omni</code>. It is carried
-        on to the order's trades and your portfolio keeps a position per instrument and client account. It is
+    <li><code>clientAccount</code> (orders, bulletins and offers): optional free text naming your firm's own account
+        for the order, bulletin or offer, e.g. a client or a trader's book (same format as for orders, see
+        <code>POST /api/orders</code>). Without one it is the default account <code>omni</code>. It is carried
+        on to the trades and your portfolio keeps a position per instrument and client account. It is
         private: never shown to other firms.</li>
 </ul>
 
@@ -392,7 +393,7 @@ listed twice, once per side. A bulletin trade has the bulletin's free text <code
 user of your firm that added the bulletin or made the offer, and <code>ref</code> that bulletin's
 <code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given). A trade's
 <code>clientAccount</code> is that of your firm's order (<code>omni</code> for trades made before client
-accounts existed); bulletin trades have none.</p>
+accounts existed); a bulletin trade's <code>clientAccount</code> is that of your firm's bulletin or offer.</p>
 </div>
 
 <h2 id="portfolio">Portfolio</h2>
@@ -407,8 +408,8 @@ Positions of 0 are left out. Sorted by market, instrument and client account.</p
   "totalValue": 51000000 }</code></pre>
 <p><code>lastPrice</code> is the latest trade price (<code>null</code> if the instrument never traded);
 <code>value</code> = position &times; last price, negative for a short position.</p>
-<p><code>clientAccount</code> is the client account of your firm's orders in the trades (<code>omni</code> for
-trades made before client accounts existed, and for bulletin positions). Add the rows of an instrument up for
+<p><code>clientAccount</code> is the client account of your firm's orders, bulletins or offers in the trades
+(<code>omni</code> for trades made before client accounts existed). Add the rows of an instrument up for
 your firm's total position in it. A trade between two of your own orders with different client accounts moves
 the position from one account to the other; your firm's total is unchanged.</p>
 <p>Bulletin trades give positions of their own, per bulletin market and <code>instrument</code> text (the same
@@ -458,6 +459,8 @@ traded, withdrawn or expired.</p>
     <tr><td><code>price</code>, <code>quantity</code> <span class="opt">optional</span></td><td>Scaled; left out or
         0 means not given.</td></tr>
     <tr><td><code>userRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+    <tr><td><code>clientAccount</code> <span class="opt">optional</span></td><td>Your firm's account for the
+        bulletin, as for orders; <code>omni</code> if left out. 400 if invalid.</td></tr>
 </table>
 <pre><code>{ "marketId": 2, "instrument": "Old tractor", "side": "SELL", "price": 100000000, "quantity": 500000, "userRef": "t1" }</code></pre>
 <p>201: <code>{ "bulletinId": "6acdec0800000001", "state": "ACTIVE", "expiresAt": 1792504800000, "userRef": "t1" }</code></p>
@@ -470,14 +473,14 @@ traded, withdrawn or expired.</p>
   { "bulletinId": "6acdec0800000001", "marketId": 2, "instrument": "Old tractor", "side": "SELL",
     "price": 100000000, "quantity": 500000, "remainingQuantity": 500000, "state": "OFFER_PENDING",
     "createTime": 1791900000000, "expiresAt": 1792504800000, "own": true,
-    "user": "trader1", "userRef": "t1",
+    "user": "trader1", "userRef": "t1", "clientAccount": "client-7",
     "offer": { "side": "BUY", "price": 95000000, "quantity": 200000, "expiresAt": 1791900060000, "own": false } } ] }</code></pre>
 <p>Everyone sees the public fields; a <code>price</code> or <code>quantity</code> of 0 means not given, a
 <code>side</code> of <code>null</code> that the bulletin has no side. The offer's <code>side</code> is the side of
 the firm that made it.
-<code>own</code> is true for your firm's bulletins, which also show <code>user</code> and <code>userRef</code>.
-A pending <code>offer</code> is shown to the bulletin's owner and to the firm that made it (with
-<code>own: true</code> and its <code>offerRef</code>).</p>
+<code>own</code> is true for your firm's bulletins, which also show <code>user</code>, <code>userRef</code> and
+<code>clientAccount</code>. A pending <code>offer</code> is shown to the bulletin's owner and to the firm that made
+it (with <code>own: true</code>, its <code>offerRef</code> and <code>clientAccount</code>).</p>
 </div>
 
 <div class="endpoint">
@@ -504,6 +507,8 @@ bulletin without a side you choose it. Requires the market to be <code>OPEN</cod
     <tr><td><code>validTime</code> <span class="opt">optional</span></td><td>Seconds the owner has to answer;
         default 60. Then the offer expires.</td></tr>
     <tr><td><code>offerRef</code> <span class="opt">optional</span></td><td>Your reference.</td></tr>
+    <tr><td><code>clientAccount</code> <span class="opt">optional</span></td><td>Your firm's account for the
+        offer (and its trade), as for orders; <code>omni</code> if left out. 400 if invalid.</td></tr>
 </table>
 <p>200: <code>{ "bulletinId": "...", "state": "OFFER_PENDING", "remainingQuantity": 500000 }</code></p>
 <p>The owner's firm is told by a <code>BulletinOffer</code> message; you get the answer the same way.</p>
@@ -591,14 +596,16 @@ for instrument messages, <code>instrumentId</code>, followed by the type's own f
         <code>tradeNo</code>, <code>tradeTime</code>, <code>orderId</code>, <code>userRef</code>,
         <code>clientAccount</code></td></tr>
     <tr><td><code>OwnBulletin</code></td><td>One of your firm's bulletins changes.</td><td>As Bulletin, plus
-        <code>user</code> and <code>userRef</code>.</td></tr>
+        <code>user</code>, <code>userRef</code> and <code>clientAccount</code>.</td></tr>
     <tr><td><code>BulletinOffer</code></td><td>An offer on your bulletin (<code>role</code> OWNER), or your own offer
         (<code>role</code> OFFERER), changes.</td><td><code>event</code> (OFFERED, ACCEPTED, REJECTED, EXPIRED,
         CANCELLED: withdrawn by the offering firm, or the bulletin was deleted by the administrator), <code>role</code>, <code>bulletinId</code>, <code>instrument</code>, <code>side</code> (the
         offer's side), <code>price</code>, <code>quantity</code>, <code>expiresAt</code> (when the offer expires),
-        and <code>userRef</code> (OWNER) or <code>offerRef</code> (OFFERER)</td></tr>
+        and <code>userRef</code> (OWNER) or <code>offerRef</code> (OFFERER), and <code>clientAccount</code> (your
+        firm's: the bulletin's for OWNER, the offer's for OFFERER)</td></tr>
     <tr><td><code>OwnBulletinTrade</code></td><td>A bulletin trade your firm took part in.</td><td>As BulletinTrade,
-        plus <code>side</code> and <code>userRef</code> (owner) or <code>offerRef</code> (offerer)</td></tr>
+        plus <code>side</code>, <code>userRef</code> (owner) or <code>offerRef</code> (offerer), and
+        <code>clientAccount</code> (your firm's bulletin's or offer's)</td></tr>
 </table>
 <p>The counterparty of a trade or offer is never revealed. New message types or fields may be added; ignore what
 you don't recognize.</p>

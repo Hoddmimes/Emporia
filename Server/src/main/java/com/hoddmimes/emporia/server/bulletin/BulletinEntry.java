@@ -1,5 +1,6 @@
 package com.hoddmimes.emporia.server.bulletin;
 
+import com.hoddmimes.emporia.server.Database;
 import org.bson.Document;
 
 import java.util.concurrent.ScheduledFuture;
@@ -8,8 +9,10 @@ import java.util.concurrent.ScheduledFuture;
  * One bulletin on the bulletin board, with at most one pending offer. Only used by BulletinBoard,
  * under its lock. Prices and quantities are longs scaled by MatchingEngine.SCALE; 0 means the
  * bulletin did not specify a price or quantity; a null side means it did not specify a side (the
- * offering firm chooses one). A bulletin is stored in the Bulletins collection
- * (toDocument) without its pending offer, so it is reloaded as ACTIVE.
+ * offering firm chooses one). The bulletin's clientAccount is the owner's client account, the
+ * offer's offerClientAccount the offering firm's (AddOrderRequest.DEFAULT_CLIENT_ACCOUNT when not
+ * given). A bulletin is stored in the Bulletins collection (toDocument) without its pending offer,
+ * so it is reloaded as ACTIVE.
  */
 class BulletinEntry {
 
@@ -29,6 +32,7 @@ class BulletinEntry {
     final String ownerFirm;
     final String ownerUser;
     final String userRef;
+    final String clientAccount;     // the owner's client account
     final long   createTime;        // epoch millis
     final long   expiresAt;         // epoch millis, createTime + the market's maxOrderTime
 
@@ -44,12 +48,13 @@ class BulletinEntry {
     long   offerPrice;
     long   offerQuantity;
     String offerRef;
+    String offerClientAccount;      // the offering firm's client account
     long   offerExpiresAt;          // epoch millis
     ScheduledFuture<?> offerExpiry;
 
     BulletinEntry(String pBulletinId, int pMarketId, String pInstrument, String pSide, long pPrice, long pQuantity,
                   long pRemainingQuantity, String pOwnerFirm, String pOwnerUser, String pUserRef,
-                  long pCreateTime, long pExpiresAt) {
+                  String pClientAccount, long pCreateTime, long pExpiresAt) {
         bulletinId        = pBulletinId;
         marketId          = pMarketId;
         instrument        = pInstrument;
@@ -60,6 +65,7 @@ class BulletinEntry {
         ownerFirm         = pOwnerFirm;
         ownerUser         = pOwnerUser;
         userRef           = pUserRef;
+        clientAccount     = pClientAccount;
         createTime        = pCreateTime;
         expiresAt         = pExpiresAt;
     }
@@ -75,6 +81,7 @@ class BulletinEntry {
                 .append("ownerFirm",         ownerFirm)
                 .append("ownerUser",         ownerUser)
                 .append("userRef",           userRef)
+                .append("clientAccount",     clientAccount)
                 .append("createTime",        createTime)
                 .append("expiresAt",         expiresAt);
     }
@@ -84,6 +91,7 @@ class BulletinEntry {
                 pDoc.getString("instrument"), pDoc.getString("side"),
                 pDoc.getLong("price"), pDoc.getLong("quantity"), pDoc.getLong("remainingQuantity"),
                 pDoc.getString("ownerFirm"), pDoc.getString("ownerUser"), pDoc.getString("userRef"),
+                Database.clientAccountOf(pDoc, "clientAccount"),   // the default one for bulletins stored before client accounts
                 pDoc.getLong("createTime"), pDoc.getLong("expiresAt"));
     }
 
@@ -106,6 +114,7 @@ class BulletinEntry {
         offerPrice     = 0;
         offerQuantity  = 0;
         offerRef       = null;
+        offerClientAccount = null;
         offerExpiresAt = 0;
     }
 }

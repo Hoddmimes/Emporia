@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
+import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -169,6 +170,13 @@ public class BulletinBoard {
 
     public synchronized Result addBulletin(String pFirm, String pUser, int pMarketId, String pInstrument,
                                            String pSide, long pPrice, long pQuantity, String pUserRef) {
+        return addBulletin(pFirm, pUser, pMarketId, pInstrument, pSide, pPrice, pQuantity, pUserRef, null);
+    }
+
+    /** Adds a bulletin; pClientAccount is the owner's client account (null: the default one). */
+    public synchronized Result addBulletin(String pFirm, String pUser, int pMarketId, String pInstrument,
+                                           String pSide, long pPrice, long pQuantity, String pUserRef,
+                                           String pClientAccount) {
         String tErr = checkMarketOpen(pMarketId);
         if (tErr != null) return Result.error(400, tErr);
         if (pInstrument == null || pInstrument.isBlank()) return Result.error(400, "instrument is required");
@@ -184,7 +192,8 @@ public class BulletinBoard {
 
         long tNow = System.currentTimeMillis();
         BulletinEntry tEntry = new BulletinEntry(Long.toHexString(mIdBase + mNextId++), pMarketId, pInstrument.trim(),
-                pSide, pPrice, pQuantity, pQuantity, pFirm, pUser, pUserRef, tNow, tNow + tMarket.maxOrderTimeMillis());
+                pSide, pPrice, pQuantity, pQuantity, pFirm, pUser, pUserRef, clientAccountOrDefault(pClientAccount),
+                tNow, tNow + tMarket.maxOrderTimeMillis());
         store(tEntry);
         mBulletins.put(tEntry.bulletinId, tEntry);
         scheduleExpiry(tEntry);
@@ -218,14 +227,22 @@ public class BulletinBoard {
         return makeOffer(pFirm, pUser, pBulletinId, null, pPrice, pQuantity, pOfferRef, pValidSeconds);
     }
 
+    /** An offer without a client account (the default one), see below. */
+    public synchronized Result makeOffer(String pFirm, String pUser, String pBulletinId, String pSide,
+                                         long pPrice, long pQuantity, String pOfferRef, long pValidSeconds) {
+        return makeOffer(pFirm, pUser, pBulletinId, pSide, pPrice, pQuantity, pOfferRef, null, pValidSeconds);
+    }
+
     /**
      * An offer from another firm, on side pSide, at the given price and quantity, valid for pValidSeconds
      * (DEFAULT_OFFER_VALID_SECONDS if 0). The quantity can't exceed the bulletin's remaining quantity. On a
      * bulletin with a side the offer is on the opposite side (pSide may be null, otherwise it must be that
-     * side); on a bulletin without a side pSide (BUY or SELL) is required.
+     * side); on a bulletin without a side pSide (BUY or SELL) is required. pClientAccount is the offering
+     * firm's client account (null: the default one).
      */
     public synchronized Result makeOffer(String pFirm, String pUser, String pBulletinId, String pSide,
-                                         long pPrice, long pQuantity, String pOfferRef, long pValidSeconds) {
+                                         long pPrice, long pQuantity, String pOfferRef, String pClientAccount,
+                                         long pValidSeconds) {
         BulletinEntry tEntry = mBulletins.get(pBulletinId);
         if (tEntry == null) return notFound(pBulletinId);
         String tErr = checkMarketOpen(tEntry.marketId);
@@ -262,6 +279,7 @@ public class BulletinBoard {
         tEntry.offerPrice     = pPrice;
         tEntry.offerQuantity  = pQuantity;
         tEntry.offerRef       = pOfferRef;
+        tEntry.offerClientAccount = clientAccountOrDefault(pClientAccount);
         tEntry.offerExpiresAt = System.currentTimeMillis() + tValidSeconds * 1000L;
         tEntry.offerExpiry    = mExpiryTimer.schedule(() -> expireOffer(pBulletinId, tOfferSeq),
                                                       tValidSeconds, TimeUnit.SECONDS);
@@ -320,7 +338,8 @@ public class BulletinBoard {
 
     /**
      * The bulletins in the given markets, oldest first. Everyone sees the public fields; the owner's
-     * firm also sees userRef, user and a pending offer, the offering firm its own offer.
+     * firm also sees userRef, user, clientAccount and a pending offer, the offering firm its own offer
+     * (with its offerRef and clientAccount).
      */
     public synchronized JsonArray getBulletins(String pFirm, Set<Integer> pMarketIds) {
         JsonArray tOut = new JsonArray();
@@ -342,6 +361,7 @@ public class BulletinBoard {
             if (tOwner) {
                 tJson.addProperty("user", tEntry.ownerUser);
                 if (tEntry.userRef != null) tJson.addProperty("userRef", tEntry.userRef);
+                tJson.addProperty("clientAccount", tEntry.clientAccount);
             }
             boolean tOfferer = pFirm.equals(tEntry.offerFirm);
             if ((tOwner || tOfferer) && BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) {
@@ -352,6 +372,7 @@ public class BulletinBoard {
                 tOffer.addProperty("expiresAt", tEntry.offerExpiresAt);
                 tOffer.addProperty("own",       tOfferer);
                 if (tOfferer && tEntry.offerRef != null) tOffer.addProperty("offerRef", tEntry.offerRef);
+                if (tOfferer) tOffer.addProperty("clientAccount", tEntry.offerClientAccount);
                 tJson.add("offer", tOffer);
             }
             tOut.add(tJson);
@@ -401,6 +422,10 @@ public class BulletinBoard {
         publishBulletin(EVENT_REMOVED, pEntry);
     }
 
+    private static String clientAccountOrDefault(String pClientAccount) {
+        return (pClientAccount != null) ? pClientAccount : AddOrderRequest.DEFAULT_CLIENT_ACCOUNT;
+    }
+
     private void store(BulletinEntry pEntry) {
         if (mDatabase != null) mDatabase.saveBulletin(pEntry.toDocument());
     }
@@ -424,8 +449,10 @@ public class BulletinBoard {
                 .put("quantity",   unscale(pEntry.offerQuantity))
                 .put("tradeNo",    tTradeNo)
                 .put("tradeTime",  tTradeTime));
-        publishOwnTrade(pEntry, pEntry.ownerFirm, pEntry.ownerTradeSide(), "userRef",  pEntry.userRef,  tTradeNo, tTradeTime);
-        publishOwnTrade(pEntry, pEntry.offerFirm, pEntry.offerSide,        "offerRef", pEntry.offerRef, tTradeNo, tTradeTime);
+        publishOwnTrade(pEntry, pEntry.ownerFirm, pEntry.ownerTradeSide(), "userRef",  pEntry.userRef,  pEntry.clientAccount,
+                tTradeNo, tTradeTime);
+        publishOwnTrade(pEntry, pEntry.offerFirm, pEntry.offerSide,        "offerRef", pEntry.offerRef, pEntry.offerClientAccount,
+                tTradeNo, tTradeTime);
         cLog.info("Bulletin {} traded {}@{}: {} {} / {} {}", pEntry.bulletinId,
                 unscale(pEntry.offerQuantity), unscale(pEntry.offerPrice),
                 pEntry.ownerFirm, pEntry.ownerTradeSide(), pEntry.offerFirm, pEntry.offerSide);
@@ -444,13 +471,15 @@ public class BulletinBoard {
                 .append("buyAccount",  tOwnerBuys ? pEntry.ownerFirm : pEntry.offerFirm)
                 .append("buyUser",     tOwnerBuys ? pEntry.ownerUser : pEntry.offerUser)
                 .append("buyRef",      tOwnerBuys ? pEntry.userRef   : pEntry.offerRef)
+                .append("buyClientAccount",  tOwnerBuys ? pEntry.clientAccount : pEntry.offerClientAccount)
                 .append("sellAccount", tOwnerBuys ? pEntry.offerFirm : pEntry.ownerFirm)
                 .append("sellUser",    tOwnerBuys ? pEntry.offerUser : pEntry.ownerUser)
-                .append("sellRef",     tOwnerBuys ? pEntry.offerRef  : pEntry.userRef);
+                .append("sellRef",     tOwnerBuys ? pEntry.offerRef  : pEntry.userRef)
+                .append("sellClientAccount", tOwnerBuys ? pEntry.offerClientAccount : pEntry.clientAccount);
     }
 
     private void publishOwnTrade(BulletinEntry pEntry, String pFirm, String pSide, String pRefName, String pRef,
-                                 String pTradeNo, long pTradeTime) {
+                                 String pClientAccount, String pTradeNo, long pTradeTime) {
         mPublisher.accept(BdxMessage.forFirm(BdxMessage.OWN_BULLETIN_TRADE, pEntry.marketId, pFirm)
                 .put("bulletinId", pEntry.bulletinId)
                 .put("instrument", pEntry.instrument)
@@ -459,7 +488,8 @@ public class BulletinBoard {
                 .put("quantity",   unscale(pEntry.offerQuantity))
                 .put("tradeNo",    pTradeNo)
                 .put("tradeTime",  pTradeTime)
-                .put(pRefName,     pRef));
+                .put(pRefName,     pRef)
+                .put("clientAccount", pClientAccount));
     }
 
     /** The public Bulletin and the private OwnBulletin to the owner's firm. */
@@ -467,7 +497,8 @@ public class BulletinBoard {
         mPublisher.accept(bulletinMessage(BdxMessage.market(BdxMessage.BULLETIN, pEntry.marketId), pEvent, pEntry));
         mPublisher.accept(bulletinMessage(BdxMessage.forFirm(BdxMessage.OWN_BULLETIN, pEntry.marketId, pEntry.ownerFirm), pEvent, pEntry)
                 .put("user",    pEntry.ownerUser)
-                .put("userRef", pEntry.userRef));
+                .put("userRef", pEntry.userRef)
+                .put("clientAccount", pEntry.clientAccount));
     }
 
     private static BdxMessage bulletinMessage(BdxMessage pMessage, String pEvent, BulletinEntry pEntry) {
@@ -485,9 +516,11 @@ public class BulletinBoard {
     /** The pending offer's BulletinOffer, to the owner's firm (role OWNER) and to the offering firm (role OFFERER). */
     private void publishOffer(String pEvent, BulletinEntry pEntry) {
         mPublisher.accept(offerMessage(pEntry.ownerFirm, "OWNER", pEvent, pEntry)
-                .put("userRef",  pEntry.userRef));
+                .put("userRef",  pEntry.userRef)
+                .put("clientAccount", pEntry.clientAccount));
         mPublisher.accept(offerMessage(pEntry.offerFirm, "OFFERER", pEvent, pEntry)
-                .put("offerRef", pEntry.offerRef));
+                .put("offerRef", pEntry.offerRef)
+                .put("clientAccount", pEntry.offerClientAccount));
     }
 
     private static BdxMessage offerMessage(String pFirm, String pRole, String pEvent, BulletinEntry pEntry) {

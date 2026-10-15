@@ -45,7 +45,8 @@ import java.util.concurrent.TimeUnit;
  *       "midPrice": 1000, "maxPriceDeviation": 100,  // optional, no price if absent
  *       "minVolume": 1, "maxVolume": 5,     // optional, no quantity if absent
  *       "timeToCreate": 60,                 // created after a random 10..60 s
- *       "timeToLive": 300 }                 // withdrawn after a random 10..300 s
+ *       "timeToLive": 300,                  // withdrawn after a random 10..300 s
+ *       "clientAccount": "sim" }            // optional, the client account of every bulletin
  *   ]
  * }
  * </pre>

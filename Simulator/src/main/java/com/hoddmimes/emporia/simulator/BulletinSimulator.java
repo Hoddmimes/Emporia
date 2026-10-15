@@ -37,6 +37,7 @@ class BulletinSimulator {
     private final long   mMaxVolume;
     private final long   mTimeToCreate;          // seconds
     private final long   mTimeToLive;            // seconds
+    private final String mClientAccount;         // optional, sent with every bulletin; null if not configured
 
     private long   mCount;                       // bulletins created, for userRef
 
@@ -53,6 +54,7 @@ class BulletinSimulator {
         mMaxVolume    = Math.round(Config.decimal(pConfig, "maxVolume", mMinVolume));
         mTimeToCreate = Config.integer(pConfig, "timeToCreate", 60);
         mTimeToLive   = Config.integer(pConfig, "timeToLive", 300);
+        mClientAccount = pConfig.has("clientAccount") ? pConfig.get("clientAccount").getAsString() : null;
         if (mSide != null && !mSide.equals("BUY") && !mSide.equals("SELL") && !mSide.equals("NONE")) {
             throw new IllegalArgumentException(mInstrument + ": side must be BUY, SELL or NONE");
         }
@@ -93,6 +95,7 @@ class BulletinSimulator {
             tBody.addProperty("quantity", tQuantity);
         }
         tBody.addProperty("userRef", "sim-b" + (++mCount));
+        if (mClientAccount != null) tBody.addProperty("clientAccount", mClientAccount);
         try {
             Api.Reply tReply = mApi.post("/api/bulletins", tBody);
             if (!tReply.ok()) {

@@ -90,6 +90,20 @@ class PortfolioEndpointsTest {
         assertEquals(6, tPositions.get(1).marketId());
         assertEquals(-2 * S, tPositions.get(1).position());
         assertEquals("brent jan", tPositions.get(2).instrument());
+        assertEquals("omni", tPositions.get(0).clientAccount());   // stored without a client account
+    }
+
+    @Test
+    void bulletinPositionsArePerClientAccount() {
+        List<PortfolioEndpoints.BulletinPosition> tPositions = PortfolioEndpoints.bulletinPositions("FA", List.of(
+                bulletinTrade(5, "Brent Jan", 10, "FA", "FB").append("buyClientAccount", "c1"),
+                bulletinTrade(5, "Brent Jan",  4, "FB", "FA").append("sellClientAccount", "c2"),
+                bulletinTrade(5, "Brent Jan",  1, "FB", "FA").append("sellClientAccount", "c1")));
+        assertEquals(2, tPositions.size());
+        assertEquals("c1", tPositions.get(0).clientAccount());
+        assertEquals(9 * S, tPositions.get(0).position());
+        assertEquals("c2", tPositions.get(1).clientAccount());
+        assertEquals(-4 * S, tPositions.get(1).position());
     }
 
     @Test

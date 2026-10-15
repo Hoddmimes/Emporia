@@ -690,8 +690,8 @@ public class Database {
      * Stores a bulletin trade in the BulletinTrades collection (kept apart from Trades, whose documents
      * are replayed into the order books at startup). The document is built by BulletinBoard: tradeNo,
      * bulletinId, marketId, the free text instrument, price and quantity (scaled), tradeTime as
-     * "yyyy-MM-dd HH:mm:ss.SSS" (formatTradeTime), and per side the firm, user and reference
-     * (buyAccount/buyUser/buyRef, sellAccount/sellUser/sellRef). The write is journaled (on disk
+     * "yyyy-MM-dd HH:mm:ss.SSS" (formatTradeTime), and per side the firm, user, reference and client account
+     * (buyAccount/buyUser/buyRef/buyClientAccount, sellAccount/sellUser/sellRef/sellClientAccount). The write is journaled (on disk
      * before it returns), like saveTrades, and the board publishes the trade only afterwards.
      */
     public void saveBulletinTrade(Document pDoc) {

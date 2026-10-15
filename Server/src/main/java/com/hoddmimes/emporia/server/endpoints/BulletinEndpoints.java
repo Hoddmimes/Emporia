@@ -57,13 +57,17 @@ public class BulletinEndpoints implements RestEndpoint {
             if (!tBody.has("instrument")) { OrderEndpoints.error(ctx, 400, "instrument is required"); return; }
             int tMarketId = tBody.get("marketId").getAsInt();
             if (!checkMarketAccess(ctx, tUser.firm(), tMarketId)) return;
+            String tClientAccount;
+            try { tClientAccount = OrderEndpoints.clientAccountOf(tBody); }
+            catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, e.getMessage()); return; }
 
             respond(ctx, mCtx.bulletinBoard.addBulletin(tUser.firm(), tUser.userId(), tMarketId,
                     tBody.get("instrument").getAsString(),
                     optionalSide(tBody),
                     tBody.has("price")    ? tBody.get("price").getAsLong()    : 0L,
                     tBody.has("quantity") ? tBody.get("quantity").getAsLong() : 0L,
-                    tBody.has("userRef")  ? tBody.get("userRef").getAsString() : null));
+                    tBody.has("userRef")  ? tBody.get("userRef").getAsString() : null,
+                    tClientAccount));
         });
 
         app.get("/api/bulletins", ctx -> {
@@ -102,10 +106,14 @@ public class BulletinEndpoints implements RestEndpoint {
             int tMarketId = mCtx.bulletinBoard.getMarketId(tBulletinId);
             if (tMarketId == 0) { OrderEndpoints.error(ctx, 404, "Bulletin not found: " + tBulletinId); return; }
             if (!checkMarketAccess(ctx, tUser.firm(), tMarketId)) return;
+            String tClientAccount;
+            try { tClientAccount = OrderEndpoints.clientAccountOf(tBody); }
+            catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, e.getMessage()); return; }
 
             respond(ctx, mCtx.bulletinBoard.makeOffer(tUser.firm(), tUser.userId(), tBulletinId, optionalSide(tBody),
                     tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(),
                     tBody.has("offerRef")  ? tBody.get("offerRef").getAsString() : null,
+                    tClientAccount,
                     tBody.has("validTime") ? tBody.get("validTime").getAsLong()  : 0L));
         });
 

@@ -86,6 +86,7 @@ public class TradeEndpoints implements RestEndpoint {
             tJson.addProperty("user",       tDoc.getString(tSide + "User"));
             String tRef = tDoc.getString(tSide + "Ref");
             if (tRef != null) tJson.addProperty("ref", tRef);
+            tJson.addProperty("clientAccount", Database.clientAccountOf(tDoc, tSide + "ClientAccount"));
             tOut.add(tJson);
         }
         return tOut;

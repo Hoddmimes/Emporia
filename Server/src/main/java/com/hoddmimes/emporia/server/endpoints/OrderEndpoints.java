@@ -59,15 +59,9 @@ public class OrderEndpoints implements RestEndpoint {
             catch (IllegalArgumentException e) { error(ctx, 400, "side must be BUY or SELL"); return; }
 
             String tUserRef = tBody.has("userRef") ? tBody.get("userRef").getAsString() : null;
-            String tClientAccount = null;   // not given or empty: the default one (AddOrderRequest)
-            if (tBody.has("clientAccount") && !tBody.get("clientAccount").isJsonNull()) {
-                tClientAccount = tBody.get("clientAccount").getAsString().trim();
-                if (tClientAccount.isEmpty()) {
-                    tClientAccount = null;
-                } else if (!CLIENT_ACCOUNT.matcher(tClientAccount).matches()) {
-                    error(ctx, 400, "clientAccount must be 1-32 letters, digits, spaces or . _ - /"); return;
-                }
-            }
+            String tClientAccount;
+            try { tClientAccount = clientAccountOf(tBody); }
+            catch (IllegalArgumentException e) { error(ctx, 400, e.getMessage()); return; }
             OrderResponse tRsp = mCtx.matchingEngine.addOrder(new AddOrderRequest(tInstrumentId, tSide,
                     tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(), tFirm, tUserRef, tClientAccount));
             respond(ctx, 201, tRsp);
@@ -121,6 +115,20 @@ public class OrderEndpoints implements RestEndpoint {
     }
 
     // ── Helpers (shared with TradeEndpoints) ──────────────────────────────
+
+    /**
+     * The request's optional clientAccount, trimmed; null if not given or empty (the default one is used).
+     * Throws IllegalArgumentException, with the message for the 400 reply, if it is invalid.
+     */
+    static String clientAccountOf(JsonObject pBody) {
+        if (!pBody.has("clientAccount") || pBody.get("clientAccount").isJsonNull()) return null;
+        String tClientAccount = pBody.get("clientAccount").getAsString().trim();
+        if (tClientAccount.isEmpty()) return null;
+        if (!CLIENT_ACCOUNT.matcher(tClientAccount).matches()) {
+            throw new IllegalArgumentException("clientAccount must be 1-32 letters, digits, spaces or . _ - /");
+        }
+        return tClientAccount;
+    }
 
     static String firm(Context ctx) {
         return (String) ctx.req().getSession().getAttribute(RestApiContext.FIRM);

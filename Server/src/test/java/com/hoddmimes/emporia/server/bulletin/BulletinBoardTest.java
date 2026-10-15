@@ -241,19 +241,22 @@ class BulletinBoardTest {
     @Test
     void tradeDocumentHasTheBuyerAndSellerOfTheTrade() {
         BulletinEntry tEntry = new BulletinEntry("b1", 1, "Old tractor", "SELL", 100 * S, 10 * S, 10 * S,
-                "FA", "u-FA", "ref-FA", 0L, 0L);
+                "FA", "u-FA", "ref-FA", "fa-acct", 0L, 0L);
         tEntry.offerFirm     = "FB";
         tEntry.offerUser     = "u-FB";
         tEntry.offerSide     = "BUY";
         tEntry.offerPrice    = 99 * S;
         tEntry.offerQuantity = 4 * S;
         tEntry.offerRef      = "o1";
+        tEntry.offerClientAccount = "fb-acct";
         Document tDoc = BulletinBoard.tradeDocument(tEntry, "t1", 0L);
         assertEquals("FB", tDoc.getString("buyAccount"));
         assertEquals("u-FB", tDoc.getString("buyUser"));
         assertEquals("o1", tDoc.getString("buyRef"));
         assertEquals("FA", tDoc.getString("sellAccount"));
         assertEquals("ref-FA", tDoc.getString("sellRef"));
+        assertEquals("fb-acct", tDoc.getString("buyClientAccount"));
+        assertEquals("fa-acct", tDoc.getString("sellClientAccount"));
         assertEquals(99 * S, tDoc.getLong("price"));
         assertEquals(4 * S, tDoc.getLong("quantity"));
         assertEquals("Old tractor", tDoc.getString("instrument"));
@@ -263,6 +266,33 @@ class BulletinBoardTest {
         tDoc = BulletinBoard.tradeDocument(tEntry, "t2", 0L);
         assertEquals("FA", tDoc.getString("buyAccount"));
         assertEquals("FB", tDoc.getString("sellAccount"));
+    }
+
+    @Test
+    void clientAccountsOfTheOwnerAndTheOffererArePrivate() {
+        String tId = mBoard.addBulletin("FA", "u-FA", 1, "Old tractor", "SELL", 100 * S, 10 * S, null, "fa-acct")
+                .body().get("bulletinId").getAsString();
+        assertEquals("fa-acct", str(ofType(BdxMessage.OWN_BULLETIN).get(0), "clientAccount"));
+        assertFalse(ofType(BdxMessage.BULLETIN).get(0).toJson().has("clientAccount"));
+        assertTrue(mBoard.makeOffer("FB", "u-FB", tId, null, 99 * S, 4 * S, null, null, 0).success());   // no account: omni
+
+        JsonObject tOwnerView = mBoard.getBulletins("FA", Set.of(1)).get(0).getAsJsonObject();
+        assertEquals("fa-acct", tOwnerView.get("clientAccount").getAsString());
+        assertFalse(tOwnerView.getAsJsonObject("offer").has("clientAccount"));   // the offerer's account is not shown to the owner
+        JsonObject tOffererView = mBoard.getBulletins("FB", Set.of(1)).get(0).getAsJsonObject();
+        assertFalse(tOffererView.has("clientAccount"));
+        assertEquals("omni", tOffererView.getAsJsonObject("offer").get("clientAccount").getAsString());
+
+        List<BdxMessage> tOffers = ofType(BdxMessage.BULLETIN_OFFER);
+        assertEquals("fa-acct", str(tOffers.get(0), "clientAccount"));   // OWNER
+        assertEquals("omni",    str(tOffers.get(1), "clientAccount"));   // OFFERER
+
+        mPublished.clear();
+        assertTrue(mBoard.answerOffer("FA", tId, true).success());
+        List<BdxMessage> tOwnTrades = ofType(BdxMessage.OWN_BULLETIN_TRADE);
+        assertEquals("fa-acct", str(tOwnTrades.get(0), "clientAccount"));
+        assertEquals("omni",    str(tOwnTrades.get(1), "clientAccount"));
+        assertFalse(ofType(BdxMessage.BULLETIN_TRADE).get(0).toJson().has("clientAccount"));
     }
 
     @Test

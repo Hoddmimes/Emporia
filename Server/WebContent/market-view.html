@@ -156,6 +156,12 @@
                 </div>
             </div>
 
+            <div class="form-group">
+                <label for="od-clientAccount">Client account</label>
+                <input type="text" id="od-clientAccount" autocomplete="off" maxlength="32" placeholder="omni">
+                <div class="form-hint">The account the position is kept in, omni if empty.</div>
+            </div>
+
             <div class="mv-order-buttons">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('offer-dialog').close()">Close</button>
                 <button type="submit" id="od-submit" class="btn btn-primary">Submit Offer</button>
@@ -865,8 +871,7 @@
                 bulletin ? 'Optional: EITHER (or none chosen) is a bulletin without a side, the other firm chooses buy or sell.' : '';
             const anySide = document.querySelector('input[name="of-side"][value=""]');
             if (!bulletin && anySide.checked) { anySide.checked = false; syncSideLabels(); }
-            // Client accounts are for orders only (not bulletins yet); the field keeps the last one used
-            document.getElementById('of-clientAccount-group').style.display = bulletin ? 'none' : '';
+            // The client account (orders and bulletins); the field keeps the last one used
             const clientAccount = document.getElementById('of-clientAccount');
             if (!clientAccount.value) clientAccount.value = loadClientAccount();
             document.getElementById('of-price-req').style.display    = bulletin ? 'none' : '';
@@ -1060,6 +1065,7 @@
                 (b.quantity > 0) ? 'At most ' + b.remainingQuantity / SCALE : '';
             document.getElementById('od-validTime').value  = String(DEFAULT_OFFER_VALID_SECONDS);
             document.getElementById('od-offerRef').value   = '';
+            document.getElementById('od-clientAccount').value = loadClientAccount();
             document.querySelectorAll('#offer-form .invalid').forEach(e => e.classList.remove('invalid'));
             hideOfferAlerts();
 
@@ -1107,6 +1113,7 @@
             const qtyStr   = document.getElementById('od-quantity').value.trim();
             const validStr = document.getElementById('od-validTime').value.trim();
             const offerRef = document.getElementById('od-offerRef').value.trim();
+            const clientAccount = document.getElementById('od-clientAccount').value.trim();
             const price = parseScaled(priceStr);
             const qty   = parseScaled(qtyStr);
             if (!priceStr) bad('od-price', 'Price is required.');
@@ -1124,6 +1131,9 @@
             if (!/^\d+$/.test(validStr) || Number(validStr) <= 0) {
                 bad('od-validTime', 'Valid time must be a whole number of seconds greater than zero.');
             }
+            if (clientAccount && !CLIENT_ACCOUNT_RE.test(clientAccount)) {
+                bad('od-clientAccount', 'Client account must be at most 32 letters, digits, spaces or . _ - /');
+            }
             if (errors.length > 0) {
                 showOfferAlert('od-error', errors.map(escapeHtml).join('<br>'));
                 return;
@@ -1132,6 +1142,7 @@
             const body = { price, quantity: qty, validTime: Number(validStr) };
             if (!b.side) body.side = sideEl.value;
             if (offerRef) body.offerRef = offerRef;
+            if (clientAccount) body.clientAccount = clientAccount;
             const button = document.getElementById('od-submit');
             button.disabled = true;
             const r = await postJson('api/bulletins/' + encodeURIComponent(b.bulletinId) + '/offer', body);
@@ -1140,6 +1151,7 @@
                 showOfferAlert('od-error', escapeHtml('Offer rejected: ' + r.error));
                 return;
             }
+            saveClientAccount(clientAccount);
             // One pending offer per bulletin: the button stays disabled
             showOfferAlert('od-success', escapeHtml('Offer made on bulletin ' + b.bulletinId + ', valid '
                 + validStr + ' s. The owner accepts or rejects it; click the bulletin to withdraw it.'));
@@ -1269,12 +1281,12 @@
                     bad('of-quantity', 'Quantity must be a multiple of the lot size ' + i.lotSize / SCALE + '.');
                 }
                 if (i) Object.assign(body, { instrumentId: i.id, side, price, quantity: qty });
-                const clientAccount = document.getElementById('of-clientAccount').value.trim();
-                if (clientAccount && !CLIENT_ACCOUNT_RE.test(clientAccount)) {
-                    bad('of-clientAccount', 'Client account must be at most 32 letters, digits, spaces or . _ - /');
-                } else if (clientAccount) {
-                    body.clientAccount = clientAccount;
-                }
+            }
+            const clientAccount = document.getElementById('of-clientAccount').value.trim();
+            if (clientAccount && !CLIENT_ACCOUNT_RE.test(clientAccount)) {
+                bad('of-clientAccount', 'Client account must be at most 32 letters, digits, spaces or . _ - /');
+            } else if (clientAccount) {
+                body.clientAccount = clientAccount;
             }
             if (userRef) body.userRef = userRef;
 
@@ -1312,7 +1324,7 @@
                     'Matched ' + d.matched / SCALE + ', ' + (d.inserted ? 'in the book ' + d.remaining / SCALE : 'nothing left in the book')] });
             }
             document.getElementById('of-userRef').value = '';   // a reference names one order
-            if (!bulletin) saveClientAccount(body.clientAccount || '');
+            saveClientAccount(body.clientAccount || '');
             document.getElementById('order-dialog').close();
         }
 
@@ -1381,7 +1393,9 @@
             const m = markets.find(x => x.id === msg.marketId);
             showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell', title: 'Bulletin trade',
                         lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' ' + msg.instrument
-                                + ' @ ' + fmtPx(msg.price), (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)] });
+                                + ' @ ' + fmtPx(msg.price),
+                                (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)
+                                + (msg.clientAccount ? '  ·  ' + msg.clientAccount : '')] });
         }
 
         // The end of one of the firm's own offers (BulletinOffer with role OFFERER): rejected, expired or
@@ -1735,6 +1749,7 @@
                 + '<td>' + fmtVol(b.quantity > 0 ? b.remainingQuantity / SCALE : null) + '</td>'
                 + '<td>' + escapeHtml(b.state) + '</td>'
                 + '<td>' + escapeHtml(b.userRef || '—') + '</td>'
+                + '<td>' + escapeHtml(b.clientAccount || '—') + '</td>'
                 + '<td>' + escapeHtml(b.user || '') + '</td>'
                 + '<td>' + new Date(b.expiresAt).toLocaleString() + '</td>'
                 + '</tr>').join('');
@@ -1742,7 +1757,7 @@
                 '<table class="mv-price-table">'
                 +   '<thead><tr>'
                 +     '<th>Market</th><th>Instrument</th><th>Side</th><th>Price</th><th>Quantity</th>'
-                +     '<th>Remaining</th><th>State</th><th>Reference</th><th>User</th><th>Expires</th>'
+                +     '<th>Remaining</th><th>State</th><th>Reference</th><th>Account</th><th>User</th><th>Expires</th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
                 + '</table>';
