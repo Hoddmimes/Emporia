@@ -47,3 +47,6 @@ bin/
 
 ### TLS certificates and private keys (never commit) ###
 *.pem
+
+### Local files ###
+/AIBook.jpeg
