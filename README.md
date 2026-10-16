@@ -45,7 +45,8 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
   for trades and offers.
 - **REST API** (JSON over HTTP, session login) for trading applications: everything the web page can do.
 - **WebSocket feed** pushing prices, market states and the firm's own orders, trades and offers in real time.
-- **Admin web interface** for firms, users, authorizations, markets, instruments and bulletin markets.
+- **Admin web interface** for firms, users, authorizations, markets, instruments and bulletin markets,
+  described with screenshots in the [admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html).
 
 ### Performance and durability
 - Every trade is written to MongoDB with a **journaled write before anyone is told about it**, so no
