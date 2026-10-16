@@ -51,11 +51,22 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
 
 ### Performance and durability
 - Every trade is written to the database with a **durable write before anyone is told about it**
-  (journaled in MongoDB, fsynced in SQLite), so no trade is lost if the host fails. Writes are grouped: one disk flush (about **2 ms**) stores all the
-  trades made meanwhile.
+  (journaled in MongoDB, fsynced in SQLite), so no trade is lost if the host fails. Writes are grouped:
+  one disk flush (about **2 ms** with MongoDB on the demo server) stores all the trades made meanwhile.
 - Each order book has its own lock, so orders in different instruments are matched in parallel.
 - Measured with the included load test client: **several thousand orders per second** 
   on one server.
+
+### Database
+The server stores its data in **MongoDB or SQLite**, chosen by `database` in the configuration file
+(`emporia.json`); both give the same functionality.
+- **MongoDB** (the default): `"database": {"type": "mongodb", "host": "127.0.0.1", "port": 27017, "name": "emporia"}`.
+  The database and its collections are created when first used.
+- **SQLite**: `"database": {"type": "sqlite", "file": "./emporia.db"}`. Nothing to install: the database
+  is a single file, created with its tables at the first start (its directory must exist and be writable).
+  Suits a small market or a test setup.
+
+There is no tool to move data between the two.
 
 ### Documentation
 - [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
