@@ -26,7 +26,9 @@ Emporia is a marketplace for commodity trading, built as **one server process**:
 server with the matching engine, bulletin board, REST API, WebSocket feed and web pages all in the same
 process. The database is MongoDB or, for the smallest setup, SQLite: a single file, nothing to install
 (chosen in the configuration). There is no message bus or cluster to run, so the whole system is one
-application and one database. It runs stand-alone as a fat jar, or as a WAR in Tomcat 10.1+.
+application and one database. It runs stand-alone as a fat jar, or as a WAR in Tomcat 10.1+. A Linux
+installer (`./gradlew :Server:installer` makes `emporia-<version>.run`) installs the fat jar as a systemd
+service, with SQLite as its database; it asks for the directory, the HTTPS port and the certificate.
 
 ### Trading
 - **Continuous order books**: limit orders matched immediately in price-time priority. **Auction**

@@ -100,3 +100,50 @@ war {
     classpath = classpath.filter { it != tMainResources && !it.name.startsWith('jetty-jakarta-servlet-api') } +
                 files(warResources).builtBy('warResources')
 }
+
+// ── Linux installer ───────────────────────────────────────────────────────
+// build/dist/emporia-<version>-<build>.run: src/installer/install.sh followed by a tar.gz of the fat jar
+// (as emporia.jar), WebContent, log4j2.xml, README.txt (the service commands etc.) and uninstall.sh. Run as root (sudo bash emporia-....run):
+// installs the server in a directory (asked for, default /opt/emporia) and runs it as the systemd service
+// emporia; an upgrade keeps the configuration, the database and the PEM files. Java 21+ must be installed.
+// It builds the fat jar, so it increases the build number.
+def installerDir = layout.buildDirectory.dir('installer')
+
+tasks.register('installerPayload', Tar) {
+    archiveFileName = 'payload.tar.gz'
+    destinationDirectory = installerDir
+    compression = Compression.GZIP
+    // Real file times, so the web server's Last-Modified of an upgraded page changes (browser caches)
+    preserveFileTimestamps = true
+    from(shadowJar) { rename { 'emporia.jar' } }
+    from('WebContent') { into 'WebContent' }
+    from 'log4j2.xml'
+    from 'src/installer/README.txt'
+    from('src/installer/uninstall.sh') { filePermissions { unix('rwxr-xr-x') } }
+}
+
+tasks.register('installer') {
+    group = 'distribution'
+    description = 'Builds the Linux installer build/dist/emporia-<version>-<build>.run'
+    dependsOn 'installerPayload'
+    def tHeader  = file('src/installer/install.sh')
+    def tPayload = installerDir.map { it.file('payload.tar.gz') }
+    def tDistDir = layout.buildDirectory.dir('dist')
+    inputs.file tHeader
+    inputs.file tPayload
+    outputs.dir tDistDir
+    doLast {
+        def tProps   = readVersion()
+        def tVersion = "${tProps.getProperty('version')}-${String.format('%03d', tProps.getProperty('build') as int)}"
+        byte[] tArchive = tPayload.get().asFile.bytes
+        def tSha256 = java.security.MessageDigest.getInstance('SHA-256').digest(tArchive).encodeHex().toString()
+        def tScript = tHeader.text.replace('@VERSION@', tVersion).replace('@SHA256@', tSha256)
+        def tDir = tDistDir.get().asFile
+        tDir.mkdirs()
+        tDir.listFiles().findAll { it.name.endsWith('.run') }.each { it.delete() }
+        def tOut = new File(tDir, "emporia-${tVersion}.run")
+        tOut.withOutputStream { it.write(tScript.getBytes('UTF-8')); it.write(tArchive) }
+        tOut.setExecutable(true, false)
+        logger.lifecycle("Installer ${tOut}")
+    }
+}
