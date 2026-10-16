@@ -1,6 +1,6 @@
 package com.hoddmimes.emporia.server;
 
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.Authorization;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,8 +10,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AuthorizationCacheTest {
 
-    private static Document auth(String pFirm, String pMarket) {
-        return new Document("firm", pFirm).append("market", pMarket);
+    private static Authorization auth(String pFirm, String pMarket) {
+        return new Authorization(pFirm, pMarket);
     }
 
     @Test

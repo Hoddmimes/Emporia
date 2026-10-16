@@ -1,5 +1,6 @@
 package com.hoddmimes.emporia.server;
 
+import com.hoddmimes.emporia.server.db.Database;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxEndpoint;
@@ -48,6 +49,7 @@ public class RestApi {
 
     private final RestApiContext mCtx;
     private final JsonObject     jHttpIfConfig;
+    private Javalin              mApp;   // the stand-alone web server, set by start()
 
     public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, AuthorizationCache pAuthorizations, BdxDistributor pBdx,
                    MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, JsonObject pConfiguration) {
@@ -134,9 +136,18 @@ public class RestApi {
         declareHandlers(tApp, true);
 
         tApp.start();
+        mApp = tApp;
 
         if (tHttpsEnabled) cLog.info("HTTPS listening on {}:{}", tInterface, tHttpsPort);
         if (tHttpEnabled)  cLog.info("HTTP  listening on {}:{}", tInterface, tHttpPort);
+    }
+
+    /** Stops the stand-alone web server started by start(), if it runs. */
+    public void stop() {
+        if (mApp != null) {
+            mApp.stop();
+            mApp = null;
+        }
     }
 
     public RestApiContext context() { return mCtx; }

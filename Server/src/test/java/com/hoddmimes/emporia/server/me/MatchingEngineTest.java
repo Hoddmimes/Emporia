@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
-import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,15 +36,12 @@ class MatchingEngineTest {
         mEngine = new MatchingEngine(mCache, null, new BdxDistributor(mCache));
     }
 
-    private static Document market(int pMarketId, String pName, String pType, String pStatus) {
-        return new Document("marketId", pMarketId).append("name", pName).append("type", pType)
-                .append("tradingStatus", pStatus);
+    private static InstrumentCache.MarketEntry market(int pMarketId, String pName, String pType, String pStatus) {
+        return new InstrumentCache.MarketEntry(pMarketId, pName, "", pType, "", "", false, "", "", "", "", pStatus);
     }
 
-    private static Document instrument(long pId, int pMarketId, String pName, String pStatus) {
-        return new Document("instrumentId", String.valueOf(pId)).append("marketId", pMarketId)
-                .append("name", pName).append("tickSize", S / 100).append("lotSize", S)
-                .append("tradingStatus", pStatus);
+    private static InstrumentCache.InstrumentEntry instrument(long pId, int pMarketId, String pName, String pStatus) {
+        return new InstrumentCache.InstrumentEntry(pId, pMarketId, pName, "", S / 100, S, "", pStatus, "", 0, "", "");
     }
 
     private OrderResponse add(long pInstrumentId, Order.Side pSide, double pPrice, long pQty, String pFirm) {

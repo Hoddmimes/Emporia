@@ -150,7 +150,7 @@
         cdNav.render('list-markets');
         cdSession.guard('user-info');
 
-        const mongoId = new URLSearchParams(window.location.search).get('id');
+        const databaseId = new URLSearchParams(window.location.search).get('id');
         let originalValues = {};
 
         function showError(msg) {
@@ -196,9 +196,9 @@
         }
 
         async function loadMarket() {
-            if (!mongoId) { window.location.href = 'markets.html'; return; }
+            if (!databaseId) { window.location.href = 'markets.html'; return; }
             try {
-                const r = await cdApi.request(`../api/admin/markets/${mongoId}`);
+                const r = await cdApi.request(`../api/admin/markets/${databaseId}`);
                 if (r.status === 404) { window.location.href = 'markets.html'; return; }
                 if (!r.ok) { showError('Failed to load market: ' + r.error); return; }
                 const m = r.data;
@@ -250,7 +250,7 @@
                 randomAuctionInterval:document.getElementById('d-randomAuctionInterval').value.trim()
             };
             try {
-                const r = await cdApi.request(`../api/admin/markets/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/markets/${databaseId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -281,7 +281,7 @@
             if (!confirm(`Delete ALL orders in ${name}, of every firm? This cannot be undone.`)) return;
             document.getElementById('error-banner').classList.add('alert-hidden');
             try {
-                const r = await cdApi.request(`../api/admin/markets/${mongoId}/orders`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/markets/${databaseId}/orders`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete orders: ' + r.error); return; }
                 alert(`${r.data.ordersDeleted} order(s) deleted.`);
             } catch (e) {
@@ -302,7 +302,7 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`../api/admin/markets/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/markets/${databaseId}`, { method: 'DELETE' });
                 if (!r.ok) {
                     showError('Failed to delete market: ' + r.error);
                     return;

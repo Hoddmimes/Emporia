@@ -1,5 +1,6 @@
 package com.hoddmimes.emporia.server;
 
+import com.hoddmimes.emporia.server.db.Database;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
@@ -43,7 +44,15 @@ public class Server {
             throw new RuntimeException("Usage: Server -config <file> [-mode normal|test]");
         }
         Server tServer = new Server(loadConfig(tConfigPath), tMode.equals("test"));
-        tServer.restApi().start();
+        RestApi tRestApi = tServer.restApi();
+        tRestApi.start();
+        // SIGTERM (kill, Ctrl-C, emporia.sh stop): stop taking requests, then store the queued trades
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            cLog.info("Shutting down");
+            tRestApi.stop();
+            tServer.stop();
+            LogManager.shutdown();   // log4j2.xml disables Log4j's own hook, so the lines above are logged
+        }, "shutdown"));
     }
 
     /**
@@ -54,9 +63,8 @@ public class Server {
         cLog.info("Emporia {}", BuildInfo.text());
         config = pConfig;
 
-        database = new Database();
-        database.connect(config.get("database").getAsJsonObject());
-        database.initializeAdminCollection();
+        database = Database.open(config.get("database").getAsJsonObject());
+        database.initializeAdmin();
 
         instrumentCache = new InstrumentCache();
         instrumentCache.load(database);

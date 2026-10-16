@@ -122,7 +122,7 @@
         cdNav.render('list-bulletin-markets');
         cdSession.guard('user-info');
 
-        const mongoId = new URLSearchParams(window.location.search).get('id');
+        const databaseId = new URLSearchParams(window.location.search).get('id');
         let originalValues = {};
 
         function showError(msg) {
@@ -149,9 +149,9 @@
         }
 
         async function loadMarket() {
-            if (!mongoId) { window.location.href = 'bulletin-markets.html'; return; }
+            if (!databaseId) { window.location.href = 'bulletin-markets.html'; return; }
             try {
-                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`);
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${databaseId}`);
                 if (r.status === 404) { window.location.href = 'bulletin-markets.html'; return; }
                 if (!r.ok) { showError('Failed to load bulletin market: ' + r.error); return; }
                 const m = r.data;
@@ -175,7 +175,7 @@
             document.getElementById('error-banner').classList.add('alert-hidden');
             const body = currentValues();
             try {
-                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${databaseId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -196,7 +196,7 @@
             if (!confirm(`Delete ALL bulletins in ${name}, of every firm? This cannot be undone.`)) return;
             document.getElementById('error-banner').classList.add('alert-hidden');
             try {
-                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}/bulletins`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${databaseId}/bulletins`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete bulletins: ' + r.error); return; }
                 alert(`${r.data.bulletinsDeleted} bulletin(s) deleted.`);
             } catch (e) {
@@ -217,7 +217,7 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`../api/admin/bulletin-markets/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/bulletin-markets/${databaseId}`, { method: 'DELETE' });
                 if (!r.ok) {
                     showError('Failed to delete bulletin market: ' + r.error);
                     return;

@@ -71,7 +71,7 @@
                 tbody.innerHTML = markets
                     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                     .map(m =>
-                        `<tr class="row-link" onclick="window.location='market.html?id=${m.mongoId}'">
+                        `<tr class="row-link" onclick="window.location='market.html?id=${m.databaseId}'">
                             <td>${escHtml(m.name)}</td>
                             <td>${escHtml(m.description)}</td>
                             <td>${escHtml(m.type)}</td>

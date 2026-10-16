@@ -1,7 +1,6 @@
 package com.hoddmimes.emporia.server.bulletin;
 
-import com.hoddmimes.emporia.server.Database;
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.StoredBulletin;
 
 import java.util.concurrent.ScheduledFuture;
 
@@ -11,7 +10,7 @@ import java.util.concurrent.ScheduledFuture;
  * bulletin did not specify a price or quantity; a null side means it did not specify a side (the
  * offering firm chooses one). The bulletin's clientAccount is the owner's client account, the
  * offer's offerClientAccount the offering firm's (AddOrderRequest.DEFAULT_CLIENT_ACCOUNT when not
- * given). A bulletin is stored in the Bulletins collection (toDocument) without its pending offer,
+ * given). A bulletin is stored (Bulletins, toStored) without its pending offer,
  * so it is reloaded as ACTIVE.
  */
 class BulletinEntry {
@@ -70,29 +69,15 @@ class BulletinEntry {
         expiresAt         = pExpiresAt;
     }
 
-    Document toDocument() {
-        return new Document("bulletinId",        bulletinId)
-                .append("marketId",          marketId)
-                .append("instrument",        instrument)
-                .append("side",              side)
-                .append("price",             price)
-                .append("quantity",          quantity)
-                .append("remainingQuantity", remainingQuantity)
-                .append("ownerFirm",         ownerFirm)
-                .append("ownerUser",         ownerUser)
-                .append("userRef",           userRef)
-                .append("clientAccount",     clientAccount)
-                .append("createTime",        createTime)
-                .append("expiresAt",         expiresAt);
+    StoredBulletin toStored() {
+        return new StoredBulletin(bulletinId, marketId, instrument, side, price, quantity, remainingQuantity,
+                ownerFirm, ownerUser, userRef, clientAccount, createTime, expiresAt);
     }
 
-    static BulletinEntry fromDocument(Document pDoc) {
-        return new BulletinEntry(pDoc.getString("bulletinId"), pDoc.getInteger("marketId"),
-                pDoc.getString("instrument"), pDoc.getString("side"),
-                pDoc.getLong("price"), pDoc.getLong("quantity"), pDoc.getLong("remainingQuantity"),
-                pDoc.getString("ownerFirm"), pDoc.getString("ownerUser"), pDoc.getString("userRef"),
-                Database.clientAccountOf(pDoc, "clientAccount"),   // the default one for bulletins stored before client accounts
-                pDoc.getLong("createTime"), pDoc.getLong("expiresAt"));
+    static BulletinEntry fromStored(StoredBulletin b) {
+        return new BulletinEntry(b.bulletinId(), b.marketId(), b.instrument(), b.side(), b.price(), b.quantity(),
+                b.remainingQuantity(), b.ownerFirm(), b.ownerUser(), b.userRef(), b.clientAccount(),
+                b.createTime(), b.expiresAt());
     }
 
     /** The other side: SELL for BUY, BUY for SELL. */

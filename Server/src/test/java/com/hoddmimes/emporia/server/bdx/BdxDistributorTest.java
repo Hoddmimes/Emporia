@@ -6,7 +6,6 @@ import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import com.hoddmimes.emporia.server.me.Order;
-import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -49,15 +48,12 @@ class BdxDistributorTest {
         mEngine = new MatchingEngine(mCache, null, mBdx);
     }
 
-    private static Document market(int pMarketId, String pName, String pStatus) {
-        return new Document("marketId", pMarketId).append("name", pName).append("type", "CONTINUOUS")
-                .append("tradingStatus", pStatus);
+    private static InstrumentCache.MarketEntry market(int pMarketId, String pName, String pStatus) {
+        return new InstrumentCache.MarketEntry(pMarketId, pName, "", "CONTINUOUS", "", "", false, "", "", "", "", pStatus);
     }
 
-    private static Document instrument(long pId, int pMarketId, String pName) {
-        return new Document("instrumentId", String.valueOf(pId)).append("marketId", pMarketId)
-                .append("name", pName).append("tickSize", S / 100).append("lotSize", S)
-                .append("tradingStatus", "ACTIVE");
+    private static InstrumentCache.InstrumentEntry instrument(long pId, int pMarketId, String pName) {
+        return new InstrumentCache.InstrumentEntry(pId, pMarketId, pName, "", S / 100, S, "", "ACTIVE", "", 0, "", "");
     }
 
     private TestClient connect(String pHttpSessionId, String pFirm, Integer... pMarkets) {

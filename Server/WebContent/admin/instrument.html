@@ -159,7 +159,7 @@
         cdSession.guard('user-info');
 
         const PRICE_FACTOR = 100000;
-        const mongoId = new URLSearchParams(window.location.search).get('id');
+        const databaseId = new URLSearchParams(window.location.search).get('id');
         let originalValues = {};
 
         function showError(msg) {
@@ -228,9 +228,9 @@
         }
 
         async function loadInstrument() {
-            if (!mongoId) { window.location.href = 'instruments.html'; return; }
+            if (!databaseId) { window.location.href = 'instruments.html'; return; }
             try {
-                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`);
+                const r = await cdApi.request(`../api/admin/instruments/${databaseId}`);
                 if (r.status === 404) { window.location.href = 'instruments.html'; return; }
                 if (!r.ok) { showError('Failed to load instrument: ' + r.error); return; }
                 const inst = r.data;
@@ -284,7 +284,7 @@
                 optionType:     document.getElementById('d-optionType').value
             };
             try {
-                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/instruments/${databaseId}`, cdApi.json('PATCH', body));
                 if (!r.ok) {
                     showError('Failed to save changes: ' + r.error);
                     return;
@@ -311,7 +311,7 @@
 
         async function setStatus(status) {
             try {
-                const r = await cdApi.request(`../api/admin/instruments/${mongoId}/status`, cdApi.json('PATCH', { tradingStatus: status }));
+                const r = await cdApi.request(`../api/admin/instruments/${databaseId}/status`, cdApi.json('PATCH', { tradingStatus: status }));
                 if (!r.ok) { showError('Failed to update trading status: ' + r.error); return; }
                 updateStatusUI(status);
             } catch (e) {
@@ -332,7 +332,7 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`../api/admin/instruments/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/instruments/${databaseId}`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete instrument: ' + r.error); return; }
                 window.location.href = 'instruments.html';
             } catch (e) {

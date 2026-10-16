@@ -1,5 +1,6 @@
 package com.hoddmimes.emporia.server;
 
+import com.hoddmimes.emporia.server.db.Database;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;

@@ -2,13 +2,13 @@ package com.hoddmimes.emporia.server.endpoints;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
+import com.hoddmimes.emporia.server.db.BulletinTrade;
+import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import io.javalin.Javalin;
-import org.bson.Document;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -109,20 +109,20 @@ public class PortfolioEndpoints implements RestEndpoint {
     }
 
     /**
-     * The firm's position per instrument and client account from its Trades documents, in the order
+     * The firm's position per instrument and client account from its stored trades, in the order
      * they first appear. A trade between two orders of the firm itself counts on both sides: it nets 0
      * if both orders have the same client account, otherwise it moves the position from one to the other.
      */
-    static List<Position> positions(String pFirm, List<Document> pTrades) {
+    static List<Position> positions(String pFirm, List<InternalTrade> pTrades) {
         Map<List<Object>, Position> tPositions = new LinkedHashMap<>();   // key: instrument id, client account
-        for (Document tTrade : pTrades) {
-            long tInstrumentId = Long.parseLong(tTrade.getString("instrumentId"));
-            long tQuantity     = tTrade.getLong("quantity");
-            if (pFirm.equals(tTrade.getString("buyAccount"))) {
-                addTo(tPositions, tInstrumentId, Database.clientAccountOf(tTrade, "buyClientAccount"), tQuantity, 0L);
+        for (InternalTrade tTrade : pTrades) {
+            long tInstrumentId = tTrade.getInstrumentId();
+            long tQuantity     = tTrade.getQuantity();
+            if (pFirm.equals(tTrade.getBuyOrder().getAccount())) {
+                addTo(tPositions, tInstrumentId, tTrade.getBuyOrder().getClientAccount(), tQuantity, 0L);
             }
-            if (pFirm.equals(tTrade.getString("sellAccount"))) {
-                addTo(tPositions, tInstrumentId, Database.clientAccountOf(tTrade, "sellClientAccount"), 0L, tQuantity);
+            if (pFirm.equals(tTrade.getSellOrder().getAccount())) {
+                addTo(tPositions, tInstrumentId, tTrade.getSellOrder().getClientAccount(), 0L, tQuantity);
             }
         }
         return new ArrayList<>(tPositions.values());
@@ -141,18 +141,18 @@ public class PortfolioEndpoints implements RestEndpoint {
     }
 
     /**
-     * The firm's position per bulletin market, instrument and client account from its BulletinTrades
-     * documents. A firm can't trade with its own bulletin, so it is on one side of each trade.
+     * The firm's position per bulletin market, instrument and client account from its bulletin
+     * trades. A firm can't trade with its own bulletin, so it is on one side of each trade.
      */
-    static List<BulletinPosition> bulletinPositions(String pFirm, List<Document> pTrades) {
+    static List<BulletinPosition> bulletinPositions(String pFirm, List<BulletinTrade> pTrades) {
         Map<List<Object>, BulletinPosition> tPositions = new LinkedHashMap<>();   // key: market, instrument, client account
-        for (Document tTrade : pTrades) {
-            int    tMarketId   = tTrade.getInteger("marketId");
-            String tInstrument = tTrade.getString("instrument");
-            long   tQuantity   = tTrade.getLong("quantity");
-            boolean tBuyer     = pFirm.equals(tTrade.getString("buyAccount"));
-            if (!tBuyer && !pFirm.equals(tTrade.getString("sellAccount"))) continue;
-            String tAccount    = Database.clientAccountOf(tTrade, tBuyer ? "buyClientAccount" : "sellClientAccount");
+        for (BulletinTrade tTrade : pTrades) {
+            int    tMarketId   = tTrade.marketId();
+            String tInstrument = tTrade.instrument();
+            long   tQuantity   = tTrade.quantity();
+            boolean tBuyer     = pFirm.equals(tTrade.buyAccount());
+            if (!tBuyer && !pFirm.equals(tTrade.sellAccount())) continue;
+            String tAccount    = tBuyer ? tTrade.buyClientAccount() : tTrade.sellClientAccount();
             tPositions.merge(List.of(tMarketId, tInstrument, tAccount),
                     new BulletinPosition(tMarketId, tInstrument, tAccount, tBuyer ? tQuantity : 0L, tBuyer ? 0L : tQuantity),
                     (a, b) -> new BulletinPosition(a.marketId(), a.instrument(), a.clientAccount(), a.bought() + b.bought(), a.sold() + b.sold()));

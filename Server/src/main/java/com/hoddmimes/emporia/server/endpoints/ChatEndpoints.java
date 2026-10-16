@@ -4,16 +4,15 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.hoddmimes.emporia.server.Database;
 import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.SessionUser;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
+import com.hoddmimes.emporia.server.db.ChatMessage;
+import com.hoddmimes.emporia.server.db.DatabaseIds;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
-import org.bson.types.ObjectId;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -22,7 +21,7 @@ import java.util.List;
 /**
  * Chat between the trading users of all firms. POST /api/chat stores a message (free text, at most
  * MAX_TEXT_BYTES in UTF-8, and an optional tag of at most MAX_TAG_BYTES) in the Chat collection with
- * the sender's firm and user and the time, journaled, and then broadcasts it as a global Chat bdx message
+ * the sender's firm and user and the time, durably, and then broadcasts it as a global Chat bdx message
  * to every connected trading client. GET /api/chat lists the stored messages up to and including a date,
  * optionally from a date and with a tag containing a text.
  */
@@ -60,14 +59,9 @@ public class ChatEndpoints implements RestEndpoint {
             tTag  = (tTag == null) ? "" : tTag.strip();
 
             long tNow = System.currentTimeMillis();
-            String tChatId = new ObjectId().toHexString();
-            // Stored (journaled) before anyone is told about it
-            mCtx.database.saveChatMessage(new Document("chatId", tChatId)
-                    .append("time", Database.formatTradeTime(tNow))
-                    .append("firm", tUser.firm())
-                    .append("user", tUser.userId())
-                    .append("text", tText)
-                    .append("tag",  tTag));
+            String tChatId = DatabaseIds.newId();
+            // Stored (durably) before anyone is told about it
+            mCtx.database.saveChatMessage(new ChatMessage(tChatId, tNow, tUser.firm(), tUser.userId(), tText, tTag));
             mCtx.bdx.publish(BdxMessage.global(BdxMessage.CHAT)
                     .put("chatId", tChatId)
                     .put("time",   tNow)
@@ -97,15 +91,14 @@ public class ChatEndpoints implements RestEndpoint {
                     OrderEndpoints.error(ctx, 400, "limit must be 1.." + MAX_LIMIT); return;
                 }
             }
-            List<Document> tDocs;
-            try { tDocs = mCtx.database.listChatMessages(tFromDate, tDate, tTag, tLimit + 1); }
+            List<ChatMessage> tStored;
+            try { tStored = mCtx.database.listChatMessages(tFromDate, tDate, tTag, tLimit + 1); }
             catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, "date and fromDate must be yyyy-MM-dd"); return; }
 
-            boolean tMore = tDocs.size() > tLimit;   // older messages left out
+            boolean tMore = tStored.size() > tLimit;   // older messages left out
             JsonArray tMessages = new JsonArray();
-            for (Document tDoc : tMore ? tDocs.subList(1, tDocs.size()) : tDocs) {
-                tMessages.add(messageJson(tDoc.getString("chatId"), Database.parseTradeTime(tDoc.getString("time")),
-                        tDoc.getString("firm"), tDoc.getString("user"), tDoc.getString("text"), tDoc.getString("tag")));
+            for (ChatMessage m : tMore ? tStored.subList(1, tStored.size()) : tStored) {
+                tMessages.add(messageJson(m.chatId(), m.time(), m.firm(), m.user(), m.text(), m.tag()));
             }
             JsonObject tOut = new JsonObject();
             tOut.addProperty("date", tDate);

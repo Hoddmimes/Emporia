@@ -4,7 +4,7 @@ import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.Database;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -128,9 +128,9 @@ public class MarketStateScheduler {
      */
     private void setStatus(InstrumentCache.MarketEntry pMarket, String pState, String pReason) {
         if (SUSPENDED.equals(pMarket.tradingStatus()) || pState.equals(pMarket.tradingStatus())) return;
-        Document tDoc = mDatabase.setMarketStatus(pMarket.marketId(), pState);
-        if (tDoc == null) return;
-        mInstrumentCache.putMarket(tDoc);
+        InstrumentCache.MarketEntry tMarket = mDatabase.setMarketStatus(pMarket.marketId(), pState);
+        if (tMarket == null) return;
+        mInstrumentCache.putMarket(tMarket);
         cLog.info("Market {} ({}) {} -> {} ({})", pMarket.marketId(), pMarket.name(),
                 pMarket.tradingStatus(), pState, pReason);
     }
@@ -141,9 +141,9 @@ public class MarketStateScheduler {
      */
     private void setStatus(BulletinMarket pMarket, String pState, String pReason) {
         if (BulletinMarket.SUSPENDED.equals(pMarket.tradingStatus()) || pState.equals(pMarket.tradingStatus())) return;
-        Document tDoc = mDatabase.setBulletinMarketStatus(pMarket.marketId(), pState);
-        if (tDoc == null) return;
-        mBulletinBoard.putMarket(tDoc);
+        BulletinMarket tMarket = mDatabase.setBulletinMarketStatus(pMarket.marketId(), pState);
+        if (tMarket == null) return;
+        mBulletinBoard.putMarket(tMarket);
         cLog.info("Bulletin market {} ({}) {} -> {} ({})", pMarket.marketId(), pMarket.name(),
                 pMarket.tradingStatus(), pState, pReason);
     }

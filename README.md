@@ -24,7 +24,8 @@ The takeaway from this project is;
 
 Emporia is a marketplace for commodity trading, built as **one server process**: a Java 21 / Javalin web
 server with the matching engine, bulletin board, REST API, WebSocket feed and web pages all in the same
-process. MongoDB is the database. There is no message bus or cluster to run, so the whole system is one
+process. The database is MongoDB or, for the smallest setup, SQLite: a single file, nothing to install
+(chosen in the configuration). There is no message bus or cluster to run, so the whole system is one
 application and one database. It runs stand-alone as a fat jar, or as a WAR in Tomcat 10.1+.
 
 ### Trading
@@ -49,8 +50,8 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
   described with screenshots in the [admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html).
 
 ### Performance and durability
-- Every trade is written to MongoDB with a **journaled write before anyone is told about it**, so no
-  trade is lost if the host fails. Writes are grouped: one disk flush (about **2 ms**) stores all the
+- Every trade is written to the database with a **durable write before anyone is told about it**
+  (journaled in MongoDB, fsynced in SQLite), so no trade is lost if the host fails. Writes are grouped: one disk flush (about **2 ms**) stores all the
   trades made meanwhile.
 - Each order book has its own lock, so orders in different instruments are matched in parallel.
 - Measured with the included load test client: **several thousand orders per second** 

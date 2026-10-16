@@ -2,13 +2,12 @@ package com.hoddmimes.emporia.server.me;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.hoddmimes.emporia.server.Database;
+import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -84,14 +83,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
         // Without a database (unit tests) trades are neither reloaded nor stored
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd");
-        List<Document> tTradeDocs = (mDB != null) ? mDB.listTradesByDate( simpleDateFormat.format(new Date())) : null;
-        if (tTradeDocs != null) {
-            List<InternalTrade> tTrades = new ArrayList<>();
-            for( Document tDoc : tTradeDocs) {
-                tTrades.add(Database.fromTradeDocument(tDoc ));
-            }
-            restoreTrades(tTrades);
-        }
+        if (mDB != null) restoreTrades(mDB.listTradesByDate(simpleDateFormat.format(new Date())));
     }
 
     /**
@@ -293,7 +285,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
 
     /**
      * The firm's side of the given trades, in their order and filtered like getTradesByFirm; used for
-     * the stored trades of a chosen day (Database.fromTradeDocument).
+     * the stored trades of a chosen day (Database.listTradesByFirm).
      */
     public JsonArray tradesForFirm(List<InternalTrade> pTrades, String pFirm, int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();

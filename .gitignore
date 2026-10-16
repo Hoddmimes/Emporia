@@ -50,3 +50,7 @@ bin/
 
 ### Local files ###
 /AIBook.jpeg
+
+### Server run files (Server/emporia.sh) ###
+emporia.pid
+emporia.out

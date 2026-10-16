@@ -25,7 +25,7 @@ const nordagri = (await rest('GET', 'api/admin/firms')).find(f => f.name === 'NO
 await rest('PATCH', 'api/admin/firms/' + nordagri.id, { status: 'ACTIVE',
     address: 'Hamngatan 4, 211 22 Malmö', phone: '+46 40 123 45 00', contact: 'Anna Lind', mail: 'trading@nordagri.example' });
 const anna = (await rest('GET', 'api/admin/users')).find(u => u.id === 'anna');
-await rest('PATCH', 'api/admin/users/' + anna.mongoId, { firm: 'NORDAGRI', name: 'Anna Lind', status: 'ACTIVE',
+await rest('PATCH', 'api/admin/users/' + anna.databaseId, { firm: 'NORDAGRI', name: 'Anna Lind', status: 'ACTIVE',
     mail: 'anna.lind@nordagri.example', phone: '+46 70 555 01 23' });
 await rest('POST', 'api/admin/firms', { name: 'EASTGRAIN', status: 'INACTIVE', contact: 'Olof Ek' });
 await rest('POST', 'api/admin/users', { userId: 'olof', name: 'Olof Ek', firm: 'EASTGRAIN', status: 'INACTIVE', password: 'demo' });

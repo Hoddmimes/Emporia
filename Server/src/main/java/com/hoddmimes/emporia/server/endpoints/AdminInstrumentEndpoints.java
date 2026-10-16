@@ -3,7 +3,7 @@ package com.hoddmimes.emporia.server.endpoints;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.hoddmimes.emporia.server.InstrumentCache;
+import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
 
@@ -28,8 +28,8 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             try { tMarketId = Integer.parseInt(tMarketIdStr); }
             catch (NumberFormatException e) { ctx.status(400).json("{\"error\":\"marketId must be an integer\"}"); return; }
             JsonArray tArray = new JsonArray();
-            for (var tDoc : mCtx.database.listInstrumentsByMarket(tMarketId)) {
-                tArray.add(mCtx.database.instrumentToJson(tDoc));
+            for (var tInstrument : mCtx.database.listInstrumentsByMarket(tMarketId)) {
+                tArray.add(tInstrument.withId(tInstrument.value().toJson()));
             }
             ctx.json(tArray.toString());
         });
@@ -92,9 +92,9 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                         tResults.add(tResult); continue;
                     }
                     long tId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
-                    String tMongoId = mCtx.database.createInstrument(tId, tMarketId, tName, tInstType, tTickSize, tLotSize,
-                            tIsin, tTradingStatus, tExpirationDate, tStrikePrice, tUnderlying, tOptionType);
-                    mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tMongoId));
+                    String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tId, tMarketId, tName, tInstType,
+                            tTickSize, tLotSize, tIsin, tTradingStatus, tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+                    mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
                     tResult.addProperty("status", "OK");
                     tResults.add(tResult);
                 }
@@ -115,7 +115,7 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                     boolean tDeleted = false;
                     try {
                         long tId = Long.parseLong(tIdStr);
-                        tDeleted = mCtx.database.deleteInstrumentByBusinessId(tId);
+                        tDeleted = mCtx.database.deleteInstrumentByInstrumentId(tId);
                         if (tDeleted) mCtx.instrumentCache.removeInstrument(tId);
                     } catch (NumberFormatException e) {
                         tResult.addProperty("status", "ERROR"); tResult.addProperty("message", "ID must be a numeric instrumentId for DELETE");
@@ -157,17 +157,17 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, true);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
             long tInstrumentId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
-            String tMongoId = mCtx.database.createInstrument(tInstrumentId, tMarketId, tName, tInstType,
-                    tTickSize, tLotSize, tIsin, "ACTIVE", tExpirationDate, tStrikePrice, tUnderlying, tOptionType);
-            mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tMongoId));
-            ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
+            String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tInstrumentId, tMarketId, tName, tInstType,
+                    tTickSize, tLotSize, tIsin, "ACTIVE", tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+            mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
+            ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
         });
 
         app.get("/api/admin/instruments/{id}", ctx -> {
             try {
-                var tDoc = mCtx.database.getInstrument(ctx.pathParam("id"));
-                if (tDoc == null) { ctx.status(404).json("{\"error\":\"Instrument not found\"}"); return; }
-                ctx.json(mCtx.database.instrumentToJson(tDoc).toString());
+                var tInstrument = mCtx.database.getInstrument(ctx.pathParam("id"));
+                if (tInstrument == null) { ctx.status(404).json("{\"error\":\"Instrument not found\"}"); return; }
+                ctx.json(tInstrument.withId(tInstrument.value().toJson()).toString());
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid instrument ID\"}");
             }
@@ -191,10 +191,10 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, false);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
             try {
-                String tMongoId = ctx.pathParam("id");
-                mCtx.database.updateInstrument(tMongoId, tMarketId, tName, tInstType,
-                        tTickSize, tLotSize, tIsin, tExpirationDate, tStrikePrice, tUnderlying, tOptionType);
-                mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tMongoId));
+                String tDatabaseId = ctx.pathParam("id");
+                mCtx.database.updateInstrument(tDatabaseId, new InstrumentEntry(0, tMarketId, tName, tInstType,
+                        tTickSize, tLotSize, tIsin, "", tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+                putInstrument(tDatabaseId);
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid instrument ID\"}");
@@ -208,9 +208,9 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                 ctx.status(400).json("{\"error\":\"tradingStatus must be ACTIVE or SUSPENDED\"}"); return;
             }
             try {
-                String tMongoId = ctx.pathParam("id");
-                mCtx.database.updateInstrumentStatus(tMongoId, tStatus);
-                mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tMongoId));
+                String tDatabaseId = ctx.pathParam("id");
+                mCtx.database.updateInstrumentStatus(tDatabaseId, tStatus);
+                putInstrument(tDatabaseId);
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid instrument ID\"}");
@@ -219,16 +219,21 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
 
         app.delete("/api/admin/instruments/{id}", ctx -> {
             try {
-                String tMongoId = ctx.pathParam("id");
-                var tDoc = mCtx.database.getInstrument(tMongoId);
-                mCtx.database.deleteInstrument(tMongoId);
-                var tEntry = (tDoc != null) ? InstrumentCache.InstrumentEntry.fromDocument(tDoc) : null;
-                if (tEntry != null) mCtx.instrumentCache.removeInstrument(tEntry.instrumentId());
+                String tDatabaseId = ctx.pathParam("id");
+                var tInstrument = mCtx.database.getInstrument(tDatabaseId);
+                mCtx.database.deleteInstrument(tDatabaseId);
+                if (tInstrument != null) mCtx.instrumentCache.removeInstrument(tInstrument.value().instrumentId());
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid instrument ID\"}");
             }
         });
+    }
+
+    /** Puts the instrument, as stored now, in the cache (if it exists). */
+    private void putInstrument(String pDatabaseId) {
+        var tInstrument = mCtx.database.getInstrument(pDatabaseId);
+        if (tInstrument != null) mCtx.instrumentCache.putInstrument(tInstrument.value());
     }
 
     private String validateInstrument(String pInstType, String pExpirationDate,

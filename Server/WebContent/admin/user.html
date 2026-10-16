@@ -120,7 +120,7 @@
         cdNav.render('list-users');
         cdSession.guard('user-info');
 
-        const mongoId = new URLSearchParams(window.location.search).get('id');
+        const databaseId = new URLSearchParams(window.location.search).get('id');
         let originalValues = {};
 
         function showError(msg) {
@@ -155,9 +155,9 @@
         }
 
         async function loadUser() {
-            if (!mongoId) { window.location.href = 'users.html'; return; }
+            if (!databaseId) { window.location.href = 'users.html'; return; }
             try {
-                const r = await cdApi.request(`../api/admin/users/${mongoId}`);
+                const r = await cdApi.request(`../api/admin/users/${databaseId}`);
                 if (r.status === 404) { window.location.href = 'users.html'; return; }
                 if (!r.ok) { showError('Failed to load user: ' + r.error); return; }
                 const u = r.data;
@@ -198,14 +198,14 @@
                 body.password = newPassword;
             }
             try {
-                const r = await cdApi.request(`../api/admin/users/${mongoId}`, cdApi.json('PATCH', body));
+                const r = await cdApi.request(`../api/admin/users/${databaseId}`, cdApi.json('PATCH', body));
                 if (!r.ok) { showError('Failed to save changes: ' + r.error); return; }
 
                 originalValues = { ...body };
                 document.getElementById('d-password-new').value = '';
                 // Refresh hash display if password was changed
                 if (newPassword !== '') {
-                    const refreshed = await cdApi.request(`../api/admin/users/${mongoId}`);
+                    const refreshed = await cdApi.request(`../api/admin/users/${databaseId}`);
                     if (refreshed.ok) {
                         const u = refreshed.data;
                         document.getElementById('d-password-hash').textContent = u.password || '(not set)';
@@ -233,7 +233,7 @@
         async function confirmDelete() {
             closeDeleteModal();
             try {
-                const r = await cdApi.request(`../api/admin/users/${mongoId}`, { method: 'DELETE' });
+                const r = await cdApi.request(`../api/admin/users/${databaseId}`, { method: 'DELETE' });
                 if (!r.ok) { showError('Failed to delete user: ' + r.error); return; }
                 window.location.href = 'users.html';
             } catch (e) {

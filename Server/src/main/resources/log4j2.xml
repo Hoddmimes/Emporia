@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN">
+<Configuration status="WARN" shutdownHook="disable">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{rid}] %logger{36} - %msg%n"/>
@@ -12,7 +12,8 @@
         <Logger name="com.hoddmimes" level="INFO"/>
 
         <Root level="INFO">
-            <AppenderRef ref="Console"/>
+            <!-- emporia.console.level: emporia.sh sets WARN in the background (the file gets everything) -->
+            <AppenderRef ref="Console" level="${sys:emporia.console.level:-ALL}"/>
             <AppenderRef ref="File"/>
         </Root>
     </Loggers>

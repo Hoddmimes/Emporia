@@ -2,7 +2,6 @@ package com.hoddmimes.emporia.server.bulletin;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import org.bson.Document;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +9,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * A bulletin market (MongoDB collection BulletinMarkets), kept apart from the continuous and auction
+ * A bulletin market (collection/table BulletinMarkets), kept apart from the continuous and auction
  * markets. Its tradingStatus is OPEN or CLOSED, driven by its open and close times ("H:mm[:ss]", server
  * local time) by the MarketStateScheduler like the other markets, or changed in the admin interface;
  * SUSPENDED is only set and lifted in the admin interface, never by the scheduler. Bulletins
@@ -29,18 +28,15 @@ public record BulletinMarket(int marketId, String name, String description, Stri
     public static final String CLOSED    = "CLOSED";
     public static final String SUSPENDED = "SUSPENDED";
 
-    /** Maps a BulletinMarkets document; null if it has no marketId. */
-    public static BulletinMarket fromDocument(Document pDoc) {
-        Integer tMarketId = pDoc.getInteger("marketId");
-        if (tMarketId == null) return null;
-        List<String> tInstruments = pDoc.getList("instruments", String.class, List.of());
+    /** A bulletin market with the patterns of its /regex/ instrument entries compiled. */
+    public static BulletinMarket of(int pMarketId, String pName, String pDescription, String pTradingStatus,
+                                    String pOpen, String pClose, List<String> pInstruments, String pMaxOrderTime) {
         List<Pattern> tPatterns = new ArrayList<>();
-        for (String tEntry : tInstruments) {
+        for (String tEntry : pInstruments) {
             tPatterns.add(isRegex(tEntry) ? Pattern.compile(regexOf(tEntry)) : null);
         }
-        return new BulletinMarket(tMarketId, str(pDoc, "name"), str(pDoc, "description"),
-                str(pDoc, "tradingStatus"), str(pDoc, "open"), str(pDoc, "close"), List.copyOf(tInstruments),
-                str(pDoc, "maxOrderTime"), tPatterns);
+        return new BulletinMarket(pMarketId, pName, pDescription, pTradingStatus, pOpen, pClose,
+                List.copyOf(pInstruments), pMaxOrderTime, tPatterns);
     }
 
     /** True if bulletins can be added for the instrument: it equals a literal entry or matches a regex entry. */
@@ -109,10 +105,5 @@ public record BulletinMarket(int marketId, String name, String description, Stri
             }
         }
         return null;
-    }
-
-    private static String str(Document pDoc, String pField) {
-        String tVal = pDoc.getString(pField);
-        return tVal != null ? tVal : "";
     }
 }

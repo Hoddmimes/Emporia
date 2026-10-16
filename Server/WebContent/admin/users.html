@@ -81,7 +81,7 @@
                 }
 
                 tbody.innerHTML = users.map(u =>
-                    `<tr class="row-link" onclick="window.location='user.html?id=${u.mongoId}'">
+                    `<tr class="row-link" onclick="window.location='user.html?id=${u.databaseId}'">
                         <td>${escHtml(u.firm)}</td>
                         <td>${escHtml(u.id)}</td>
                         <td>${escHtml(u.name)}</td>

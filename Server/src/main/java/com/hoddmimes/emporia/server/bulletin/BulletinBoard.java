@@ -2,13 +2,15 @@ package com.hoddmimes.emporia.server.bulletin;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.hoddmimes.emporia.server.Database;
+import com.hoddmimes.emporia.server.db.BulletinTrade;
+import com.hoddmimes.emporia.server.db.Database;
+import com.hoddmimes.emporia.server.db.Stored;
+import com.hoddmimes.emporia.server.db.StoredBulletin;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -96,11 +98,11 @@ public class BulletinBoard {
 
     /** Loads the bulletin markets and the stored bulletins from the database. Called once at startup. */
     public synchronized void load() {
-        for (Document tDoc : mDatabase.listBulletinMarkets()) putMarket(tDoc);
+        for (Stored<BulletinMarket> tMarket : mDatabase.listBulletinMarkets()) putMarket(tMarket.value());
         long tNow = System.currentTimeMillis();
         int tExpired = 0;
-        for (Document tDoc : mDatabase.listBulletins()) {
-            BulletinEntry tEntry = BulletinEntry.fromDocument(tDoc);
+        for (StoredBulletin tStored : mDatabase.listBulletins()) {
+            BulletinEntry tEntry = BulletinEntry.fromStored(tStored);
             mBulletins.put(tEntry.bulletinId, tEntry);
             if (tEntry.expiresAt <= tNow) {
                 remove(tEntry, BulletinEntry.STATE_EXPIRED);
@@ -114,13 +116,13 @@ public class BulletinBoard {
     }
 
     /**
-     * Adds or replaces a bulletin market from its BulletinMarkets document (call after the database
-     * write). A MarketState is published for a new market and when the status changes. A changed
+     * Adds or replaces a bulletin market, as read back from the database (call after the database
+     * write; null is ignored). A MarketState is published for a new market and when the status changes. A changed
      * maxOrderTime applies to bulletins added after the change.
      */
-    public synchronized void putMarket(Document pDoc) {
-        BulletinMarket tMarket = (pDoc != null) ? BulletinMarket.fromDocument(pDoc) : null;
-        if (tMarket == null) return;
+    public synchronized void putMarket(BulletinMarket pMarket) {
+        if (pMarket == null) return;
+        BulletinMarket tMarket = pMarket;
         BulletinMarket tPrev = mMarkets.put(tMarket.marketId(), tMarket);
         if (tPrev == null || !tPrev.tradingStatus().equals(tMarket.tradingStatus())) {
             mPublisher.accept(BdxMessage.market(BdxMessage.MARKET_STATE, tMarket.marketId())
@@ -427,7 +429,7 @@ public class BulletinBoard {
     }
 
     private void store(BulletinEntry pEntry) {
-        if (mDatabase != null) mDatabase.saveBulletin(pEntry.toDocument());
+        if (mDatabase != null) mDatabase.saveBulletin(pEntry.toStored());
     }
 
     /** Clears the pending offer and opens the bulletin for offers again. */
@@ -441,7 +443,7 @@ public class BulletinBoard {
         String tTradeNo   = Long.toHexString(mIdBase + mNextTrade++);
         long   tTradeTime = System.currentTimeMillis();
         // Stored (journaled) before anyone is told about the trade
-        if (mDatabase != null) mDatabase.saveBulletinTrade(tradeDocument(pEntry, tTradeNo, tTradeTime));
+        if (mDatabase != null) mDatabase.saveBulletinTrade(tradeRecord(pEntry, tTradeNo, tTradeTime));
         mPublisher.accept(BdxMessage.market(BdxMessage.BULLETIN_TRADE, pEntry.marketId)
                 .put("bulletinId", pEntry.bulletinId)
                 .put("instrument", pEntry.instrument)
@@ -458,24 +460,19 @@ public class BulletinBoard {
                 pEntry.ownerFirm, pEntry.ownerTradeSide(), pEntry.offerFirm, pEntry.offerSide);
     }
 
-    /** The BulletinTrades document of a trade on the pending offer (see Database.saveBulletinTrade). */
-    static Document tradeDocument(BulletinEntry pEntry, String pTradeNo, long pTradeTime) {
+    /** The stored bulletin trade of a trade on the pending offer (see Database.saveBulletinTrade). */
+    static BulletinTrade tradeRecord(BulletinEntry pEntry, String pTradeNo, long pTradeTime) {
         boolean tOwnerBuys = "BUY".equals(pEntry.ownerTradeSide());
-        return new Document("tradeNo",     pTradeNo)
-                .append("bulletinId",  pEntry.bulletinId)
-                .append("marketId",    pEntry.marketId)
-                .append("instrument",  pEntry.instrument)
-                .append("price",       pEntry.offerPrice)
-                .append("quantity",    pEntry.offerQuantity)
-                .append("tradeTime",   Database.formatTradeTime(pTradeTime))
-                .append("buyAccount",  tOwnerBuys ? pEntry.ownerFirm : pEntry.offerFirm)
-                .append("buyUser",     tOwnerBuys ? pEntry.ownerUser : pEntry.offerUser)
-                .append("buyRef",      tOwnerBuys ? pEntry.userRef   : pEntry.offerRef)
-                .append("buyClientAccount",  tOwnerBuys ? pEntry.clientAccount : pEntry.offerClientAccount)
-                .append("sellAccount", tOwnerBuys ? pEntry.offerFirm : pEntry.ownerFirm)
-                .append("sellUser",    tOwnerBuys ? pEntry.offerUser : pEntry.ownerUser)
-                .append("sellRef",     tOwnerBuys ? pEntry.offerRef  : pEntry.userRef)
-                .append("sellClientAccount", tOwnerBuys ? pEntry.offerClientAccount : pEntry.clientAccount);
+        return new BulletinTrade(pTradeNo, pEntry.bulletinId, pEntry.marketId, pEntry.instrument,
+                pEntry.offerPrice, pEntry.offerQuantity, pTradeTime,
+                tOwnerBuys ? pEntry.ownerFirm : pEntry.offerFirm,
+                tOwnerBuys ? pEntry.ownerUser : pEntry.offerUser,
+                tOwnerBuys ? pEntry.userRef   : pEntry.offerRef,
+                tOwnerBuys ? pEntry.clientAccount : pEntry.offerClientAccount,
+                tOwnerBuys ? pEntry.offerFirm : pEntry.ownerFirm,
+                tOwnerBuys ? pEntry.offerUser : pEntry.ownerUser,
+                tOwnerBuys ? pEntry.offerRef  : pEntry.userRef,
+                tOwnerBuys ? pEntry.offerClientAccount : pEntry.clientAccount);
     }
 
     private void publishOwnTrade(BulletinEntry pEntry, String pFirm, String pSide, String pRefName, String pRef,

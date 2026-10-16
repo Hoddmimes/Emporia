@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.db.User;
 import io.javalin.Javalin;
 
 import java.util.Set;
@@ -20,8 +21,8 @@ public class AdminUserEndpoints implements RestEndpoint {
     public void register(Javalin app) {
         app.get("/api/admin/users", ctx -> {
             JsonArray tArray = new JsonArray();
-            for (var tDoc : mCtx.database.listUsers()) {
-                tArray.add(mCtx.database.userToJson(tDoc));
+            for (var tUser : mCtx.database.listUsers()) {
+                tArray.add(User.toJson(tUser));
             }
             ctx.json(tArray.toString());
         });
@@ -32,21 +33,21 @@ public class AdminUserEndpoints implements RestEndpoint {
             String tName   = RestApiContext.field(tBody, "name",   "").trim();
             if (tUserId.isEmpty()) { ctx.status(400).json("{\"error\":\"ID is required\"}"); return; }
             if (tName.isEmpty())   { ctx.status(400).json("{\"error\":\"Name is required\"}"); return; }
-            String tMongoId = mCtx.database.createUser(tUserId,
+            String tDatabaseId = mCtx.database.createUser(tUserId,
                     RestApiContext.field(tBody, "firm",     ""),
                     tName,
                     RestApiContext.field(tBody, "mail",     ""),
                     RestApiContext.field(tBody, "phone",    ""),
                     RestApiContext.field(tBody, "status",   "INACTIVE"),
                     RestApiContext.field(tBody, "password", ""));
-            ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
+            ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
         });
 
         app.get("/api/admin/users/{id}", ctx -> {
             try {
-                var tDoc = mCtx.database.getUser(ctx.pathParam("id"));
-                if (tDoc == null) { ctx.status(404).json("{\"error\":\"User not found\"}"); return; }
-                ctx.json(mCtx.database.userToJson(tDoc).toString());
+                var tUser = mCtx.database.getUser(ctx.pathParam("id"));
+                if (tUser == null) { ctx.status(404).json("{\"error\":\"User not found\"}"); return; }
+                ctx.json(User.toJson(tUser).toString());
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid user ID\"}");
             }

@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.BulletinTrade;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,10 +28,8 @@ class BulletinBoardTest {
         mPublished.clear();
     }
 
-    private static Document market(int pMarketId, String pName, String pStatus, String pMaxOrderTime) {
-        return new Document("marketId", pMarketId).append("name", pName).append("tradingStatus", pStatus)
-                .append("instruments", List.of("Old tractor", "/Brent.*/", "x"))
-                .append("maxOrderTime", pMaxOrderTime);
+    private static BulletinMarket market(int pMarketId, String pName, String pStatus, String pMaxOrderTime) {
+        return BulletinMarket.of(pMarketId, pName, "", pStatus, "", "", List.of("Old tractor", "/Brent.*/", "x"), pMaxOrderTime);
     }
 
     private String add(String pFirm, String pSide, long pPrice, long pQuantity) {
@@ -239,7 +237,7 @@ class BulletinBoardTest {
     }
 
     @Test
-    void tradeDocumentHasTheBuyerAndSellerOfTheTrade() {
+    void tradeRecordHasTheBuyerAndSellerOfTheTrade() {
         BulletinEntry tEntry = new BulletinEntry("b1", 1, "Old tractor", "SELL", 100 * S, 10 * S, 10 * S,
                 "FA", "u-FA", "ref-FA", "fa-acct", 0L, 0L);
         tEntry.offerFirm     = "FB";
@@ -249,23 +247,23 @@ class BulletinBoardTest {
         tEntry.offerQuantity = 4 * S;
         tEntry.offerRef      = "o1";
         tEntry.offerClientAccount = "fb-acct";
-        Document tDoc = BulletinBoard.tradeDocument(tEntry, "t1", 0L);
-        assertEquals("FB", tDoc.getString("buyAccount"));
-        assertEquals("u-FB", tDoc.getString("buyUser"));
-        assertEquals("o1", tDoc.getString("buyRef"));
-        assertEquals("FA", tDoc.getString("sellAccount"));
-        assertEquals("ref-FA", tDoc.getString("sellRef"));
-        assertEquals("fb-acct", tDoc.getString("buyClientAccount"));
-        assertEquals("fa-acct", tDoc.getString("sellClientAccount"));
-        assertEquals(99 * S, tDoc.getLong("price"));
-        assertEquals(4 * S, tDoc.getLong("quantity"));
-        assertEquals("Old tractor", tDoc.getString("instrument"));
-        assertEquals(1, tDoc.getInteger("marketId"));
+        BulletinTrade tTrade = BulletinBoard.tradeRecord(tEntry, "t1", 0L);
+        assertEquals("FB", tTrade.buyAccount());
+        assertEquals("u-FB", tTrade.buyUser());
+        assertEquals("o1", tTrade.buyRef());
+        assertEquals("FA", tTrade.sellAccount());
+        assertEquals("ref-FA", tTrade.sellRef());
+        assertEquals("fb-acct", tTrade.buyClientAccount());
+        assertEquals("fa-acct", tTrade.sellClientAccount());
+        assertEquals(99 * S, tTrade.price());
+        assertEquals(4 * S, tTrade.quantity());
+        assertEquals("Old tractor", tTrade.instrument());
+        assertEquals(1, tTrade.marketId());
 
         tEntry.offerSide = "SELL";   // a bulletin without a side: the offering firm sold, the owner bought
-        tDoc = BulletinBoard.tradeDocument(tEntry, "t2", 0L);
-        assertEquals("FA", tDoc.getString("buyAccount"));
-        assertEquals("FB", tDoc.getString("sellAccount"));
+        tTrade = BulletinBoard.tradeRecord(tEntry, "t2", 0L);
+        assertEquals("FA", tTrade.buyAccount());
+        assertEquals("FB", tTrade.sellAccount());
     }
 
     @Test

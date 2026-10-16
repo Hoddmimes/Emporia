@@ -9,18 +9,18 @@ import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.Stored;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Admin CRUD for the bulletin markets (MongoDB collection BulletinMarkets, see BulletinMarket).
+ * Admin CRUD for the bulletin markets (collection/table BulletinMarkets, see BulletinMarket).
  * Body fields: name (create only), description, tradingStatus (OPEN, CLOSED or SUSPENDED, default CLOSED),
  * open and close (required, "H:mm" or "H:mm:ss", server local time; see MarketStateScheduler),
  * instruments (an array of literal names and /regex/ entries, at least one) and maxOrderTime
- * ("hh:mm", greater than 0:00). Each write goes to MongoDB first and then to the BulletinBoard.
+ * ("hh:mm", greater than 0:00). Each write goes to the database first and then to the BulletinBoard.
  */
 public class AdminBulletinMarketEndpoints implements RestEndpoint {
 
@@ -34,14 +34,18 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
 
     /** The validated body fields. */
     private record Fields(String description, String tradingStatus, String open, String close,
-                          List<String> instruments, String maxOrderTime) {}
+                          List<String> instruments, String maxOrderTime) {
+        BulletinMarket market(int pMarketId, String pName) {
+            return BulletinMarket.of(pMarketId, pName, description, tradingStatus, open, close, instruments, maxOrderTime);
+        }
+    }
 
     @Override
     public void register(Javalin app) {
         app.get("/api/admin/bulletin-markets", ctx -> {
             JsonArray tArray = new JsonArray();
-            for (Document tDoc : mCtx.database.listBulletinMarkets()) {
-                tArray.add(toJson(tDoc));
+            for (Stored<BulletinMarket> tMarket : mCtx.database.listBulletinMarkets()) {
+                tArray.add(tMarket.withId(tMarket.value().toJson()));
             }
             ctx.json(tArray.toString());
         });
@@ -55,36 +59,34 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
             if (tFields == null) return;
 
             int tMarketId = mCtx.nextMarketId();
-            String tMongoId = mCtx.database.createBulletinMarket(tMarketId, tName, tFields.description(),
-                    tFields.tradingStatus(), tFields.open(), tFields.close(), tFields.instruments(), tFields.maxOrderTime());
-            mCtx.bulletinBoard.putMarket(mCtx.database.getBulletinMarket(tMongoId));
+            String tDatabaseId = mCtx.database.createBulletinMarket(tFields.market(tMarketId, tName));
+            mCtx.bulletinBoard.putMarket(mCtx.database.getBulletinMarket(tDatabaseId).value());
             mCtx.refreshClientAuthorizations();   // firms authorized for "*" get the new market
-            ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
+            ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
         });
 
         app.get("/api/admin/bulletin-markets/{id}", ctx -> {
-            Document tDoc = find(ctx);
-            if (tDoc != null) ctx.json(toJson(tDoc).toString());
+            Stored<BulletinMarket> tMarket = find(ctx);
+            if (tMarket != null) ctx.json(tMarket.withId(tMarket.value().toJson()).toString());
         });
 
         app.patch("/api/admin/bulletin-markets/{id}", ctx -> {
-            if (find(ctx) == null) return;
+            Stored<BulletinMarket> tMarket = find(ctx);
+            if (tMarket == null) return;
             JsonObject tBody = parseBody(ctx);
             if (tBody == null) return;
             Fields tFields = validate(ctx, tBody);
             if (tFields == null) return;
 
-            String tMongoId = ctx.pathParam("id");
-            mCtx.database.updateBulletinMarket(tMongoId, tFields.description(), tFields.tradingStatus(),
-                    tFields.open(), tFields.close(), tFields.instruments(), tFields.maxOrderTime());
-            mCtx.bulletinBoard.putMarket(mCtx.database.getBulletinMarket(tMongoId));
+            mCtx.database.updateBulletinMarket(tMarket.databaseId(), tFields.market(tMarket.value().marketId(), tMarket.value().name()));
+            mCtx.bulletinBoard.putMarket(mCtx.database.getBulletinMarket(tMarket.databaseId()).value());
             ctx.json("{\"success\":true}");
         });
 
         app.delete("/api/admin/bulletin-markets/{id}", ctx -> {
-            Document tDoc = find(ctx);
-            if (tDoc == null) return;
-            int tMarketId = tDoc.getInteger("marketId");
+            Stored<BulletinMarket> tMarket = find(ctx);
+            if (tMarket == null) return;
+            int tMarketId = tMarket.value().marketId();
             // A new market can reuse a deleted market's id, so a market must be empty before it is deleted
             int tBulletins = mCtx.bulletinBoard.bulletinCount(tMarketId);
             if (tBulletins > 0) {
@@ -92,7 +94,7 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
                         + " bulletin(s); delete them (Delete All Bulletins) before deleting the market");
                 return;
             }
-            mCtx.database.deleteBulletinMarket(ctx.pathParam("id"));
+            mCtx.database.deleteBulletinMarket(tMarket.databaseId());
             mCtx.bulletinBoard.removeMarket(tMarketId);
             mCtx.refreshClientAuthorizations();
             ctx.json("{\"success\":true}");
@@ -100,20 +102,20 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
 
         // Deletes all bulletins in the market, of every firm and in any market state
         app.delete("/api/admin/bulletin-markets/{id}/bulletins", ctx -> {
-            Document tDoc = find(ctx);
-            if (tDoc == null) return;
-            int tDeleted = mCtx.bulletinBoard.deleteAllBulletins(tDoc.getInteger("marketId"));
+            Stored<BulletinMarket> tMarket = find(ctx);
+            if (tMarket == null) return;
+            int tDeleted = mCtx.bulletinBoard.deleteAllBulletins(tMarket.value().marketId());
             ctx.json("{\"success\":true,\"bulletinsDeleted\":" + tDeleted + "}");
         });
     }
 
-    /** The bulletin market of the {id} path parameter (its MongoDB id), or null after replying 400/404. */
-    private Document find(Context ctx) {
-        Document tDoc;
-        try { tDoc = mCtx.database.getBulletinMarket(ctx.pathParam("id")); }
+    /** The bulletin market of the {id} path parameter (its databaseId), or null after replying 400/404. */
+    private Stored<BulletinMarket> find(Context ctx) {
+        Stored<BulletinMarket> tMarket;
+        try { tMarket = mCtx.database.getBulletinMarket(ctx.pathParam("id")); }
         catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, "Invalid bulletin market ID"); return null; }
-        if (tDoc == null) OrderEndpoints.error(ctx, 404, "Bulletin market not found");
-        return tDoc;
+        if (tMarket == null) OrderEndpoints.error(ctx, 404, "Bulletin market not found");
+        return tMarket;
     }
 
     /** The validated fields, or null after replying 400. */
@@ -148,12 +150,6 @@ public class AdminBulletinMarketEndpoints implements RestEndpoint {
         }
         return new Fields(RestApiContext.field(pBody, "description", "").trim(), tStatus, tOpen, tClose,
                 tInstruments, tMaxOrderTime);
-    }
-
-    private static JsonObject toJson(Document pDoc) {
-        JsonObject tJson = BulletinMarket.fromDocument(pDoc).toJson();
-        tJson.addProperty("mongoId", pDoc.getObjectId("_id").toHexString());
-        return tJson;
     }
 
     private static JsonObject parseBody(Context ctx) {

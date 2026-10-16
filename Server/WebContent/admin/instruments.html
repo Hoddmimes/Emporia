@@ -124,7 +124,7 @@
                     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                     .map(i => `
                         <tr>
-                            <td class="row-link" onclick="window.location='instrument.html?id=${i.mongoId}'">${escHtml(i.name)}</td>
+                            <td class="row-link" onclick="window.location='instrument.html?id=${i.databaseId}'">${escHtml(i.name)}</td>
                             <td>${escHtml(i.instType)}</td>
                             <td>${escHtml(i.isin)}</td>
                             <td>${fmtPrice(i.tickSize)}</td>
@@ -132,8 +132,8 @@
                             <td>${statusBadge(i.tradingStatus)}</td>
                             <td style="text-align:right;">
                                 ${i.tradingStatus === 'ACTIVE'
-                                    ? `<button class="btn btn-outline btn-sm" onclick="setStatus('${i.mongoId}','SUSPENDED')">Suspend</button>`
-                                    : `<button class="btn btn-primary btn-sm"  onclick="setStatus('${i.mongoId}','ACTIVE')">Resume</button>`
+                                    ? `<button class="btn btn-outline btn-sm" onclick="setStatus('${i.databaseId}','SUSPENDED')">Suspend</button>`
+                                    : `<button class="btn btn-primary btn-sm"  onclick="setStatus('${i.databaseId}','ACTIVE')">Resume</button>`
                                 }
                             </td>
                         </tr>`
@@ -143,8 +143,8 @@
             }
         }
 
-        async function setStatus(mongoId, status) {
-            const r = await cdApi.request(`../api/admin/instruments/${mongoId}/status`,
+        async function setStatus(databaseId, status) {
+            const r = await cdApi.request(`../api/admin/instruments/${databaseId}/status`,
                     cdApi.json('PATCH', { tradingStatus: status }));
             if (!r.ok) alert('Failed to update trading status: ' + r.error);
             loadInstruments();

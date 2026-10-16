@@ -2,7 +2,8 @@ package com.hoddmimes.emporia.server;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.bson.Document;
+import com.hoddmimes.emporia.server.db.Authorization;
+import com.hoddmimes.emporia.server.db.Database;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -15,10 +16,10 @@ import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 
 /**
- * The firms' market authorizations (MongoDB collection Authorization) in memory: firm -> the market
+ * The firms' market authorizations (collection/table Authorization) in memory: firm -> the market
  * ids, or "*" (all markets). Loaded at startup and reloaded whole after each admin
- * change (load), so MongoDB stays the master store; a change made directly in MongoDB applies only
- * after a restart. "*" is kept as it is and expanded at lookup time, so a market created later is
+ * change (load), so the database stays the master store; a change made directly in the database applies
+ * only after a restart. "*" is kept as it is and expanded at lookup time, so a market created later is
  * included. The map is replaced on each load, so readers need no lock.
  */
 public class AuthorizationCache {
@@ -40,13 +41,13 @@ public class AuthorizationCache {
         cLog.info("Loaded authorizations for {} firm(s)", mMarketsByFirm.size());
     }
 
-    /** Replaces the cached authorizations with the documents (firm, market). */
-    synchronized void set(List<Document> pDocuments) {
+    /** Replaces the cached authorizations. */
+    synchronized void set(List<Authorization> pAuthorizations) {
         Map<String, Set<Integer>> tIds = new HashMap<>();
         Set<String> tAll = new HashSet<>();
-        for (Document tDoc : pDocuments) {
-            String tFirm   = tDoc.getString("firm");
-            String tMarket = tDoc.getString("market");
+        for (Authorization tAuthorization : pAuthorizations) {
+            String tFirm   = tAuthorization.firm();
+            String tMarket = tAuthorization.market();
             if (tFirm == null || tMarket == null) continue;
             Set<Integer> tFirmIds = tIds.computeIfAbsent(tFirm, f -> new HashSet<>());
             if (ALL_MARKETS.equals(tMarket.trim())) {

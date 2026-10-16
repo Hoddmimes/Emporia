@@ -18,7 +18,7 @@ import java.util.function.Consumer;
  *   threads when several books are busy; each book's items stay in order) instead of publishing or
  *   storing them itself, so matching never waits for the disk.
  * - The persister thread takes everything queued so far as one batch, stores the batch's trades
- *   with one durable write (the store function, Database.saveTrades: journaled, i.e. fsynced, so one
+ *   with one durable write (the store function, Database.saveTrades: durable, i.e. fsynced, so one
  *   fsync covers all trades of the batch: group commit), and only then publishes the batch's
  *   messages, in order. Messages never overtake each other, so a book's events keep their seqNo order;
  *   a message queued behind a trade waits for that trade's write.

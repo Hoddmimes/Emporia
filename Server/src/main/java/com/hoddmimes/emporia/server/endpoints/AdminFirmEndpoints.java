@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.db.Firm;
 import io.javalin.Javalin;
 
 import java.util.Set;
@@ -20,8 +21,8 @@ public class AdminFirmEndpoints implements RestEndpoint {
     public void register(Javalin app) {
         app.get("/api/admin/firms", ctx -> {
             JsonArray tArray = new JsonArray();
-            for (var tDoc : mCtx.database.listFirms()) {
-                tArray.add(mCtx.database.firmToJson(tDoc));
+            for (var tFirm : mCtx.database.listFirms()) {
+                tArray.add(Firm.toJson(tFirm));
             }
             ctx.json(tArray.toString());
         });
@@ -44,9 +45,9 @@ public class AdminFirmEndpoints implements RestEndpoint {
 
         app.get("/api/admin/firms/{id}", ctx -> {
             try {
-                var tDoc = mCtx.database.getFirm(ctx.pathParam("id"));
-                if (tDoc == null) { ctx.status(404).json("{\"error\":\"Firm not found\"}"); return; }
-                ctx.json(mCtx.database.firmToJson(tDoc).toString());
+                var tFirm = mCtx.database.getFirm(ctx.pathParam("id"));
+                if (tFirm == null) { ctx.status(404).json("{\"error\":\"Firm not found\"}"); return; }
+                ctx.json(Firm.toJson(tFirm).toString());
             } catch (IllegalArgumentException e) {
                 ctx.status(400).json("{\"error\":\"Invalid firm ID\"}");
             }

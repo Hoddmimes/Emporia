@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.db.Authorization;
 import io.javalin.Javalin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,8 +27,8 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
                 ctx.status(400).json("{\"error\":\"firm query parameter is required\"}"); return;
             }
             JsonArray tArray = new JsonArray();
-            for (var tDoc : mCtx.database.listAuthorizationsByFirm(tFirm)) {
-                tArray.add(mCtx.database.authorizationToJson(tDoc));
+            for (var tAuthorization : mCtx.database.listAuthorizationsByFirm(tFirm)) {
+                tArray.add(Authorization.toJson(tAuthorization));
             }
             ctx.json(tArray.toString());
         });
@@ -39,8 +40,7 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
                 String tMarket = RestApiContext.field(tBody, "market", "").trim();
                 if (tFirm.isEmpty())   { ctx.status(400).json("{\"error\":\"firm is required\"}");   return; }
                 if (tMarket.isEmpty()) { ctx.status(400).json("{\"error\":\"market is required\"}"); return; }
-                boolean tFirmFound = mCtx.database.listFirms().stream()
-                        .anyMatch(d -> tFirm.equals(d.getString("name")));
+                boolean tFirmFound = mCtx.database.getFirmByName(tFirm) != null;
                 if (!tFirmFound) {
                     ctx.status(400).json("{\"error\":\"Firm '" + tFirm + "' does not exist\"}"); return;
                 }
@@ -57,9 +57,9 @@ public class AdminAuthorizationEndpoints implements RestEndpoint {
                 if (mCtx.database.authorizationExists(tFirm, tMarket)) {
                     ctx.status(409).json("{\"error\":\"Authorization already exists for this firm and market\"}"); return;
                 }
-                String tMongoId = mCtx.database.createAuthorization(tFirm, tMarket);
+                String tDatabaseId = mCtx.database.createAuthorization(tFirm, tMarket);
                 mCtx.reloadAuthorizations();
-                ctx.status(201).json("{\"mongoId\":\"" + tMongoId + "\"}");
+                ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
             } catch (Exception e) {
                 cLog.error("POST /api/authorizations failed", e);
                 ctx.status(500).json("{\"error\":\"Internal server error: " + e.getMessage() + "\"}");
