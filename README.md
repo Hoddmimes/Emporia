@@ -4,17 +4,21 @@ _None AI text_
 A market place system for trading commodities with fokus on simplicity and pragmatism.
 
 ## Background
-This is just another AI slope project. The aim with this project was to prove that it is possible for a retired 
-program to build a marketplace for smaller startup marketplaces with basic needs with AI in less than week.
+This is just another AI slope project. The aim is to build a simple and pragmatic trading system 
+target low end /startup markets minimizing the implementation and deployment of a trading venue.
 
-Here it is 2026-10-15 :-) My opinion on these kinds of AI slope projects are that the SW itself has no value.
-
-The value lies in.
-- *Trust*, who is behind the project, who is supporting the project. What is the aim and intention.
-- *Combat Proven*, even if compiling, including hundreds of AI test. Nothing is production quality until the takers had pressure-tested the solution. 
-
-_AI Generate text_
-
+Personally just want to explore Claude capabilities. I have +30 years in the 
+software industri, and I am a bit curious about what AI can bring to the table when it comes to 
+productivity and quality.
+- In general, I was most impressed what AI can do. What has impressed me are
+  - Understand and work on fairly large scope of functionality. When refactoring it keep track on all dependencies and side effects.
+  - Having the ability to add tests of functionality added. However, I can say how good this testa are, I guess you will not know until the code is combat proven.
+  - Having the ability to understand and apply best practise for industri technology, in this case trading technology.
+  
+The takeaway from this project is;
+- That I am  fairly ignorant in driving the AI agent (Claude). Writing the right prompt to achieve the best possible result should not be taken for granted.
+- The efficiency is flabbergasting. There does not seam to be any gaps in technology knowledge. The speed with what code could be developed. If I had takin this on by myself it had taking many weeks maybe even months. Now it was done in four days, and it was not four full days :-)
+- I can not see how AI will not be part of SW projects in the future. The question is how it will be used? It will for sure affect the SW industry quite a bit. *Glad I am retired*
 
 ## The system
 
@@ -27,7 +31,7 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
 - **Continuous order books**: limit orders matched immediately in price-time priority. **Auction**
   markets collect orders and uncross them at one clearing price at scheduled times. A pre-open phase
   ends with an opening uncross.
-- **Bulletin markets**: for less standardised, bilateral business (OTC). A firm posts a bulletin
+- **Bulletin markets**: for less standardized, bilateral business (OTC). A firm posts a bulletin
   (instrument as free text; side, price and quantity optional). Another firm makes an offer on it, and
   the owner accepts or rejects it. Nothing is matched automatically.
 - **Client accounts** on orders, bulletins and offers, with positions kept per instrument and account.
@@ -54,9 +58,12 @@ application and one database. It runs stand-alone as a fat jar, or as a WAR in T
 ### Documentation
 - [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
 - [Trading API](https://hoddmimes.com/emporia/api-doc.html): REST endpoints and WebSocket messages for developers.
-- Both pages are part of the web application (`Server/WebContent/user-guide.html` and `api-doc.html`) and
-  are served by every running server at `/emporia/user-guide.html` and `/emporia/api-doc.html`; the
-  links above go to the demo server. The trading page links to the guide under Help.
+- [Admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html): the administration interface (firms,
+  users, authorizations, markets, bulletin markets, instruments), with screenshots.
+- The pages are part of the web application (`Server/WebContent/user-guide.html`, `api-doc.html` and
+  `admin/admin-guide.html`) and are served by every running server, e.g. at `/emporia/user-guide.html`;
+  the links above go to the demo server. The trading page links to the user guide under Help, the admin
+  pages to the admin guide in their menu.
 
 ### Also in the project
 - `TestClient`: a load and test client driven by JSON scripts, using only the REST API and WebSocket.

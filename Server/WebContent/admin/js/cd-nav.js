@@ -39,6 +39,8 @@ const cdNav = (() => {
         { type: 'section', label: 'System' },
         { type: 'link', id: 'change-password', label: 'Change Password', href: 'change-password.html' },
         { type: 'link', id: 'settings',        label: 'Settings',        href: '#' },
+        { type: 'section', label: 'Help' },
+        { type: 'link', id: 'admin-guide',     label: 'Admin Guide',     href: 'admin-guide.html', newTab: true },
     ];
 
     function render(activeId) {
@@ -49,7 +51,8 @@ const cdNav = (() => {
                 return `<div class="nav-section">${item.label}</div>`;
             }
             const cls = 'nav-item' + (item.id === activeId ? ' active' : '');
-            return `<a class="${cls}" href="${item.href}">${item.label}</a>`;
+            const target = item.newTab ? ' target="_blank" rel="noopener"' : '';
+            return `<a class="${cls}" href="${item.href}"${target}>${item.label}</a>`;
         }).join('');
     }
 

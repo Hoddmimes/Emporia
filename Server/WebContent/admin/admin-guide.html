@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emporia Admin Guide</title>
+<!-- The screenshots in guide/ are made by tools/user-guide/make-screenshots.sh admin; run it again after a change of the admin UI -->
+<style>
+:root {
+    --bg: #f6f7fa; --surface: #ffffff; --text: #1f2a3c; --muted: #5d6b82; --border: #dde2ea;
+    --accent: #1f5fae; --code-bg: #f0f2f6; --bulletin: #0f8b8d; --warn-bg: #fdf3e7; --warn: #c26a12;
+    --note-bg: #eef4fc; --mark: #e8590c;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+        --accent: #6aa5ee; --code-bg: #232b36; --bulletin: #4fc2c4; --warn-bg: #2e2418; --warn: #f0a75a;
+        --note-bg: #1c2838;
+    }
+}
+:root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --text: #e3e8ef; --muted: #9aa6b8; --border: #2c3542;
+    --accent: #6aa5ee; --code-bg: #232b36; --bulletin: #4fc2c4; --warn-bg: #2e2418; --warn: #f0a75a;
+    --note-bg: #1c2838;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.layout { display: flex; max-width: 1240px; margin: 0 auto; }
+nav { position: sticky; top: 0; align-self: flex-start; width: 240px; flex-shrink: 0; height: 100vh; overflow-y: auto;
+      padding: 28px 16px 28px 20px; border-right: 1px solid var(--border); font-size: 14px; }
+nav .title { font-weight: 700; letter-spacing: 1px; font-size: 16px; margin-bottom: 14px; }
+nav a { display: block; color: var(--muted); text-decoration: none; padding: 2px 0; }
+nav a:hover { color: var(--accent); }
+nav .group { margin-top: 12px; font-weight: 600; color: var(--text); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+main { flex: 1; min-width: 0; padding: 28px 40px 80px; max-width: 980px; }
+h1 { font-size: 28px; margin: 0 0 4px; }
+h2 { font-size: 21px; margin: 44px 0 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+h3 { font-size: 16px; margin: 28px 0 6px; }
+p, ul, ol { margin: 8px 0; }
+li { margin: 3px 0; }
+a { color: var(--accent); }
+.subtitle { color: var(--muted); margin-bottom: 20px; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--code-bg); }
+code { padding: 1px 5px; border-radius: 4px; }
+pre { padding: 10px 14px; border-radius: 6px; overflow-x: auto; line-height: 1.45; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 14px; background: var(--surface); }
+th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+td:first-child { white-space: nowrap; }
+figure { margin: 14px 0 22px; }
+figure img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px;
+             box-shadow: 0 2px 10px rgba(0,0,0,.08); background: #fff; }
+figure.form img { max-width: 560px; }
+figure.dialog img { max-width: 380px; }
+figure.small img { max-width: 430px; }
+figure a { display: block; width: fit-content; max-width: 100%; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.note { background: var(--note-bg); border-left: 4px solid var(--accent); padding: 8px 12px; border-radius: 4px; margin: 12px 0; }
+.warn { background: var(--warn-bg); border-left: 4px solid var(--warn); padding: 8px 12px; border-radius: 4px; margin: 12px 0; }
+.mark { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: var(--mark); color: #fff;
+        font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; margin-right: 4px; }
+ol.marks { list-style: none; padding-left: 0; }
+ol.marks li { margin: 6px 0; }
+.bulletin { color: var(--bulletin); font-weight: 600; }
+@media (max-width: 860px) {
+    .layout { display: block; }
+    nav { position: static; width: auto; height: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 16px; }
+    main { padding: 20px 16px 60px; }
+    figure.form img, figure.dialog img, figure.small img { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+    <div class="title">EMPORIA ADMIN</div>
+    <a href="#start">Signing in</a>
+    <a href="#screen">The screen</a>
+    <a href="#setup">Setting up a marketplace</a>
+    <div class="group">Participants</div>
+    <a href="#firms">Firms</a>
+    <a href="#users">Users</a>
+    <a href="#authorizations">Authorizations</a>
+    <div class="group">Markets</div>
+    <a href="#markets">Markets</a>
+    <a href="#hours">Trading hours and states</a>
+    <a href="#bulletin-markets">Bulletin markets</a>
+    <div class="group">Instruments</div>
+    <a href="#instruments">Instruments</a>
+    <a href="#load">Loading instruments from a file</a>
+    <div class="group">More</div>
+    <a href="#deleting">Deleting things</a>
+    <a href="#password">Admin password</a>
+    <a href="../user-guide.html">User guide (traders)</a>
+    <a href="../api-doc.html">Trading API (developers)</a>
+</nav>
+<main>
+
+<h1>Emporia Admin Guide</h1>
+<div class="subtitle">The administration interface: firms, users, authorizations, markets, bulletin markets and instruments</div>
+
+<p>The administration interface is where the marketplace operator sets up who may trade and what can
+be traded. It manages:</p>
+<ul>
+    <li><b>Firms</b>: the trading members. Orders, trades and positions belong to a firm.</li>
+    <li><b>Users</b>: the people who sign in to the trading interface, each belonging to one firm.</li>
+    <li><b>Authorizations</b>: which markets a firm may see and trade in.</li>
+    <li><b>Markets</b>: order book markets, continuous or auction, with their trading hours.</li>
+    <li><b>Bulletin markets</b> <span class="bulletin">(OTC)</span>: markets where firms post bulletins and
+        answer offers, with the instruments allowed in them.</li>
+    <li><b>Instruments</b>: what is traded in the order book markets, with tick size and lot size.</li>
+</ul>
+<p>Every change applies at once: a new authorization, market or instrument shows in the traders' screens
+without a restart, unless this guide says otherwise.</p>
+<div class="note">Click a picture to see it full size. The pictures show demo data: the firms NORDAGRI,
+BALTCOM, WESTFARM and EASTGRAIN, the markets Grains, Metals and Dairy, and the bulletin market OTC-Energy.</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="start">Signing in</h2>
+<p>The administration interface is at <code>/admin</code> under the Emporia address, for example
+<code>https://hoddmimes.com/emporia/admin</code>. Sign in with the admin username and password. The
+version of the system is shown below the form.</p>
+<figure class="small">
+    <a href="guide/admin-login.png" target="_blank" title="Open full size"><img src="guide/admin-login.png" alt="The admin login page with Username and Password"></a>
+    <figcaption>The admin login page.</figcaption>
+</figure>
+<div class="warn">A new installation has the admin user <code>Admin</code> with the password
+<code>changeit</code>. Change the password at once (<a href="#password">Admin password</a>).</div>
+<p>The admin login is separate from the trading login. One browser can be signed in to both at the same
+time, and logging out of one leaves the other signed in. The admin session ends after a period without
+activity, like a trading session.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="screen">The screen</h2>
+<figure>
+    <a href="guide/admin-dashboard.png" target="_blank" title="Open full size"><img src="guide/admin-dashboard.png" alt="The admin start page with the menu on the left"></a>
+    <figcaption>The start page after signing in.</figcaption>
+</figure>
+<ol class="marks">
+    <li><span class="mark">1</span><b>The menu</b>. Each kind of data has a <b>List</b> page and a <b>Create</b>
+        page. On a list page, click a row to open its detail page, where you change or delete it.</li>
+    <li><span class="mark">2</span><b>The signed-in admin</b> and <b>Logout</b>.</li>
+    <li><span class="mark">3</span><b>Admin Guide</b> opens this guide in a new tab.</li>
+</ol>
+<p>Fields marked with a red <b>*</b> are required. On a detail page, <b>Save Changes</b> is enabled when
+you have changed something. If the server refuses a change, its reason is shown at the top of the page.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="setup">Setting up a marketplace</h2>
+<p>A new marketplace is set up in this order, since each step uses the ones before it:</p>
+<ol>
+    <li><b>Firms</b>: create the trading members, with status ACTIVE.</li>
+    <li><b>Users</b>: create at least one user per firm, with status ACTIVE and a password.</li>
+    <li><b>Markets</b> and <b>bulletin markets</b>: with their type and trading hours.</li>
+    <li><b>Instruments</b>: one by one, or many at once from a file.</li>
+    <li><b>Authorizations</b>: give each firm the markets it may trade in, or <code>*</code> for all.</li>
+</ol>
+<p>A user can sign in once the user and the firm are ACTIVE. Without authorizations the user sees no markets.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="firms">Firms</h2>
+<p><b>List Firms</b> shows every firm with its status. Click a firm to open it.</p>
+<figure>
+    <a href="guide/firms.png" target="_blank" title="Open full size"><img src="guide/firms.png" alt="The list of firms"></a>
+    <figcaption>List Firms.</figcaption>
+</figure>
+<p><b>Create Firm</b> takes a <b>name</b> (required; it is what the users type when they sign in, so keep it
+short), a <b>status</b> and optional contact details: address, phone, contact person and mail.</p>
+<figure class="form">
+    <a href="guide/create-firm.png" target="_blank" title="Open full size"><img src="guide/create-firm.png" alt="The Create Firm form"></a>
+    <figcaption>Create Firm.</figcaption>
+</figure>
+<table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td>ACTIVE</td><td>The firm's users can sign in and trade.</td></tr>
+    <tr><td>SUSPENDED</td><td>The firm's users can't sign in.</td></tr>
+    <tr><td>INACTIVE</td><td>The same as SUSPENDED: no sign-in. The default for a new firm, so you can set it up before it starts trading.</td></tr>
+</table>
+<p>On the firm's page you change its status and contact details. The name can't be changed.</p>
+<figure>
+    <a href="guide/firm.png" target="_blank" title="Open full size"><img src="guide/firm.png" alt="The firm detail page"></a>
+    <figcaption>A firm's page.</figcaption>
+</figure>
+<div class="note">The status is checked when a user signs in. Users who are already signed in when you
+suspend the firm can go on until they log out or their session times out.</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="users">Users</h2>
+<p><b>List Users</b> shows every user with firm, ID, name and status. Click a user to open it.</p>
+<figure>
+    <a href="guide/users.png" target="_blank" title="Open full size"><img src="guide/users.png" alt="The list of users"></a>
+    <figcaption>List Users.</figcaption>
+</figure>
+<p><b>Create User</b> takes:</p>
+<ul>
+    <li><b>ID</b> (required): the username for signing in. It must be unique over all firms.</li>
+    <li><b>Firm</b>: the firm the user trades for.</li>
+    <li><b>Name</b> (required), and optionally <b>mail</b> and <b>phone</b>.</li>
+    <li><b>Password</b>: the server stores only a hash of it, so it can't be read back. Tell the user
+        the password yourself.</li>
+    <li><b>Status</b>: ACTIVE, SUSPENDED or INACTIVE (the default); only an ACTIVE user can sign in.</li>
+</ul>
+<figure class="form">
+    <a href="guide/create-user.png" target="_blank" title="Open full size"><img src="guide/create-user.png" alt="The Create User form"></a>
+    <figcaption>Create User.</figcaption>
+</figure>
+<p>On the user's page you can change the firm, name, contact details and status. To set a
+<b>new password</b>, for example when a user has forgotten theirs, type it in <b>New password</b> and
+save. Leave the field empty to keep the current password.</p>
+<figure>
+    <a href="guide/user.png" target="_blank" title="Open full size"><img src="guide/user.png" alt="The user detail page"></a>
+    <figcaption>A user's page.</figcaption>
+</figure>
+<p>As for firms, the status and password are checked when the user signs in.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="authorizations">Authorizations</h2>
+<p>An authorization lets a firm see and trade in one market. The market <code>*</code> means all markets,
+including markets and bulletin markets created later. A firm sees only the markets it is authorized for.</p>
+<p><b>List Authorizations</b> shows one firm's authorizations: choose the firm at the top. Each
+authorization has a <b>Delete</b> button.</p>
+<figure>
+    <a href="guide/authorizations.png" target="_blank" title="Open full size"><img src="guide/authorizations.png" alt="The authorizations of firm EASTGRAIN"></a>
+    <figcaption>EASTGRAIN may trade in Grains and in the bulletin market OTC-Energy.</figcaption>
+</figure>
+<p><b>Create Authorization</b>: choose the firm and the market, or <code>* (all markets)</code>.</p>
+<figure class="form">
+    <a href="guide/create-authorization.png" target="_blank" title="Open full size"><img src="guide/create-authorization.png" alt="The Create Authorization form"></a>
+    <figcaption>Create Authorization.</figcaption>
+</figure>
+<p>A new or deleted authorization applies at once, also to users who are signed in: a market they gain
+shows up with its prices, and a market they lose stops sending them updates. Their market list is
+updated the next time they reload the page.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="markets">Markets</h2>
+<p><b>List Markets</b> shows the order book markets with their type and trading status.</p>
+<figure>
+    <a href="guide/markets.png" target="_blank" title="Open full size"><img src="guide/markets.png" alt="The list of markets"></a>
+    <figcaption>List Markets.</figcaption>
+</figure>
+<p><b>Create Market</b>. The fields shown depend on the type:</p>
+<table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>Name</td><td>Required. Shown to the traders. A space in the name is replaced by <code>-</code>.</td></tr>
+    <tr><td>Description</td><td>Optional text.</td></tr>
+    <tr><td>Type</td><td><b>CONTINUOUS</b>: orders are matched at once, by price and time.
+        <b>AUCTION</b>: orders are collected and traded at one price at regular times.</td></tr>
+    <tr><td>Trading Status</td><td>The state the market starts in; see <a href="#hours">Trading hours and states</a>.</td></tr>
+    <tr><td>Open, Close</td><td>Required. <code>HH:MM</code>, server local time, weekdays.</td></tr>
+    <tr><td>Pre-Open Time</td><td>Continuous only, optional. <code>HH:MM</code> before Open: from this time orders can be
+        entered without being matched, and at Open the orders that cross are traded at one price.</td></tr>
+    <tr><td>Auction Interval</td><td>Auction only, required. Seconds between auctions.</td></tr>
+    <tr><td>Random Auction Interval</td><td>Seconds. In an auction market, each auction happens at a random moment within
+        this last part of the interval, so no one can time an order to the second.</td></tr>
+    <tr><td>Inverse, Open Auction Time</td><td>Continuous only. Stored with the market but not used by the trading engine.</td></tr>
+</table>
+<figure class="form">
+    <a href="guide/create-market.png" target="_blank" title="Open full size"><img src="guide/create-market.png" alt="The Create Market form for a continuous market"></a>
+    <figcaption>Create Market, for a continuous market with a pre-open phase.</figcaption>
+</figure>
+<p>On the market's page you can change everything except the name. <b>Delete All Orders</b> deletes the
+orders of every firm in the market; see <a href="#deleting">Deleting things</a>.</p>
+<figure>
+    <a href="guide/market.png" target="_blank" title="Open full size"><img src="guide/market.png" alt="The market detail page of Grains"></a>
+    <figcaption>The page of the Grains market.</figcaption>
+</figure>
+<div class="warn">The auctions of an <b>auction market</b> are scheduled when the server starts. A new
+auction market, a change of its auction intervals, and new instruments in it, take effect after the next
+server restart.</div>
+
+<h2 id="hours">Trading hours and states</h2>
+<table>
+    <tr><th>State</th><th>Meaning</th></tr>
+    <tr><td>OPEN</td><td>Trading. Orders are matched (continuous) or collected for the next auction.</td></tr>
+    <tr><td>PREOPEN</td><td>Orders can be entered and deleted but are not matched. At OPEN the crossing orders trade at one price.</td></tr>
+    <tr><td>CLOSED</td><td>No trading. Orders can't be entered or deleted.</td></tr>
+    <tr><td>SUSPENDED</td><td>Trading stopped by the operator. Orders can be deleted but not entered.</td></tr>
+</table>
+<p>The server sets each market's state by its hours, on weekdays: PREOPEN at the Pre-Open Time (if set),
+OPEN at Open and CLOSED at Close. On Saturdays and Sundays the markets stay closed.</p>
+<ul>
+    <li><b>Changing the state by hand</b>: choose the Trading Status on the market's page and save. Your
+        change stands until the next scheduled time, for example until Close.</li>
+    <li><b>SUSPENDED</b> is only set and lifted by hand. The schedule never changes a suspended market.
+        Use it to stop trading in an emergency; set the market back to OPEN to resume.</li>
+    <li><b>After a server restart</b> every market comes up CLOSED, also during trading hours, because
+        that day's Open has already passed. Open the markets by hand on their pages.</li>
+</ul>
+<p>To stop trading in a single instrument rather than a whole market, suspend the instrument
+(<a href="#instruments">Instruments</a>).</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="bulletin-markets">Bulletin markets</h2>
+<p>In a bulletin market, firms post bulletins about what they want to buy or sell, and other firms make
+offers on them. Nothing is matched automatically. The instrument of a bulletin is free text, so instead
+of creating instruments you say which names are allowed.</p>
+<figure>
+    <a href="guide/bulletin-markets.png" target="_blank" title="Open full size"><img src="guide/bulletin-markets.png" alt="The list of bulletin markets"></a>
+    <figcaption>List Bulletin Markets.</figcaption>
+</figure>
+<p><b>Create Bulletin Market</b>:</p>
+<table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>Name, Description</td><td>As for markets.</td></tr>
+    <tr><td>Trading Status</td><td>CLOSED, OPEN or SUSPENDED. There is no pre-open.</td></tr>
+    <tr><td>Open, Close</td><td>Required, <code>HH:MM</code>. Opened and closed by the schedule like other markets.</td></tr>
+    <tr><td>Instruments</td><td>Required, one entry per line. A name is matched exactly, with upper and lower case.
+        An entry between slashes is a pattern (a regular expression) that must match the whole name:
+        <code>/Tractor .*/</code> allows <i>Tractor John Deere 6R</i> and any other name that starts with <i>Tractor&nbsp;</i>.</td></tr>
+    <tr><td>Max Order Time</td><td>Required, <code>hh:mm</code>. A bulletin is removed when it has been in the
+        market this long; the hours may be more than 24, such as <code>168:00</code> for a week.</td></tr>
+</table>
+<figure class="form">
+    <a href="guide/create-bulletin-market.png" target="_blank" title="Open full size"><img src="guide/create-bulletin-market.png" alt="The Create Bulletin Market form"></a>
+    <figcaption>Create Bulletin Market.</figcaption>
+</figure>
+<p>On the bulletin market's page you change everything except the name. A new Max Order Time applies to
+bulletins added after the change. <b>Delete All Bulletins</b> removes the bulletins of every firm; a
+pending offer on one of them is cancelled.</p>
+<figure>
+    <a href="guide/bulletin-market.png" target="_blank" title="Open full size"><img src="guide/bulletin-market.png" alt="The bulletin market page of OTC-Energy"></a>
+    <figcaption>The page of the bulletin market OTC-Energy.</figcaption>
+</figure>
+<p>Firms need an authorization for a bulletin market just as for other markets; <code>*</code> includes them.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="instruments">Instruments</h2>
+<p><b>List Instruments</b>: choose a market to list its instruments. The <b>Suspend</b> and <b>Resume</b>
+buttons stop and restart trading in one instrument: while it is SUSPENDED, orders can't be entered or
+changed, but they can be deleted. Click the name to open the instrument.</p>
+<figure>
+    <a href="guide/instruments.png" target="_blank" title="Open full size"><img src="guide/instruments.png" alt="The instruments of the Grains market"></a>
+    <figcaption>The instruments of the Grains market.</figcaption>
+</figure>
+<p><b>Create Instrument</b>:</p>
+<table>
+    <tr><th>Field</th><th>Meaning</th></tr>
+    <tr><td>Name</td><td>Required. Shown to the traders. A space is replaced by <code>-</code>.</td></tr>
+    <tr><td>Market</td><td>Required. The order book market it is traded in.</td></tr>
+    <tr><td>Type</td><td>Required: COMMODITY, EQUITY, OTC, FUTURE or OPTION.</td></tr>
+    <tr><td>ISIN</td><td>Optional.</td></tr>
+    <tr><td>Tick Size</td><td>Required. Prices must be a multiple of it, e.g. <code>0.25</code>.</td></tr>
+    <tr><td>Lot Size</td><td>Required. Quantities must be a multiple of it, e.g. <code>10</code>.</td></tr>
+    <tr><td>Expiration Date, Strike Price, Underlying</td><td>Required for FUTURE and OPTION. Option Type (CALL or PUT) is required for OPTION.</td></tr>
+</table>
+<figure class="form">
+    <a href="guide/create-instrument.png" target="_blank" title="Open full size"><img src="guide/create-instrument.png" alt="The Create Instrument form for a future"></a>
+    <figcaption>Create Instrument, for a future.</figcaption>
+</figure>
+<p>The instrument's page shows its trading status with <b>Suspend Trading</b> / <b>Resume Trading</b>, and
+its details, which you can change.</p>
+<figure>
+    <a href="guide/instrument.png" target="_blank" title="Open full size"><img src="guide/instrument.png" alt="The instrument page of WHEAT-DEC"></a>
+    <figcaption>The page of WHEAT-DEC.</figcaption>
+</figure>
+<div class="note">Change the tick size or lot size only when the instrument has no orders: the orders
+already in the book keep their prices and quantities.</div>
+
+<h2 id="load">Loading instruments from a file</h2>
+<p><b>Load Instruments</b> adds and deletes many instruments at once from a JSON file. Drop the file on
+the page, or click to choose it. The page shows what the file contains; <b>Process File</b> runs it.</p>
+<figure>
+    <a href="guide/load-instruments.png" target="_blank" title="Open full size"><img src="guide/load-instruments.png" alt="Load Instruments with a file chosen and its preview"></a>
+    <figcaption>A file with two new instruments and one delete, before processing.</figcaption>
+</figure>
+<p>The file has a list <code>ADD</code> of instruments to create and a list <code>DELETE</code> of
+instruments to delete; either may be left out:</p>
+<pre>{
+  "ADD": [
+    { "ID": "LEAD",   "market": "Metals", "instType": "COMMODITY", "tickSize": 0.5, "lotSize": 1 },
+    { "ID": "COBALT", "market": "Metals", "instType": "COMMODITY", "tickSize": 1,   "lotSize": 1 }
+  ],
+  "DELETE": [
+    { "ID": "8589934699" }
+  ]
+}</pre>
+<ul>
+    <li><b>ADD</b>: <code>ID</code> is the instrument's name. <code>market</code> is the market's name or
+        number. The other fields are those of Create Instrument: <code>instType</code>, <code>tickSize</code>,
+        <code>lotSize</code>, <code>isin</code>, <code>expirationDate</code>, <code>strikePrice</code>,
+        <code>underlying</code>, <code>optionType</code>, and <code>tradingStatus</code>
+        (SUSPENDED, otherwise the instrument is ACTIVE). Prices and sizes are decimals.</li>
+    <li><b>DELETE</b>: <code>ID</code> is the instrument's number, as stored in the database (the market's
+        number in the high 32 bits).</li>
+</ul>
+<p>Each entry is handled on its own: an error in one doesn't stop the others. The result lists every
+entry with OK or ERROR and the reason.</p>
+<figure>
+    <a href="guide/load-results.png" target="_blank" title="Open full size"><img src="guide/load-results.png" alt="The results of loading a file"></a>
+    <figcaption>The result: the two metals were added; the instrument to delete didn't exist.</figcaption>
+</figure>
+<p>Loading the same file twice adds the instruments twice, so check the list before loading again.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="deleting">Deleting things</h2>
+<p>Every delete asks for confirmation first and can't be undone.</p>
+<figure class="dialog">
+    <a href="guide/delete-firm.png" target="_blank" title="Open full size"><img src="guide/delete-firm.png" alt="The confirmation before deleting a firm"></a>
+    <figcaption>The confirmation before deleting a firm.</figcaption>
+</figure>
+<table>
+    <tr><th>Delete</th><th>What happens</th></tr>
+    <tr><td>Firm</td><td>Its authorizations are deleted with it. Its users are not: delete or move them first.
+        Its trades stay in the trade history.</td></tr>
+    <tr><td>User</td><td>The user can no longer sign in. The firm's orders and trades are not affected.</td></tr>
+    <tr><td>Authorization</td><td>The firm loses access to the market at once.</td></tr>
+    <tr><td>Market</td><td>Refused while the market has orders or instruments. Use <b>Delete All Orders</b>
+        and delete its instruments first. A market number may be used again by a new market, which is why
+        it must be empty.</td></tr>
+    <tr><td>Bulletin market</td><td>Refused while it has bulletins. Use <b>Delete All Bulletins</b> first.</td></tr>
+    <tr><td>Instrument</td><td>Deleted at once, even if it has orders. Delete its orders first: suspend it,
+        and ask the firms to delete their orders, or use <b>Delete All Orders</b> on its market.</td></tr>
+</table>
+<p><b>Delete All Orders</b> and <b>Delete All Bulletins</b> remove everything in the market, for every
+firm and in any trading state. The firms see their orders or bulletins disappear.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="password">Admin password</h2>
+<p><b>Change Password</b> changes the password of the signed-in admin. Type the current password and the
+new one twice.</p>
+<figure class="form">
+    <a href="guide/change-password.png" target="_blank" title="Open full size"><img src="guide/change-password.png" alt="The Change Admin Password form"></a>
+    <figcaption>Change Password.</figcaption>
+</figure>
+<p>The <b>Settings</b> menu item is reserved for later and has no page yet.</p>
+
+</main>
+</div>
+</body>
+</html>
