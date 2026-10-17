@@ -72,3 +72,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-17 Admin Market section (market supervision): Orders (all firms' resting orders with trader, filter market/firm, delete any order) and Trades (a day's trades with buyer/seller firm and trader, filter market/firm, reverse a trade with a reversal trade, not a market trade); orders and trades carry the trader (user); unique trade numbers; SQLite adds new columns to older database files
 * 26-10-17 Admin Market Trades: Export of the listed trades to a JSON or XML file (save dialog for folder and name)
 * 26-10-17 Admin Market Orders/Trades also for the bulletin markets: list and delete any bulletin, list and reverse bulletin trades
+* 26-10-17 Admin guide and README: market supervision in the intro; Orders and Trades pictures show All order book markets

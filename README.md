@@ -49,7 +49,8 @@ service, with SQLite as its database; it asks for the directory, the HTTPS port 
 - **REST API** (JSON over HTTP, session login) for trading applications: everything the web page can do.
 - **WebSocket feed** pushing prices, market states and the firm's own orders, trades and offers in real time.
 - **Admin web interface** for firms, users, authorizations, markets, instruments and bulletin markets,
-  described with screenshots in the [admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html).
+  and market supervision: all firms' orders, bulletins and trades with firm and trader, deleting orders and
+  bulletins, reversing trades and exporting them to JSON or XML; described with screenshots in the [admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html).
 
 ### Performance and durability
 - Every trade is written to the database with a **durable write before anyone is told about it**
@@ -88,7 +89,7 @@ enable and disable the service; `sudo bash emporia-1.0-021.run --help` lists the
 - [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
 - [Trading API](https://hoddmimes.com/emporia/api-doc.html): REST endpoints and WebSocket messages for developers.
 - [Admin guide](https://hoddmimes.com/emporia/admin/admin-guide.html): the administration interface (firms,
-  users, authorizations, markets, bulletin markets, instruments), with screenshots.
+  users, authorizations, markets, bulletin markets, instruments, market supervision), with screenshots.
 - The pages are part of the web application (`Server/WebContent/user-guide.html`, `api-doc.html` and
   `admin/admin-guide.html`) and are served by every running server, e.g. at `/emporia/user-guide.html`;
   the links above go to the demo server. The trading page links to the user guide under Help, the admin

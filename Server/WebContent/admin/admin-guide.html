@@ -99,7 +99,7 @@ ol.marks li { margin: 6px 0; }
 <main>
 
 <h1>Emporia Admin Guide</h1>
-<div class="subtitle">The administration interface: firms, users, authorizations, markets, bulletin markets and instruments</div>
+<div class="subtitle">The administration interface: firms, users, authorizations, markets, bulletin markets, instruments and market supervision</div>
 
 <p>The administration interface is where the marketplace operator sets up who may trade and what can
 be traded. It manages:</p>
@@ -111,6 +111,8 @@ be traded. It manages:</p>
     <li><b>Bulletin markets</b> <span class="bulletin">(OTC)</span>: markets where firms post bulletins and
         answer offers, with the instruments allowed in them.</li>
     <li><b>Instruments</b>: what is traded in the order book markets, with tick size and lot size.</li>
+    <li><b>Market supervision</b>: all firms' orders, bulletins and trades in one market or all markets, with
+        the firm and trader of each; delete an order or a bulletin, reverse a trade, export the trades.</li>
 </ul>
 <p>Every change applies at once: a new authorization, market or instrument shows in the traders' screens
 without a restart, unless this guide says otherwise.</p>
@@ -301,12 +303,12 @@ bulletin and reverse a trade. The <b>Market</b> list on both pages has two group
 (continuous and auction) and the <b>bulletin markets</b>, each with an <i>All</i> choice of its own.</p>
 
 <h3>Orders</h3>
-<p><b>Orders</b> lists the resting orders. Choose a market, or <b>All markets</b>, under <b>Market</b>: the list
+<p><b>Orders</b> lists the resting orders. Choose a market, or <b>All order book markets</b>, under <b>Market</b>: the list
 stays empty until you do. <b>Firm</b> shows one firm's orders, <b>All firms</b> everybody's. The list is a
 snapshot of the moment; <b>Refresh</b> reads it again.</p>
 <figure>
-    <a href="guide/market-orders.png" target="_blank" title="Open full size"><img src="guide/market-orders.png" alt="The resting orders of all firms in the Metals market"></a>
-    <figcaption>Orders: the resting orders of all firms in Metals.</figcaption>
+    <a href="guide/market-orders.png" target="_blank" title="Open full size"><img src="guide/market-orders.png" alt="The resting orders of all firms in all order book markets"></a>
+    <figcaption>Orders, with All order book markets and All firms chosen: every resting order in the marketplace.</figcaption>
 </figure>
 <table>
     <tr><th>Column</th><th>Meaning</th></tr>
@@ -338,8 +340,8 @@ on it is cancelled, and both firms are told.</p>
 <b>Date</b>. Choose a <b>Market</b> or all of them, and a <b>Firm</b> to see only the trades where that firm
 bought or sold. Each trade shows the buyer and the seller with their trader and client account.</p>
 <figure>
-    <a href="guide/market-trades.png" target="_blank" title="Open full size"><img src="guide/market-trades.png" alt="Today's trades in the Metals market, one of them reversed"></a>
-    <figcaption>Trades: today's trades in Metals; the first one of the day has been reversed.</figcaption>
+    <a href="guide/market-trades.png" target="_blank" title="Open full size"><img src="guide/market-trades.png" alt="Today's trades in all order book markets, one of them reversed"></a>
+    <figcaption>Trades, with All order book markets and All firms chosen: today's trades; the first one of the day in Metals has been reversed.</figcaption>
 </figure>
 <p>In a <b>bulletin market</b> the list shows its bulletin trades, the instrument as the bulletin's free
 text. They are reversed in the same way: the reversal is a new bulletin trade with the roles swapped, both

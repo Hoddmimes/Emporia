@@ -107,8 +107,7 @@ await shot('market', CONTENT);
 // ── Market supervision: orders and trades ──────────────────────────────
 await navigate('admin/market-orders.html');
 await sleep(500);
-await ev(`const s = document.getElementById('market');
-          s.value = [...s.options].find(o => o.textContent.startsWith('Metals')).value; loadOrders(); 1`);
+await ev(`document.getElementById('market').value = 'o:0'; loadOrders(); 1`);   // All markets
 await sleep(1000);
 await shot('market-orders', CONTENT);
 await ev(`openDeleteModal(rows.findIndex(o => o.account === 'BALTCOM')); 1`);
@@ -124,8 +123,7 @@ const reversed = metalsTrades[metalsTrades.length - 1];   // the day's first tra
 await rest('POST', `api/admin/trades/${reversed.tradeNo}/reverse`, { instrumentId: reversed.instrumentId, tradeTime: reversed.tradeTime });
 await navigate('admin/market-trades.html');
 await sleep(500);
-await ev(`const s = document.getElementById('market');
-          s.value = [...s.options].find(o => o.textContent.startsWith('Metals')).value; loadTrades(); 1`);
+await ev(`document.getElementById('market').value = 'o:0'; loadTrades(); 1`);   // All markets
 await sleep(1000);
 await shot('market-trades', CONTENT);
 await ev(`openExportModal(); 1`);
