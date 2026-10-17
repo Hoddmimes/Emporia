@@ -111,10 +111,13 @@ await ev(`const s = document.getElementById('market');
           s.value = [...s.options].find(o => o.textContent.startsWith('Metals')).value; loadOrders(); 1`);
 await sleep(1000);
 await shot('market-orders', CONTENT);
-await ev(`openDeleteModal(orders.findIndex(o => o.account === 'BALTCOM')); 1`);
+await ev(`openDeleteModal(rows.findIndex(o => o.account === 'BALTCOM')); 1`);
 await sleep(300);
 await shot('delete-order', '#delete-modal .modal');
 await ev(`closeDeleteModal(); 1`);
+await ev(`document.getElementById('market').value = 'b:0'; loadOrders(); 1`);
+await sleep(1000);
+await shot('market-bulletins', CONTENT);
 // A reversed trade, so the list shows both marks
 const metalsTrades = await rest('GET', 'api/admin/trades?marketId=2');
 const reversed = metalsTrades[metalsTrades.length - 1];   // the day's first trade
@@ -133,6 +136,9 @@ await ev(`openReverseModal(trades.findIndex(t => !t.reversalOf && !t.reversedBy)
 await sleep(300);
 await shot('reverse-trade', '#reverse-modal .modal');
 await ev(`closeReverseModal(); 1`);
+await ev(`document.getElementById('market').value = 'b:0'; loadTrades(); 1`);
+await sleep(1000);
+await shot('market-bulletin-trades', CONTENT);
 
 // ── Bulletin markets ───────────────────────────────────────────────────
 await navigate('admin/bulletin-markets.html');

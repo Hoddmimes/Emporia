@@ -88,7 +88,7 @@ public class SqliteDatabase implements Database {
         CREATE TABLE IF NOT EXISTS BulletinTrades (seq INTEGER PRIMARY KEY AUTOINCREMENT, tradeNo TEXT,
             bulletinId TEXT, marketId INTEGER, instrument TEXT, price INTEGER, quantity INTEGER, tradeTime TEXT,
             buyAccount TEXT, buyUser TEXT, buyRef TEXT, buyClientAccount TEXT,
-            sellAccount TEXT, sellUser TEXT, sellRef TEXT, sellClientAccount TEXT)""",
+            sellAccount TEXT, sellUser TEXT, sellRef TEXT, sellClientAccount TEXT, reversalOf TEXT)""",
         "CREATE INDEX IF NOT EXISTS BulletinTrades_buyAccount ON BulletinTrades (buyAccount, tradeTime, seq)",
         "CREATE INDEX IF NOT EXISTS BulletinTrades_sellAccount ON BulletinTrades (sellAccount, tradeTime, seq)",
         "CREATE INDEX IF NOT EXISTS BulletinTrades_instrument ON BulletinTrades (marketId, instrument, tradeTime, seq)",
@@ -107,11 +107,14 @@ public class SqliteDatabase implements Database {
         { "Trades", "buyUser TEXT" },
         { "Trades", "sellUser TEXT" },
         { "Trades", "reversalOf TEXT" },
+        { "BulletinTrades", "reversalOf TEXT" },
     };
 
     /** Indexes on added columns, created after the columns. */
     private static final String[] ADDED_INDEXES = {
         "CREATE INDEX IF NOT EXISTS Trades_reversalOf ON Trades (reversalOf) WHERE reversalOf IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS BulletinTrades_reversalOf ON BulletinTrades (reversalOf) WHERE reversalOf IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS BulletinTrades_tradeTime ON BulletinTrades (tradeTime, seq)",
     };
 
     private final Connection mConnection;
@@ -700,28 +703,45 @@ public class SqliteDatabase implements Database {
     public void saveBulletinTrade(BulletinTrade t) {
         update("""
                 INSERT INTO BulletinTrades (tradeNo, bulletinId, marketId, instrument, price, quantity, tradeTime,
-                    buyAccount, buyUser, buyRef, buyClientAccount, sellAccount, sellUser, sellRef, sellClientAccount)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    buyAccount, buyUser, buyRef, buyClientAccount, sellAccount, sellUser, sellRef, sellClientAccount, reversalOf)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 t.tradeNo(), t.bulletinId(), t.marketId(), t.instrument(), t.price(), t.quantity(),
                 Database.formatTradeTime(t.tradeTime()),
                 t.buyAccount(),  t.buyUser(),  t.buyRef(),  t.buyClientAccount(),
-                t.sellAccount(), t.sellUser(), t.sellRef(), t.sellClientAccount());
+                t.sellAccount(), t.sellUser(), t.sellRef(), t.sellClientAccount(), t.reversalOf());
+    }
+
+    private static BulletinTrade toBulletinTrade(ResultSet rs) throws SQLException {
+        return new BulletinTrade(rs.getString("tradeNo"),
+                rs.getString("bulletinId"), rs.getInt("marketId"), rs.getString("instrument"),
+                rs.getLong("price"), rs.getLong("quantity"), Database.parseTradeTime(rs.getString("tradeTime")),
+                rs.getString("buyAccount"),  rs.getString("buyUser"),  rs.getString("buyRef"),  rs.getString("buyClientAccount"),
+                rs.getString("sellAccount"), rs.getString("sellUser"), rs.getString("sellRef"), rs.getString("sellClientAccount"),
+                rs.getString("reversalOf"));
     }
 
     @Override
     public List<BulletinTrade> listBulletinTradesByFirm(String pFirm, String pDate) {
-        return query(firmQuery("BulletinTrades", pDate), rs -> new BulletinTrade(rs.getString("tradeNo"),
-                rs.getString("bulletinId"), rs.getInt("marketId"), rs.getString("instrument"),
-                rs.getLong("price"), rs.getLong("quantity"), Database.parseTradeTime(rs.getString("tradeTime")),
-                rs.getString("buyAccount"),  rs.getString("buyUser"),  rs.getString("buyRef"),  rs.getString("buyClientAccount"),
-                rs.getString("sellAccount"), rs.getString("sellUser"), rs.getString("sellRef"), rs.getString("sellClientAccount")),
-                firmParams(pFirm, pDate));
+        return query(firmQuery("BulletinTrades", pDate), SqliteDatabase::toBulletinTrade, firmParams(pFirm, pDate));
+    }
+
+    @Override
+    public List<BulletinTrade> listBulletinTradesByDate(String pDate) {
+        String[] tDay = Database.dayRange(pDate);
+        return query("SELECT * FROM BulletinTrades WHERE tradeTime BETWEEN ? AND ? ORDER BY tradeTime DESC, seq DESC",
+                SqliteDatabase::toBulletinTrade, tDay[0], tDay[1]);
+    }
+
+    @Override
+    public List<BulletinTrade> listBulletinReversalTrades() {
+        return query("SELECT * FROM BulletinTrades WHERE reversalOf IS NOT NULL ORDER BY tradeTime DESC, seq DESC",
+                SqliteDatabase::toBulletinTrade);
     }
 
     @Override
     public long lastBulletinTradePrice(int pMarketId, String pInstrument) {
         Long tPrice = queryOne("""
-                SELECT price FROM BulletinTrades WHERE marketId = ? AND instrument = ?
+                SELECT price FROM BulletinTrades WHERE marketId = ? AND instrument = ? AND reversalOf IS NULL
                 ORDER BY tradeTime DESC, seq DESC LIMIT 1""", rs -> rs.getLong(1), pMarketId, pInstrument);
         return (tPrice != null) ? tPrice : 0L;
     }

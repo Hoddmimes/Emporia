@@ -395,7 +395,8 @@ market and/or instrument. 400 for an invalid date. The bulletin trades of the sa
 listed twice, once per side. A bulletin trade has the bulletin's free text <code>instrument</code> and no
 <code>instrumentId</code>, so <code>instrumentId</code> leaves out all bulletin trades; <code>user</code> is the
 user of your firm that added the bulletin or made the offer, and <code>ref</code> that bulletin's
-<code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given). A trade's
+<code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given). A bulletin trade with
+<code>reversalOf</code> is a reversal made by the market supervision, like the trades' below. A trade's
 <code>clientAccount</code> is that of your firm's order (<code>omni</code> for trades made before client
 accounts existed) and its <code>user</code> the user who entered that order (null for trades made before
 users were stored); a bulletin trade's <code>clientAccount</code> is that of your firm's bulletin or offer.</p>
@@ -661,7 +662,9 @@ has no <code>marketId</code>: its topic is <code>/Chat</code>). Prices and quant
         firm's: the bulletin's for OWNER, the offer's for OFFERER)</td></tr>
     <tr><td><code>OwnBulletinTrade</code></td><td>A bulletin trade your firm took part in.</td><td>As BulletinTrade,
         plus <code>side</code>, <code>userRef</code> (owner) or <code>offerRef</code> (offerer), and
-        <code>clientAccount</code> (your firm's bulletin's or offer's)</td></tr>
+        <code>clientAccount</code> (your firm's bulletin's or offer's). A reversal made by the market supervision
+        has <code>reversalOf</code> (the reversed trade's <code>tradeNo</code>) and <code>ref</code> instead of
+        <code>userRef</code>/<code>offerRef</code>, and no public BulletinTrade.</td></tr>
 </table>
 
 <h3>Messages to everyone</h3>

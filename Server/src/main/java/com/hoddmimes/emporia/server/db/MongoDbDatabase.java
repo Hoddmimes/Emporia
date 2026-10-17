@@ -72,6 +72,10 @@ public class MongoDbDatabase implements Database {
                 tTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")));
         cLog.info("Trades index {}", tTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
+        var tBulletinTrades = mDatabase.getCollection("BulletinTrades");
+        cLog.info("BulletinTrades indexes {}, {}",
+                tBulletinTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
+                tBulletinTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
         cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("time", "_id")));
     }
 
@@ -656,7 +660,7 @@ public class MongoDbDatabase implements Database {
 
     @Override
     public void saveBulletinTrade(BulletinTrade t) {
-        collection("BulletinTrades").withWriteConcern(WriteConcern.JOURNALED).insertOne(new Document("tradeNo", t.tradeNo())
+        Document tDoc = new Document("tradeNo", t.tradeNo())
                 .append("bulletinId",  t.bulletinId())
                 .append("marketId",    t.marketId())
                 .append("instrument",  t.instrument())
@@ -670,7 +674,9 @@ public class MongoDbDatabase implements Database {
                 .append("sellAccount", t.sellAccount())
                 .append("sellUser",    t.sellUser())
                 .append("sellRef",     t.sellRef())
-                .append("sellClientAccount", t.sellClientAccount()));
+                .append("sellClientAccount", t.sellClientAccount());
+        if (t.isReversal()) tDoc.append("reversalOf", t.reversalOf());   // only reversals have it (sparse index)
+        collection("BulletinTrades").withWriteConcern(WriteConcern.JOURNALED).insertOne(tDoc);
     }
 
     private static BulletinTrade toBulletinTrade(Document d) {
@@ -678,7 +684,8 @@ public class MongoDbDatabase implements Database {
                 d.getString("instrument"), d.getLong("price"), d.getLong("quantity"),
                 Database.parseTradeTime(d.getString("tradeTime")),
                 d.getString("buyAccount"),  d.getString("buyUser"),  d.getString("buyRef"),  clientAccountOf(d, "buyClientAccount"),
-                d.getString("sellAccount"), d.getString("sellUser"), d.getString("sellRef"), clientAccountOf(d, "sellClientAccount"));
+                d.getString("sellAccount"), d.getString("sellUser"), d.getString("sellRef"), clientAccountOf(d, "sellClientAccount"),
+                d.getString("reversalOf"));
     }
 
     @Override
@@ -687,9 +694,19 @@ public class MongoDbDatabase implements Database {
     }
 
     @Override
+    public List<BulletinTrade> listBulletinTradesByDate(String pDate) {
+        return findTrades("BulletinTrades", new Document("tradeTime", tradeDay(pDate)), MongoDbDatabase::toBulletinTrade);
+    }
+
+    @Override
+    public List<BulletinTrade> listBulletinReversalTrades() {
+        return findTrades("BulletinTrades", new Document("reversalOf", new Document("$type", "string")), MongoDbDatabase::toBulletinTrade);
+    }
+
+    @Override
     public long lastBulletinTradePrice(int pMarketId, String pInstrument) {
         Document tDoc = collection("BulletinTrades")
-                .find(new Document("marketId", pMarketId).append("instrument", pInstrument))
+                .find(new Document("marketId", pMarketId).append("instrument", pInstrument).append("reversalOf", null))
                 .sort(new Document("tradeTime", -1).append("_id", -1)).first();
         return (tDoc != null) ? tDoc.getLong("price") : 0L;
     }

@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
+import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
+import com.hoddmimes.emporia.server.db.BulletinTrade;
 import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.Order;
@@ -30,6 +32,13 @@ import java.util.Map;
  * POST   /api/admin/trades/{tradeNo}/reverse       {"instrumentId","tradeTime"}: a reversal trade, the original's
  *                                                  buyer selling to its seller at the same price and quantity
  *
+ * and the same for the bulletin markets (BulletinBoard, BulletinTrades):
+ * GET    /api/admin/bulletins?marketId=&firm=      bulletins with owner and pending offer; marketId required, 0 = all
+ *                                                  bulletin markets; firm optional (owner or offering firm)
+ * DELETE /api/admin/bulletins/{bulletinId}         deletes any firm's bulletin, in any market state
+ * GET    /api/admin/bulletin-trades?date=&marketId=&firm=  a day's bulletin trades, latest first
+ * POST   /api/admin/bulletin-trades/{tradeNo}/reverse      {"tradeTime"}: a reversal bulletin trade
+ *
  * Prices and quantities are scaled longs, like the rest of the REST API.
  */
 public class AdminSupervisionEndpoints implements RestEndpoint {
@@ -45,6 +54,7 @@ public class AdminSupervisionEndpoints implements RestEndpoint {
 
     @Override
     public void register(Javalin app) {
+        registerBulletins(app);
         app.get("/api/admin/orders", ctx -> {
             Integer tMarketId = marketIdParam(ctx, true);
             if (tMarketId == null) return;
@@ -104,6 +114,98 @@ public class AdminSupervisionEndpoints implements RestEndpoint {
                 ctx.status(201).json(tradeJson(tReversal, null).toString());
             }
         });
+    }
+
+    private void registerBulletins(Javalin app) {
+        app.get("/api/admin/bulletins", ctx -> {
+            Integer tMarketId = marketIdParam(ctx, true);
+            if (tMarketId == null) return;
+            ctx.json(mCtx.bulletinBoard.getAllBulletins(tMarketId, firmParam(ctx)).toString());
+        });
+
+        app.delete("/api/admin/bulletins/{bulletinId}", ctx -> {
+            String tBulletinId = ctx.pathParam("bulletinId");
+            if (!mCtx.bulletinBoard.supervisionDeleteBulletin(tBulletinId)) {
+                error(ctx, 404, "Bulletin not found: " + tBulletinId); return;
+            }
+            cLog.info("Market supervision: admin {} deleted bulletin {}", adminUser(ctx), tBulletinId);
+            JsonObject tJson = new JsonObject();
+            tJson.addProperty("bulletinId", tBulletinId);
+            ctx.json(tJson.toString());
+        });
+
+        app.get("/api/admin/bulletin-trades", ctx -> {
+            String tDate = ctx.queryParamAsClass("date", String.class).getOrDefault(LocalDate.now().toString());
+            Integer tMarketId = marketIdParam(ctx, false);
+            if (tMarketId == null) return;
+            String tFirm = firmParam(ctx);
+            List<BulletinTrade> tTrades;
+            try { tTrades = mCtx.database.listBulletinTradesByDate(tDate); }
+            catch (IllegalArgumentException e) { error(ctx, 400, e.getMessage()); return; }
+            Map<String, BulletinTrade> tReversals = bulletinReversalsByTrade();
+            JsonArray tResult = new JsonArray();
+            for (BulletinTrade t : tTrades) {
+                if (tMarketId != 0 && t.marketId() != tMarketId) continue;
+                if (tFirm != null && !tFirm.equals(t.buyAccount()) && !tFirm.equals(t.sellAccount())) continue;
+                tResult.add(bulletinTradeJson(t, tReversals.get(t.tradeNo())));
+            }
+            ctx.json(tResult.toString());
+        });
+
+        app.post("/api/admin/bulletin-trades/{tradeNo}/reverse", ctx -> {
+            String tTradeNo = ctx.pathParam("tradeNo");
+            long tTradeTime;
+            try { tTradeTime = JsonParser.parseString(ctx.body()).getAsJsonObject().get("tradeTime").getAsLong(); }
+            catch (RuntimeException e) { error(ctx, 400, "tradeTime is required"); return; }
+            synchronized (mReverseLock) {
+                BulletinTrade tOriginal = null;
+                for (BulletinTrade t : mCtx.database.listBulletinTradesByDate(Database.formatTradeTime(tTradeTime).substring(0, 10))) {
+                    if (t.tradeNo().equalsIgnoreCase(tTradeNo)) { tOriginal = t; break; }
+                }
+                if (tOriginal == null) { error(ctx, 404, "Bulletin trade not found: " + tTradeNo); return; }
+                if (tOriginal.isReversal()) { error(ctx, 409, "Bulletin trade " + tTradeNo + " is a reversal trade and can not be reversed"); return; }
+                BulletinTrade tExisting = bulletinReversalsByTrade().get(tOriginal.tradeNo());
+                if (tExisting != null) {
+                    error(ctx, 409, "Bulletin trade " + tTradeNo + " is already reversed by trade " + tExisting.tradeNo());
+                    return;
+                }
+                BulletinTrade tReversal = mCtx.bulletinBoard.reverseTrade(tOriginal);
+                cLog.info("Market supervision: admin {} reversed bulletin trade {} by trade {}", adminUser(ctx), tTradeNo, tReversal.tradeNo());
+                ctx.status(201).json(bulletinTradeJson(tReversal, null).toString());
+            }
+        });
+    }
+
+    /** The stored bulletin reversal trades by the tradeNo they reverse (bulletin trade numbers are unique). */
+    private Map<String, BulletinTrade> bulletinReversalsByTrade() {
+        Map<String, BulletinTrade> tMap = new HashMap<>();
+        for (BulletinTrade t : mCtx.database.listBulletinReversalTrades()) tMap.put(t.reversalOf(), t);
+        return tMap;
+    }
+
+    /** A bulletin trade in the same form as tradeJson (bulletinId and the free text instrument, no instrumentId). */
+    private JsonObject bulletinTradeJson(BulletinTrade t, BulletinTrade pReversedBy) {
+        BulletinMarket tMarket = mCtx.bulletinBoard.getMarket(t.marketId());
+        JsonObject j = new JsonObject();
+        j.addProperty("tradeNo",        t.tradeNo());
+        j.addProperty("tradeTime",      t.tradeTime());
+        j.addProperty("marketId",       t.marketId());
+        j.addProperty("marketName",     (tMarket != null) ? tMarket.name() : String.valueOf(t.marketId()));
+        j.addProperty("bulletinId",     t.bulletinId());
+        j.addProperty("instrumentName", t.instrument());
+        j.addProperty("price",          t.price());
+        j.addProperty("quantity",       t.quantity());
+        j.addProperty("buyFirm",          t.buyAccount());
+        j.addProperty("buyUser",          t.buyUser());
+        j.addProperty("buyClientAccount", t.buyClientAccount());
+        j.addProperty("buyUserRef",       t.buyRef());
+        j.addProperty("sellFirm",          t.sellAccount());
+        j.addProperty("sellUser",          t.sellUser());
+        j.addProperty("sellClientAccount", t.sellClientAccount());
+        j.addProperty("sellUserRef",       t.sellRef());
+        if (t.isReversal()) j.addProperty("reversalOf", t.reversalOf());
+        if (pReversedBy != null) j.addProperty("reversedBy", pReversedBy.tradeNo());
+        return j;
     }
 
     /** The stored trade with the tradeNo, instrument and time (looked up among the trades of its day), or null. */

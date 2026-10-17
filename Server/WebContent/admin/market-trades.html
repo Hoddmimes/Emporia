@@ -35,7 +35,12 @@
                 <div class="form-group">
                     <label for="market">Market</label>
                     <select id="market" onchange="loadTrades()">
-                        <option value="0">All markets</option>
+                        <optgroup label="Order book markets" id="order-markets">
+                            <option value="o:0">All order book markets</option>
+                        </optgroup>
+                        <optgroup label="Bulletin markets" id="bulletin-markets">
+                            <option value="b:0">All bulletin markets</option>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="form-group">
@@ -121,23 +126,31 @@
         cdNav.render('market-trades');
         cdSession.guard('user-info');
 
+        // The market select's values: "o:<marketId>" an order book market, "b:<marketId>" a bulletin market
+        // (its bulletin trades), marketId 0 all of that kind
         const SCALE = 100000;
         let trades = [];
+        let kind = 'o';            // 'o' or 'b', of the listed trades
         let selected = null;
         let loadSeq = 0;   // only the latest load's reply is shown
 
         async function init() {
             document.getElementById('date').value = today();
-            const [markets, firms] = await Promise.all([
+            const [markets, bulletinMarkets, firms] = await Promise.all([
                 cdApi.request('../api/admin/markets'),
+                cdApi.request('../api/admin/bulletin-markets'),
                 cdApi.request('../api/admin/firms')
             ]);
-            if (markets.status === 401 || firms.status === 401) { window.location.href = 'login.html'; return; }
-            if (!markets.ok) { showMessage('Failed to load markets: ' + markets.error, true); return; }
-            if (!firms.ok)   { showMessage('Failed to load firms: ' + firms.error, true); return; }
-            const marketSelect = document.getElementById('market');
+            if ([markets, bulletinMarkets, firms].some(r => r.status === 401)) { window.location.href = 'login.html'; return; }
+            for (const [r, what] of [[markets, 'markets'], [bulletinMarkets, 'bulletin markets'], [firms, 'firms']]) {
+                if (!r.ok) { showMessage(`Failed to load ${what}: ${r.error}`, true); return; }
+            }
+            const orderGroup = document.getElementById('order-markets');
             markets.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m =>
-                marketSelect.add(new Option(`${m.name} (${m.type})`, m.id)));
+                orderGroup.appendChild(new Option(`${m.name} (${m.type})`, 'o:' + m.id)));
+            const bulletinGroup = document.getElementById('bulletin-markets');
+            bulletinMarkets.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m =>
+                bulletinGroup.appendChild(new Option(`${m.name} (BULLETIN)`, 'b:' + m.id)));
             const firmSelect = document.getElementById('firm');
             firms.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(f =>
                 firmSelect.add(new Option(f.name, f.name)));
@@ -146,11 +159,11 @@
 
         async function loadTrades() {
             const date     = document.getElementById('date').value || today();
-            const marketId = document.getElementById('market').value;
+            const [k, marketId] = document.getElementById('market').value.split(':');
             const firm     = document.getElementById('firm').value;
             const tbody    = document.getElementById('trades-body');
             const seq = ++loadSeq;
-            const r = await cdApi.request(`../api/admin/trades?date=${date}&marketId=${marketId}` +
+            const r = await cdApi.request(`../api/admin/${k === 'b' ? 'bulletin-trades' : 'trades'}?date=${date}&marketId=${marketId}` +
                                           (firm ? `&firm=${encodeURIComponent(firm)}` : ''));
             if (seq !== loadSeq) return;
             if (r.status === 401) { window.location.href = 'login.html'; return; }
@@ -159,9 +172,11 @@
                 return;
             }
             trades = r.data;
+            kind = k;
             const ms = document.getElementById('market');
-            exportFilter = { date, marketId, marketName: ms.options[ms.selectedIndex].text.replace(/ \(.*\)$/, ''), firm };
-            setInfo(`${trades.length} trade${trades.length === 1 ? '' : 's'} on ${date}, latest first. Double click a trade to reverse it.`);
+            exportFilter = { date, kind: k, marketId, marketName: ms.options[ms.selectedIndex].text.replace(/ \(.*\)$/, ''), firm };
+            const noun = k === 'b' ? 'bulletin trade' : 'trade';
+            setInfo(`${trades.length} ${noun}${trades.length === 1 ? '' : 's'} on ${date}, latest first. Double click a trade to reverse it.`);
             if (trades.length === 0) {
                 tbody.innerHTML = '<tr class="empty-row"><td colspan="13">No trades.</td></tr>';
                 return;
@@ -197,7 +212,7 @@
             document.getElementById('reverse-details').innerHTML = rows([
                 ['Trade',       `${t.tradeNo}, ${dateTime(t.tradeTime)}`],
                 ['Market',      t.marketName],
-                ['Instrument',  t.instrumentName],
+                ['Instrument',  t.instrumentName + (t.bulletinId ? ` (bulletin ${t.bulletinId})` : '')],
                 ['Price',       price(t.price)],
                 ['Quantity',    quantity(t.quantity)],
                 ['Buyer',       side(t.buyFirm,  t.buyUser,  t.buyClientAccount)],
@@ -230,8 +245,11 @@
             if (!selected) return;
             const t = selected;
             document.getElementById('reverse-button').disabled = true;
-            const r = await cdApi.request(`../api/admin/trades/${encodeURIComponent(t.tradeNo)}/reverse`,
-                                          cdApi.json('POST', { instrumentId: t.instrumentId, tradeTime: t.tradeTime }));
+            const r = t.bulletinId
+                ? await cdApi.request(`../api/admin/bulletin-trades/${encodeURIComponent(t.tradeNo)}/reverse`,
+                                      cdApi.json('POST', { tradeTime: t.tradeTime }))
+                : await cdApi.request(`../api/admin/trades/${encodeURIComponent(t.tradeNo)}/reverse`,
+                                      cdApi.json('POST', { instrumentId: t.instrumentId, tradeTime: t.tradeTime }));
             closeReverseModal();
             if (r.status === 401) { window.location.href = 'login.html'; return; }
             if (r.ok) showMessage(`Trade ${t.tradeNo} reversed by trade ${r.data.tradeNo}: ${r.data.buyFirm} bought ` +
@@ -252,7 +270,7 @@
             const f = exportFilter;
             document.getElementById('export-what').textContent =
                 `${trades.length} trade${trades.length === 1 ? '' : 's'} on ${f.date}, ${f.marketName}, ${f.firm || 'all firms'}.`;
-            const market = f.marketId === '0' ? 'all' : f.marketName.replace(/[^A-Za-z0-9_-]+/g, '_');
+            const market = f.marketId === '0' ? (f.kind === 'b' ? 'all-bulletin' : 'all') : f.marketName.replace(/[^A-Za-z0-9_-]+/g, '_');
             document.getElementById('export-name').value = `trades-${f.date}-${market}` + (f.firm ? '-' + f.firm.replace(/[^A-Za-z0-9_-]+/g, '_') : '');
             formatChanged();
             document.getElementById('export-hint').textContent = window.showSaveFilePicker
@@ -314,7 +332,7 @@
                 tradeNo: t.tradeNo,
                 tradeTime: d.toLocaleDateString('sv-SE') + ' ' + d.toLocaleTimeString('sv-SE') + '.' + String(d.getMilliseconds()).padStart(3, '0'),
                 marketId: t.marketId, market: t.marketName,
-                instrumentId: t.instrumentId, instrument: t.instrumentName,
+                instrumentId: t.instrumentId, bulletinId: t.bulletinId, instrument: t.instrumentName,
                 price: t.price / SCALE, quantity: t.quantity / SCALE,
                 buyer:  { firm: t.buyFirm,  trader: t.buyUser,  clientAccount: t.buyClientAccount,  userRef: t.buyUserRef,  orderId: t.buyOrderId },
                 seller: { firm: t.sellFirm, trader: t.sellUser, clientAccount: t.sellClientAccount, userRef: t.sellUserRef, orderId: t.sellOrderId }
@@ -327,7 +345,8 @@
         function exportHeader() {
             const f = exportFilter;
             return { exported: new Date().toISOString(), date: f.date,
-                     market: f.marketId === '0' ? 'ALL' : f.marketName, firm: f.firm || 'ALL' };
+                     market: f.marketId === '0' ? (f.kind === 'b' ? 'ALL BULLETIN MARKETS' : 'ALL') : f.marketName,
+                     firm: f.firm || 'ALL', kind: f.kind === 'b' ? 'bulletin' : 'orderbook' };
         }
 
         function toJson(records) {
@@ -340,10 +359,10 @@
             const side = (name, s) => `    <${name}>\n` + Object.entries(s).map(([k, v]) => el(k, v, '      ')).join('') + `    </${name}>\n`;
             const h = exportHeader();
             let out = '<?xml version="1.0" encoding="UTF-8"?>\n'
-                + `<trades exported="${x(h.exported)}" date="${x(h.date)}" market="${x(h.market)}" firm="${x(h.firm)}" count="${records.length}">\n`;
+                + `<trades kind="${x(h.kind)}" exported="${x(h.exported)}" date="${x(h.date)}" market="${x(h.market)}" firm="${x(h.firm)}" count="${records.length}">\n`;
             for (const r of records) {
                 out += `  <trade tradeNo="${x(r.tradeNo)}">\n`;
-                for (const k of ['tradeTime', 'marketId', 'market', 'instrumentId', 'instrument', 'price', 'quantity']) out += el(k, r[k], '    ');
+                for (const k of ['tradeTime', 'marketId', 'market', 'instrumentId', 'bulletinId', 'instrument', 'price', 'quantity']) out += el(k, r[k], '    ');
                 out += side('buyer', r.buyer) + side('seller', r.seller);
                 out += el('reversalOf', r.reversalOf, '    ') + el('reversedBy', r.reversedBy, '    ');
                 out += '  </trade>\n';

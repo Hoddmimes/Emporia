@@ -32,7 +32,12 @@
                     <label for="market">Market</label>
                     <select id="market" onchange="loadOrders()">
                         <option value="">Select a market&hellip;</option>
-                        <option value="0">All markets</option>
+                        <optgroup label="Order book markets" id="order-markets">
+                            <option value="o:0">All order book markets</option>
+                        </optgroup>
+                        <optgroup label="Bulletin markets" id="bulletin-markets">
+                            <option value="b:0">All bulletin markets</option>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="form-group">
@@ -44,43 +49,26 @@
                 <button class="btn btn-outline btn-sm" onclick="loadOrders()">Refresh</button>
             </div>
 
-            <div class="filter-info" id="info">The resting orders of all firms. Double click an order to delete it.</div>
+            <div class="filter-info" id="info"></div>
 
             <div class="card" style="padding:0; overflow-x:auto;">
                 <table class="data-table compact">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Market</th>
-                            <th>Instrument</th>
-                            <th>Side</th>
-                            <th class="num">Price</th>
-                            <th class="num">Quantity</th>
-                            <th>Firm</th>
-                            <th>Trader</th>
-                            <th>Account</th>
-                            <th>User Ref</th>
-                            <th>Order Id</th>
-                        </tr>
-                    </thead>
-                    <tbody id="orders-body">
-                        <tr class="empty-row"><td colspan="11">Select a market.</td></tr>
-                    </tbody>
+                    <thead id="list-head"></thead>
+                    <tbody id="list-body"></tbody>
                 </table>
             </div>
         </main>
     </div>
 
-    <!-- Delete order (market supervision) -->
+    <!-- Delete an order or a bulletin (market supervision) -->
     <div id="delete-modal" class="modal-overlay" style="display:none;">
         <div class="modal modal-wide">
-            <h3>Delete Order</h3>
+            <h3 id="delete-title">Delete Order</h3>
             <table class="detail-table" id="delete-details"></table>
-            <p>Delete this order as market supervision? It is removed from the order book in any market state,
-               and the firm is told that its order was removed.</p>
+            <p id="delete-text"></p>
             <div class="modal-actions">
                 <button class="btn btn-outline" onclick="closeDeleteModal()">Cancel</button>
-                <button class="btn btn-danger" id="delete-button" onclick="confirmDelete()">Delete Order</button>
+                <button class="btn btn-danger" id="delete-button" onclick="confirmDelete()">Delete</button>
             </div>
         </div>
     </div>
@@ -92,55 +80,69 @@
         cdNav.render('market-orders');
         cdSession.guard('user-info');
 
+        // The market select's values: "o:<marketId>" an order book market, "b:<marketId>" a bulletin market,
+        // marketId 0 all of that kind. An order book market lists its resting orders, a bulletin market its
+        // bulletins; a double click deletes one as market supervision.
         const SCALE = 100000;
-        let orders = [];
+        const ORDER_COLUMNS    = ['Time', 'Market', 'Instrument', 'Side', 'Price|num', 'Quantity|num', 'Firm', 'Trader',
+                                  'Account', 'User Ref', 'Order Id'];
+        const BULLETIN_COLUMNS = ['Created', 'Market', 'Instrument', 'Side', 'Price|num', 'Quantity|num', 'Remaining|num',
+                                  'Firm', 'Trader', 'Account', 'User Ref', 'State', 'Expires', 'Offer'];
+        let rows = [];           // the listed orders or bulletins
+        let kind = null;         // 'o' or 'b', of the listed rows
         let selected = null;
-        let loadSeq = 0;   // only the latest load's reply is shown
+        let loadSeq = 0;         // only the latest load's reply is shown
 
         async function init() {
-            const [markets, firms] = await Promise.all([
+            setHead(ORDER_COLUMNS);
+            setEmpty('Select a market.');
+            setInfo('The resting orders, or the bulletins, of all firms. Double click one to delete it.');
+            const [markets, bulletinMarkets, firms] = await Promise.all([
                 cdApi.request('../api/admin/markets'),
+                cdApi.request('../api/admin/bulletin-markets'),
                 cdApi.request('../api/admin/firms')
             ]);
-            if (markets.status === 401 || firms.status === 401) { window.location.href = 'login.html'; return; }
-            if (!markets.ok) { showMessage('Failed to load markets: ' + markets.error, true); return; }
-            if (!firms.ok)   { showMessage('Failed to load firms: ' + firms.error, true); return; }
-            const marketSelect = document.getElementById('market');
-            markets.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m =>
-                marketSelect.add(new Option(`${m.name} (${m.type})`, m.id)));
+            if ([markets, bulletinMarkets, firms].some(r => r.status === 401)) { window.location.href = 'login.html'; return; }
+            for (const [r, what] of [[markets, 'markets'], [bulletinMarkets, 'bulletin markets'], [firms, 'firms']]) {
+                if (!r.ok) { showMessage(`Failed to load ${what}: ${r.error}`, true); return; }
+            }
+            const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
+            const orderGroup = document.getElementById('order-markets');
+            markets.data.sort(byName).forEach(m => orderGroup.appendChild(new Option(`${m.name} (${m.type})`, 'o:' + m.id)));
+            const bulletinGroup = document.getElementById('bulletin-markets');
+            bulletinMarkets.data.sort(byName).forEach(m => bulletinGroup.appendChild(new Option(`${m.name} (BULLETIN)`, 'b:' + m.id)));
             const firmSelect = document.getElementById('firm');
-            firms.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(f =>
-                firmSelect.add(new Option(f.name, f.name)));
+            firms.data.sort(byName).forEach(f => firmSelect.add(new Option(f.name, f.name)));
         }
 
         async function loadOrders() {
-            const marketId = document.getElementById('market').value;
-            const tbody = document.getElementById('orders-body');
-            if (marketId === '') {
-                orders = [];
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Select a market.</td></tr>';
-                setInfo('The resting orders of all firms. Double click an order to delete it.');
+            const market = document.getElementById('market').value;
+            if (market === '') {
+                rows = []; kind = null;
+                setHead(ORDER_COLUMNS);
+                setEmpty('Select a market.');
                 return;
             }
+            const [k, marketId] = market.split(':');
             const firm = document.getElementById('firm').value;
             const seq = ++loadSeq;
-            const r = await cdApi.request(`../api/admin/orders?marketId=${marketId}` +
+            const r = await cdApi.request(`../api/admin/${k === 'b' ? 'bulletins' : 'orders'}?marketId=${marketId}` +
                                           (firm ? `&firm=${encodeURIComponent(firm)}` : ''));
             if (seq !== loadSeq) return;
             if (r.status === 401) { window.location.href = 'login.html'; return; }
-            if (!r.ok) {
-                tbody.innerHTML = `<tr class="empty-row"><td colspan="11">Failed to load orders: ${escHtml(r.error)}</td></tr>`;
-                return;
-            }
-            orders = r.data;
-            setInfo(`${orders.length} order${orders.length === 1 ? '' : 's'}, ${new Date().toLocaleTimeString('en-GB')}. Double click an order to delete it.`);
-            if (orders.length === 0) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="11">No orders.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = orders.map((o, i) =>
-                `<tr class="row-action" ondblclick="openDeleteModal(${i})">
-                    <td title="${escHtml(dateTime(o.orderTime))}">${escHtml(time(o.orderTime))}</td>
+            kind = k;
+            setHead(k === 'b' ? BULLETIN_COLUMNS : ORDER_COLUMNS);
+            if (!r.ok) { rows = []; setEmpty('Failed to load: ' + r.error); return; }
+            rows = r.data;
+            const noun = k === 'b' ? 'bulletin' : 'order';
+            setInfo(`${rows.length} ${noun}${rows.length === 1 ? '' : 's'}, ${new Date().toLocaleTimeString('en-GB')}. Double click ${k === 'b' ? 'a bulletin' : 'an order'} to delete it.`);
+            if (rows.length === 0) { setEmpty(`No ${noun}s.`); return; }
+            document.getElementById('list-body').innerHTML = rows.map((x, i) =>
+                `<tr class="row-action" ondblclick="openDeleteModal(${i})">` + (k === 'b' ? bulletinCells(x) : orderCells(x)) + '</tr>').join('');
+        }
+
+        function orderCells(o) {
+            return `<td title="${escHtml(dateTime(o.orderTime))}">${escHtml(time(o.orderTime))}</td>
                     <td>${escHtml(o.marketName)}</td>
                     <td>${escHtml(o.instrumentName)}</td>
                     <td class="${o.side === 'BUY' ? 'side-buy' : 'side-sell'}">${o.side}</td>
@@ -150,24 +152,74 @@
                     <td>${escHtml(o.user)}</td>
                     <td>${escHtml(o.clientAccount)}</td>
                     <td>${escHtml(o.userRef)}</td>
-                    <td class="mono">${escHtml(o.orderId)}</td>
-                </tr>`).join('');
+                    <td class="mono">${escHtml(o.orderId)}</td>`;
+        }
+
+        function bulletinCells(b) {
+            return `<td title="${escHtml(dateTime(b.createTime))}">${escHtml(time(b.createTime))}</td>
+                    <td>${escHtml(b.marketName)}</td>
+                    <td>${escHtml(b.instrument)}</td>
+                    <td class="${b.side === 'BUY' ? 'side-buy' : b.side === 'SELL' ? 'side-sell' : ''}">${escHtml(b.side || 'EITHER')}</td>
+                    <td class="num">${b.price > 0 ? price(b.price) : '&mdash;'}</td>
+                    <td class="num">${b.quantity > 0 ? quantity(b.quantity) : '&mdash;'}</td>
+                    <td class="num">${b.quantity > 0 ? quantity(b.remainingQuantity) : '&mdash;'}</td>
+                    <td>${escHtml(b.firm)}</td>
+                    <td>${escHtml(b.user)}</td>
+                    <td>${escHtml(b.clientAccount)}</td>
+                    <td>${escHtml(b.userRef)}</td>
+                    <td>${escHtml(b.state)}</td>
+                    <td title="${escHtml(dateTime(b.expiresAt))}">${escHtml(dateTimeShort(b.expiresAt))}</td>
+                    <td title="${b.offer ? escHtml(offerText(b.offer)) : ''}">${b.offer ? escHtml(offerShort(b.offer)) : ''}</td>`;
+        }
+
+        function offerShort(o) {
+            return `${o.firm} ${o.side} ${quantity(o.quantity)} @ ${price(o.price)}`;   // the trader and expiry in the tooltip
+        }
+
+        function offerText(o) {
+            return `${o.firm}${o.user ? ' / ' + o.user : ''}: ${o.side} ${quantity(o.quantity)} @ ${price(o.price)}, until ${time(o.expiresAt)}`;
         }
 
         function openDeleteModal(index) {
-            selected = orders[index];
-            const o = selected;
-            document.getElementById('delete-details').innerHTML = rows([
-                ['Market',     o.marketName],
-                ['Instrument', o.instrumentName],
-                ['Order',      `${o.side} ${quantity(o.quantity)} @ ${price(o.price)}`],
-                ['Firm',       o.account],
-                ['Trader',     o.user],
-                ['Account',    o.clientAccount],
-                ['User Ref',   o.userRef],
-                ['Entered',    dateTime(o.orderTime)],
-                ['Order Id',   o.orderId]
-            ]);
+            selected = rows[index];
+            const x = selected;
+            if (kind === 'b') {
+                document.getElementById('delete-title').textContent = 'Delete Bulletin';
+                document.getElementById('delete-details').innerHTML = details([
+                    ['Market',     x.marketName],
+                    ['Instrument', x.instrument],
+                    ['Bulletin',   `${x.side || 'EITHER'} ${x.quantity > 0 ? quantity(x.quantity) : ''} ${x.price > 0 ? '@ ' + price(x.price) : ''}`.replace(/\s+/g, ' ')],
+                    ['Remaining',  x.quantity > 0 ? quantity(x.remainingQuantity) : ''],
+                    ['Firm',       x.firm],
+                    ['Trader',     x.user],
+                    ['Account',    x.clientAccount],
+                    ['User Ref',   x.userRef],
+                    ['Created',    dateTime(x.createTime)],
+                    ['Expires',    dateTime(x.expiresAt)],
+                    ['Offer',      x.offer ? offerText(x.offer) : 'none'],
+                    ['Bulletin Id', x.bulletinId]
+                ]);
+                document.getElementById('delete-text').textContent = 'Delete this bulletin as market supervision? It is removed in any market state, '
+                    + 'and the firm is told that its bulletin was deleted.'
+                    + (x.offer ? ' The pending offer is cancelled, and the offering firm is told.' : '');
+                document.getElementById('delete-button').textContent = 'Delete Bulletin';
+            } else {
+                document.getElementById('delete-title').textContent = 'Delete Order';
+                document.getElementById('delete-details').innerHTML = details([
+                    ['Market',     x.marketName],
+                    ['Instrument', x.instrumentName],
+                    ['Order',      `${x.side} ${quantity(x.quantity)} @ ${price(x.price)}`],
+                    ['Firm',       x.account],
+                    ['Trader',     x.user],
+                    ['Account',    x.clientAccount],
+                    ['User Ref',   x.userRef],
+                    ['Entered',    dateTime(x.orderTime)],
+                    ['Order Id',   x.orderId]
+                ]);
+                document.getElementById('delete-text').textContent = 'Delete this order as market supervision? It is removed from the order book '
+                    + 'in any market state, and the firm is told that its order was removed.';
+                document.getElementById('delete-button').textContent = 'Delete Order';
+            }
             document.getElementById('delete-button').disabled = false;
             document.getElementById('delete-modal').style.display = 'flex';
         }
@@ -179,19 +231,34 @@
 
         async function confirmDelete() {
             if (!selected) return;
-            const o = selected;
+            const x = selected, isBulletin = kind === 'b';
             document.getElementById('delete-button').disabled = true;
-            const r = await cdApi.request(`../api/admin/orders/${encodeURIComponent(o.orderId)}`, { method: 'DELETE' });
+            const url = isBulletin ? `../api/admin/bulletins/${encodeURIComponent(x.bulletinId)}`
+                                   : `../api/admin/orders/${encodeURIComponent(x.orderId)}`;
+            const r = await cdApi.request(url, { method: 'DELETE' });
             closeDeleteModal();
             if (r.status === 401) { window.location.href = 'login.html'; return; }
-            if (r.ok) showMessage(`Order ${o.orderId} (${o.account}, ${o.side} ${quantity(o.quantity)} ${o.instrumentName} @ ${price(o.price)}) deleted.`, false);
-            else      showMessage('Failed to delete the order: ' + r.error, true);
+            if (!r.ok) showMessage(`Failed to delete the ${isBulletin ? 'bulletin' : 'order'}: ${r.error}`, true);
+            else if (isBulletin) showMessage(`Bulletin ${x.bulletinId} (${x.firm}, ${x.instrument}) deleted.`, false);
+            else showMessage(`Order ${x.orderId} (${x.account}, ${x.side} ${quantity(x.quantity)} ${x.instrumentName} @ ${price(x.price)}) deleted.`, false);
             loadOrders();
         }
 
         // ── Helpers ──────────────────────────────────────────────────────
 
-        function rows(pairs) {
+        function setHead(columns) {
+            document.getElementById('list-head').innerHTML = '<tr>' + columns.map(c => {
+                const [label, cls] = c.split('|');
+                return `<th${cls ? ` class="${cls}"` : ''}>${label}</th>`;
+            }).join('') + '</tr>';
+        }
+
+        function setEmpty(text) {
+            const columns = kind === 'b' ? BULLETIN_COLUMNS.length : ORDER_COLUMNS.length;
+            document.getElementById('list-body').innerHTML = `<tr class="empty-row"><td colspan="${columns}">${escHtml(text)}</td></tr>`;
+        }
+
+        function details(pairs) {
             return pairs.map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v == null ? '' : String(v))}</td></tr>`).join('');
         }
 
@@ -207,6 +274,7 @@
         function quantity(v) { return v == null ? '' : (v / SCALE).toLocaleString('en-GB', { maximumFractionDigits: 5 }); }
         function time(ms)     { return new Date(ms).toLocaleTimeString('en-GB'); }
         function dateTime(ms) { const d = new Date(ms); return d.toLocaleDateString('sv-SE') + ' ' + d.toLocaleTimeString('en-GB'); }
+        function dateTimeShort(ms) { const d = new Date(ms); return d.toLocaleDateString('sv-SE').slice(5) + ' ' + d.toLocaleTimeString('en-GB').slice(0, 5); }
 
         function escHtml(s) {
             return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

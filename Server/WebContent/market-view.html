@@ -1427,7 +1427,8 @@
         // An own bulletin trade (OwnBulletinTrade, display units): "Sold 10 Brent Jan @ 80.50"
         function showBulletinTradeToast(msg) {
             const m = markets.find(x => x.id === msg.marketId);
-            showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell', title: 'Bulletin trade',
+            showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell',
+                        title: msg.reversalOf ? 'Bulletin trade reversal (reverses trade ' + msg.reversalOf + ')' : 'Bulletin trade',
                         lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' ' + msg.instrument
                                 + ' @ ' + fmtPx(msg.price),
                                 (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)

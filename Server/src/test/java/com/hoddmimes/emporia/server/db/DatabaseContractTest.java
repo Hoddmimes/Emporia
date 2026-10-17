@@ -357,6 +357,20 @@ abstract class DatabaseContractTest {
         assertEquals(81 * S, mDb.lastBulletinTradePrice(3, "Brent Jan"));
         assertEquals(0, mDb.lastBulletinTradePrice(3, "brent jan"));
         assertEquals(0, mDb.lastBulletinTradePrice(4, "Brent Jan"));
+
+        assertEquals(List.of(t2), mDb.listBulletinTradesByDate("2026-10-16"));
+        assertThrows(IllegalArgumentException.class, () -> mDb.listBulletinTradesByDate("2026-10-32"));
+        assertTrue(mDb.listBulletinReversalTrades().isEmpty());
+        // The reversal of t2, stored latest: in the firms' trades, but no market price
+        BulletinTrade tReversal = t2.reversal("t3", time("2026-10-17T09:00:00.000"));
+        assertEquals("FC", tReversal.buyAccount());
+        assertEquals("c9", tReversal.buyClientAccount());
+        assertEquals("FB", tReversal.sellAccount());
+        mDb.saveBulletinTrade(tReversal);
+        assertEquals(List.of(tReversal), mDb.listBulletinReversalTrades());
+        assertEquals(List.of(tReversal, t2), mDb.listBulletinTradesByFirm("FC", null));
+        assertEquals(81 * S, mDb.lastBulletinTradePrice(3, "Brent Jan"));
+        assertFalse(mDb.listBulletinTradesByDate("2026-10-16").get(0).isReversal());
     }
 
     // ── Chat ─────────────────────────────────────────────────────────────

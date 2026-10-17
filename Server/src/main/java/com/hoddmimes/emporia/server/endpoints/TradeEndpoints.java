@@ -82,6 +82,7 @@ public class TradeEndpoints implements RestEndpoint {
             String tRef = tBuyer ? t.buyRef() : t.sellRef();
             if (tRef != null) tJson.addProperty("ref", tRef);
             tJson.addProperty("clientAccount", tBuyer ? t.buyClientAccount() : t.sellClientAccount());
+            if (t.isReversal()) tJson.addProperty("reversalOf", t.reversalOf());   // a market supervision reversal
             tOut.add(tJson);
         }
         return tOut;

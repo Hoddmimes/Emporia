@@ -150,6 +150,96 @@ public class BulletinBoard {
         return tEntries.size();
     }
 
+    // ── Market supervision (admin) ────────────────────────────────────────
+
+    /**
+     * The bulletins of all firms, or of one firm (pFirm null: all; a firm matches as owner or as the maker of
+     * the pending offer), in one bulletin market or (pMarketId 0) all of them, oldest first: every field,
+     * with the owner's firm, user, userRef and client account and the pending offer's firm, user, offerRef
+     * and client account.
+     */
+    public synchronized JsonArray getAllBulletins(int pMarketId, String pFirm) {
+        JsonArray tOut = new JsonArray();
+        for (BulletinEntry e : mBulletins.values()) {
+            if (pMarketId != 0 && e.marketId != pMarketId) continue;
+            if (pFirm != null && !pFirm.equals(e.ownerFirm) && !pFirm.equals(e.offerFirm)) continue;
+            BulletinMarket tMarket = mMarkets.get(e.marketId);
+            JsonObject j = new JsonObject();
+            j.addProperty("bulletinId",        e.bulletinId);
+            j.addProperty("marketId",          e.marketId);
+            j.addProperty("marketName",        (tMarket != null) ? tMarket.name() : String.valueOf(e.marketId));
+            j.addProperty("instrument",        e.instrument);
+            j.addProperty("side",              e.side);
+            j.addProperty("price",             e.price);
+            j.addProperty("quantity",          e.quantity);
+            j.addProperty("remainingQuantity", e.remainingQuantity);
+            j.addProperty("state",             e.state);
+            j.addProperty("createTime",        e.createTime);
+            j.addProperty("expiresAt",         e.expiresAt);
+            j.addProperty("firm",              e.ownerFirm);
+            j.addProperty("user",              e.ownerUser);
+            j.addProperty("userRef",           e.userRef);
+            j.addProperty("clientAccount",     e.clientAccount);
+            if (BulletinEntry.STATE_OFFER_PENDING.equals(e.state)) {
+                JsonObject o = new JsonObject();
+                o.addProperty("firm",          e.offerFirm);
+                o.addProperty("user",          e.offerUser);
+                o.addProperty("side",          e.offerSide);
+                o.addProperty("price",         e.offerPrice);
+                o.addProperty("quantity",      e.offerQuantity);
+                o.addProperty("expiresAt",     e.offerExpiresAt);
+                o.addProperty("offerRef",      e.offerRef);
+                o.addProperty("clientAccount", e.offerClientAccount);
+                j.add("offer", o);
+            }
+            tOut.add(j);
+        }
+        return tOut;
+    }
+
+    /**
+     * Deletes one bulletin of any firm, in any market state (state DELETED, also removed from the database);
+     * a pending offer is cancelled (BulletinOffer event CANCELLED). False if there is no such bulletin.
+     */
+    public synchronized boolean supervisionDeleteBulletin(String pBulletinId) {
+        BulletinEntry tEntry = mBulletins.get(pBulletinId);
+        if (tEntry == null) return false;
+        if (BulletinEntry.STATE_OFFER_PENDING.equals(tEntry.state)) publishOffer("CANCELLED", tEntry);
+        remove(tEntry, BulletinEntry.STATE_DELETED);
+        return true;
+    }
+
+    /**
+     * Makes the bulletin trade reversing pOriginal (BulletinTrade.reversal: same bulletin, instrument, price
+     * and quantity, the seller buying back from the buyer), stores it durably and sends each firm its
+     * OwnBulletinTrade (with reversalOf), then returns it. No public BulletinTrade: it is no market trade, and
+     * Database.lastBulletinTradePrice ignores it. The caller checks that pOriginal may be reversed.
+     */
+    public synchronized BulletinTrade reverseTrade(BulletinTrade pOriginal) {
+        BulletinTrade tReversal = pOriginal.reversal(Long.toHexString(mIdBase + mNextTrade++), System.currentTimeMillis());
+        if (mDatabase != null) mDatabase.saveBulletinTrade(tReversal);
+        publishOwnReversal(tReversal, tReversal.buyAccount(),  "BUY",  tReversal.buyRef(),  tReversal.buyClientAccount());
+        publishOwnReversal(tReversal, tReversal.sellAccount(), "SELL", tReversal.sellRef(), tReversal.sellClientAccount());
+        cLog.info("Bulletin trade {} reversed by trade {}: {} buys {}@{} {} from {}", pOriginal.tradeNo(), tReversal.tradeNo(),
+                tReversal.buyAccount(), unscale(tReversal.quantity()), unscale(tReversal.price()), tReversal.instrument(),
+                tReversal.sellAccount());
+        return tReversal;
+    }
+
+    private void publishOwnReversal(BulletinTrade pTrade, String pFirm, String pSide, String pRef, String pClientAccount) {
+        mPublisher.accept(BdxMessage.forFirm(BdxMessage.OWN_BULLETIN_TRADE, pTrade.marketId(), pFirm)
+                .put("bulletinId", pTrade.bulletinId())
+                .put("instrument", pTrade.instrument())
+                .put("side",       pSide)
+                .put("price",      unscale(pTrade.price()))
+                .put("quantity",   unscale(pTrade.quantity()))
+                .put("tradeNo",    pTrade.tradeNo())
+                .put("tradeTime",  pTrade.tradeTime())
+                .put("ref",        pRef)
+                .put("clientAccount", pClientAccount)
+                .put("reversalOf", pTrade.reversalOf()));
+    }
+
     public BulletinMarket getMarket(int pMarketId) {
         return mMarkets.get(pMarketId);
     }

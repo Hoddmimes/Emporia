@@ -214,10 +214,23 @@ public interface Database {
     /** Stores the bulletin trade durably (it is published only afterwards). */
     void saveBulletinTrade(BulletinTrade pTrade);
 
-    /** As listTradesByFirm, for the bulletin trades. */
+    /** As listTradesByFirm, for the bulletin trades (reversals included). */
     List<BulletinTrade> listBulletinTradesByFirm(String pFirm, String pDate);
 
-    /** The price of the latest bulletin trade in the (free text) instrument of the bulletin market; 0 if none. */
+    /**
+     * The bulletin trades of a "yyyy-MM-dd" day, latest first.
+     *
+     * @throws IllegalArgumentException if the date is not a valid "yyyy-MM-dd" date
+     */
+    List<BulletinTrade> listBulletinTradesByDate(String pDate);
+
+    /** All bulletin reversal trades (reversalOf not null), of all days, latest first. */
+    List<BulletinTrade> listBulletinReversalTrades();
+
+    /**
+     * The price of the latest bulletin trade in the (free text) instrument of the bulletin market, reversals
+     * not counted; 0 if none.
+     */
     long lastBulletinTradePrice(int pMarketId, String pInstrument);
 
     // ── Chat ─────────────────────────────────────────────────────────────

@@ -53,6 +53,61 @@ class BulletinBoardTest {
     }
 
     @Test
+    void supervisionListsAndDeletesAnyFirmsBulletin() {
+        String tA = add("FA", "SELL", 100 * S, 10 * S);
+        add("FC", "BUY", 90 * S, 5 * S);
+        assertTrue(mBoard.makeOffer("FB", "u-FB", tA, 98 * S, 4 * S, "offer-1", 0).success());
+
+        assertEquals(2, mBoard.getAllBulletins(0, null).size());
+        assertEquals(2, mBoard.getAllBulletins(1, null).size());
+        assertEquals(0, mBoard.getAllBulletins(2, null).size());
+        JsonArray tOfFB = mBoard.getAllBulletins(0, "FB");   // FB as the offering firm
+        assertEquals(1, tOfFB.size());
+        JsonObject tBulletin = tOfFB.get(0).getAsJsonObject();
+        assertEquals("FA", tBulletin.get("firm").getAsString());
+        assertEquals("u-FA", tBulletin.get("user").getAsString());
+        assertEquals("BB", tBulletin.get("marketName").getAsString());
+        JsonObject tOffer = tBulletin.getAsJsonObject("offer");
+        assertEquals("FB", tOffer.get("firm").getAsString());
+        assertEquals("u-FB", tOffer.get("user").getAsString());
+        assertEquals("BUY", tOffer.get("side").getAsString());
+
+        // In any market state; the pending offer is cancelled
+        mBoard.putMarket(market(1, "BB", "CLOSED", "1:00"));
+        mPublished.clear();
+        assertTrue(mBoard.supervisionDeleteBulletin(tA));
+        assertFalse(mBoard.supervisionDeleteBulletin(tA));
+        List<BdxMessage> tOffers = ofType(BdxMessage.BULLETIN_OFFER);
+        assertEquals(2, tOffers.size());
+        assertEquals("CANCELLED", str(tOffers.get(0), "event"));
+        assertEquals("DELETED", str(ofType(BdxMessage.BULLETIN).get(0), "state"));
+        assertEquals(1, mBoard.getAllBulletins(0, null).size());
+    }
+
+    @Test
+    void reversalOfABulletinTradeSwapsTheSidesAndIsNoMarketTrade() {
+        BulletinTrade tOriginal = new BulletinTrade("6a01", "b1", 1, "Old tractor", 100 * S, 4 * S, 1000,
+                "FB", "u-FB", "offer-1", "cb", "FA", "u-FA", "ref-FA", "ca");
+        BulletinTrade tReversal = mBoard.reverseTrade(tOriginal);
+        assertEquals("6a01", tReversal.reversalOf());
+        assertNotEquals("6a01", tReversal.tradeNo());
+        assertEquals("FA", tReversal.buyAccount());
+        assertEquals("ca", tReversal.buyClientAccount());
+        assertEquals("ref-FA", tReversal.buyRef());
+        assertEquals("FB", tReversal.sellAccount());
+        assertEquals(100 * S, tReversal.price());
+        assertEquals(4 * S, tReversal.quantity());
+
+        assertEquals(List.of(BdxMessage.OWN_BULLETIN_TRADE, BdxMessage.OWN_BULLETIN_TRADE), types());   // no public BulletinTrade
+        BdxMessage tToFA = mPublished.get(0);
+        assertEquals("FA", tToFA.firm());
+        assertEquals("BUY", str(tToFA, "side"));
+        assertEquals("6a01", str(tToFA, "reversalOf"));
+        assertEquals("FB", mPublished.get(1).firm());
+        assertEquals("SELL", str(mPublished.get(1), "side"));
+    }
+
+    @Test
     void addPublishesPublicAnonymousAndPrivateOwnBulletin() {
         String tId = add("FA", "SELL", 100 * S, 10 * S);
         assertEquals(List.of(BdxMessage.BULLETIN, BdxMessage.OWN_BULLETIN), types());

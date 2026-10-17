@@ -295,9 +295,10 @@ OPEN at Open and CLOSED at Close. On Saturdays and Sundays the markets stay clos
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="supervision">Market supervision: orders and trades</h2>
-<p>The <b>Market</b> section of the menu shows the trading in the order book markets (not the bulletin
-markets): the orders and the trades of all firms, each with its firm and trader (the user who entered the
-order). From there the market supervision can delete an order and reverse a trade.</p>
+<p>The <b>Market</b> section of the menu shows the trading of all firms, each order, bulletin and trade with
+its firm and trader (the user who entered it). From there the market supervision can delete an order or a
+bulletin and reverse a trade. The <b>Market</b> list on both pages has two groups: the <b>order book markets</b>
+(continuous and auction) and the <b>bulletin markets</b>, each with an <i>All</i> choice of its own.</p>
 
 <h3>Orders</h3>
 <p><b>Orders</b> lists the resting orders. Choose a market, or <b>All markets</b>, under <b>Market</b>: the list
@@ -318,6 +319,15 @@ snapshot of the moment; <b>Refresh</b> reads it again.</p>
 <p><b>Double click an order to delete it.</b> After the confirmation the order is removed, in any trading
 state, also when the market is CLOSED and the firm can't delete it itself. The firm sees the order
 disappear from its orders.</p>
+<p>In a <b>bulletin market</b> the list shows the bulletins instead: side (EITHER when the bulletin has no
+side), price and quantity (&mdash; when not given), the quantity remaining, the firm and trader, the state,
+when it expires, and a pending offer with the offering firm and trader. <b>Firm</b> shows the bulletins of the
+firm and those it has an offer on. Double click a bulletin to delete it, in any trading state; a pending offer
+on it is cancelled, and both firms are told.</p>
+<figure>
+    <a href="guide/market-bulletins.png" target="_blank" title="Open full size"><img src="guide/market-bulletins.png" alt="The bulletins of all bulletin markets"></a>
+    <figcaption>Orders, with All bulletin markets chosen: the bulletins.</figcaption>
+</figure>
 <figure class="dialog">
     <a href="guide/delete-order.png" target="_blank" title="Open full size"><img src="guide/delete-order.png" alt="The confirmation before deleting an order"></a>
     <figcaption>Deleting an order as market supervision.</figcaption>
@@ -330,6 +340,13 @@ bought or sold. Each trade shows the buyer and the seller with their trader and 
 <figure>
     <a href="guide/market-trades.png" target="_blank" title="Open full size"><img src="guide/market-trades.png" alt="Today's trades in the Metals market, one of them reversed"></a>
     <figcaption>Trades: today's trades in Metals; the first one of the day has been reversed.</figcaption>
+</figure>
+<p>In a <b>bulletin market</b> the list shows its bulletin trades, the instrument as the bulletin's free
+text. They are reversed in the same way: the reversal is a new bulletin trade with the roles swapped, both
+firms are told, and it doesn't change the instrument's last bulletin price.</p>
+<figure>
+    <a href="guide/market-bulletin-trades.png" target="_blank" title="Open full size"><img src="guide/market-bulletin-trades.png" alt="Today's bulletin trades"></a>
+    <figcaption>Trades, with All bulletin markets chosen.</figcaption>
 </figure>
 <p><b>Export&hellip;</b> saves the listed trades, with the filters applied, to a file on your computer as
 <b>JSON</b> or <b>XML</b>: prices and quantities as shown, the time with milliseconds, and both sides with firm,
@@ -479,7 +496,7 @@ entry with OK or ERROR and the reason.</p>
         and delete its instruments first. A market number may be used again by a new market, which is why
         it must be empty.</td></tr>
     <tr><td>Bulletin market</td><td>Refused while it has bulletins. Use <b>Delete All Bulletins</b> first.</td></tr>
-    <tr><td>Order</td><td>Market &rsaquo; Orders: any firm's order, in any trading state
+    <tr><td>Order, bulletin</td><td>Market &rsaquo; Orders: any firm's order or bulletin, in any trading state
         (<a href="#supervision">Market supervision</a>).</td></tr>
     <tr><td>Instrument</td><td>Deleted at once, even if it has orders. Delete its orders first: suspend it,
         and ask the firms to delete their orders, or use <b>Delete All Orders</b> on its market.</td></tr>
