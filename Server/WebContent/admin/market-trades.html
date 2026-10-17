@@ -45,6 +45,7 @@
                     </select>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="loadTrades()">Refresh</button>
+                <button class="btn btn-outline btn-sm" onclick="openExportModal()">Export&hellip;</button>
             </div>
 
             <div class="filter-info" id="info"></div>
@@ -74,6 +75,30 @@
                 </table>
             </div>
         </main>
+    </div>
+
+    <!-- Export the listed trades to a file -->
+    <div id="export-modal" class="modal-overlay" style="display:none;">
+        <div class="modal modal-wide">
+            <h3>Export Trades</h3>
+            <p id="export-what"></p>
+            <div class="form-group">
+                <label for="export-format">Format</label>
+                <select id="export-format" class="field-input" onchange="formatChanged()">
+                    <option value="json">JSON</option>
+                    <option value="xml">XML</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="export-name">File name</label>
+                <input type="text" id="export-name" class="field-input" style="max-width:none;">
+            </div>
+            <p class="form-hint" id="export-hint"></p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeExportModal()">Cancel</button>
+                <button class="btn btn-primary" id="export-button" onclick="exportTrades()">Save&hellip;</button>
+            </div>
+        </div>
     </div>
 
     <!-- Reverse trade (market supervision) -->
@@ -134,6 +159,8 @@
                 return;
             }
             trades = r.data;
+            const ms = document.getElementById('market');
+            exportFilter = { date, marketId, marketName: ms.options[ms.selectedIndex].text.replace(/ \(.*\)$/, ''), firm };
             setInfo(`${trades.length} trade${trades.length === 1 ? '' : 's'} on ${date}, latest first. Double click a trade to reverse it.`);
             if (trades.length === 0) {
                 tbody.innerHTML = '<tr class="empty-row"><td colspan="13">No trades.</td></tr>';
@@ -211,6 +238,117 @@
                                   `${quantity(r.data.quantity)} ${t.instrumentName} @ ${price(r.data.price)} from ${r.data.sellFirm}.`, false);
             else      showMessage('Failed to reverse the trade: ' + r.error, true);
             loadTrades();
+        }
+
+        // ── Export ───────────────────────────────────────────────────────
+        // The trades listed (with the filters applied) are written to a file as JSON or XML, prices and
+        // quantities in display units. Where the browser has the File System Access API (Chrome, Edge; https
+        // or localhost) Save opens the system's save dialog, where the folder and name are chosen; elsewhere
+        // the file is downloaded with the given name into the browser's download folder.
+        let exportFilter = null;   // the filter the listed trades were loaded with
+
+        function openExportModal() {
+            if (trades.length === 0) { showMessage('There are no trades to export.', true); return; }
+            const f = exportFilter;
+            document.getElementById('export-what').textContent =
+                `${trades.length} trade${trades.length === 1 ? '' : 's'} on ${f.date}, ${f.marketName}, ${f.firm || 'all firms'}.`;
+            const market = f.marketId === '0' ? 'all' : f.marketName.replace(/[^A-Za-z0-9_-]+/g, '_');
+            document.getElementById('export-name').value = `trades-${f.date}-${market}` + (f.firm ? '-' + f.firm.replace(/[^A-Za-z0-9_-]+/g, '_') : '');
+            formatChanged();
+            document.getElementById('export-hint').textContent = window.showSaveFilePicker
+                ? 'Save opens a dialog where you choose the folder, and can still change the name.'
+                : 'This browser saves the file in its download folder (or asks where, depending on its settings).';
+            document.getElementById('export-button').disabled = false;
+            document.getElementById('export-modal').style.display = 'flex';
+        }
+
+        function closeExportModal() { document.getElementById('export-modal').style.display = 'none'; }
+
+        // Keeps the file name's extension in step with the format
+        function formatChanged() {
+            const ext = document.getElementById('export-format').value;
+            const el = document.getElementById('export-name');
+            el.value = el.value.trim().replace(/\.(json|xml)$/i, '') + '.' + ext;
+        }
+
+        async function exportTrades() {
+            const format = document.getElementById('export-format').value;
+            let name = document.getElementById('export-name').value.trim();
+            if (!name) { name = 'trades.' + format; }
+            if (!name.toLowerCase().endsWith('.' + format)) name += '.' + format;
+            const records = trades.map(exportRecord);
+            const text = format === 'json' ? toJson(records) : toXml(records);
+            const type = format === 'json' ? 'application/json' : 'application/xml';
+            document.getElementById('export-button').disabled = true;
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({ suggestedName: name,
+                        types: [{ description: format.toUpperCase() + ' file', accept: { [type]: ['.' + format] } }] });
+                    const out = await handle.createWritable();
+                    await out.write(new Blob([text], { type }));
+                    await out.close();
+                    name = handle.name;
+                } else {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob([text], { type }));
+                    a.download = name;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+                }
+                closeExportModal();
+                showMessage(`${records.length} trade${records.length === 1 ? '' : 's'} exported to ${name}.`, false);
+            } catch (e) {
+                document.getElementById('export-button').disabled = false;
+                if (e.name === 'AbortError') return;   // the save dialog was cancelled
+                closeExportModal();
+                showMessage('Export failed: ' + (e.message || e), true);
+            }
+        }
+
+        // One trade as exported: display units, the time as local date and time with milliseconds
+        function exportRecord(t) {
+            const d = new Date(t.tradeTime);
+            const r = {
+                tradeNo: t.tradeNo,
+                tradeTime: d.toLocaleDateString('sv-SE') + ' ' + d.toLocaleTimeString('sv-SE') + '.' + String(d.getMilliseconds()).padStart(3, '0'),
+                marketId: t.marketId, market: t.marketName,
+                instrumentId: t.instrumentId, instrument: t.instrumentName,
+                price: t.price / SCALE, quantity: t.quantity / SCALE,
+                buyer:  { firm: t.buyFirm,  trader: t.buyUser,  clientAccount: t.buyClientAccount,  userRef: t.buyUserRef,  orderId: t.buyOrderId },
+                seller: { firm: t.sellFirm, trader: t.sellUser, clientAccount: t.sellClientAccount, userRef: t.sellUserRef, orderId: t.sellOrderId }
+            };
+            if (t.reversalOf) r.reversalOf = t.reversalOf;
+            if (t.reversedBy) r.reversedBy = t.reversedBy;
+            return r;
+        }
+
+        function exportHeader() {
+            const f = exportFilter;
+            return { exported: new Date().toISOString(), date: f.date,
+                     market: f.marketId === '0' ? 'ALL' : f.marketName, firm: f.firm || 'ALL' };
+        }
+
+        function toJson(records) {
+            return JSON.stringify(Object.assign(exportHeader(), { count: records.length, trades: records }), null, 2) + '\n';
+        }
+
+        function toXml(records) {
+            const x = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const el = (name, v, ind) => v == null ? '' : `${ind}<${name}>${x(v)}</${name}>\n`;
+            const side = (name, s) => `    <${name}>\n` + Object.entries(s).map(([k, v]) => el(k, v, '      ')).join('') + `    </${name}>\n`;
+            const h = exportHeader();
+            let out = '<?xml version="1.0" encoding="UTF-8"?>\n'
+                + `<trades exported="${x(h.exported)}" date="${x(h.date)}" market="${x(h.market)}" firm="${x(h.firm)}" count="${records.length}">\n`;
+            for (const r of records) {
+                out += `  <trade tradeNo="${x(r.tradeNo)}">\n`;
+                for (const k of ['tradeTime', 'marketId', 'market', 'instrumentId', 'instrument', 'price', 'quantity']) out += el(k, r[k], '    ');
+                out += side('buyer', r.buyer) + side('seller', r.seller);
+                out += el('reversalOf', r.reversalOf, '    ') + el('reversedBy', r.reversedBy, '    ');
+                out += '  </trade>\n';
+            }
+            return out + '</trades>\n';
         }
 
         // ── Helpers ──────────────────────────────────────────────────────
