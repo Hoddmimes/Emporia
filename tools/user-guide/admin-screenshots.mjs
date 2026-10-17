@@ -1,7 +1,8 @@
 // Takes the admin guide's screenshots of the admin web interface with headless Chrome (DevTools
 // protocol), logged in as Admin on a server filled by seed.mjs. It first adds a little more through
 // the admin REST API: contact details of NORDAGRI and anna, an inactive firm EASTGRAIN with a user and
-// authorizations for single markets, and an auction market.
+// authorizations for single markets, and an auction market; and before the Market Trades picture the
+// reversal of a trade.
 //
 //   node admin-screenshots.mjs http://127.0.0.1:18090/ ../../Server/WebContent/admin/guide
 import { startChrome, sleep } from './chrome.mjs';
@@ -102,6 +103,32 @@ await shot('create-market', FORM);
 await navigate('admin/markets.html');
 await openRow('Grains');
 await shot('market', CONTENT);
+
+// ── Market supervision: orders and trades ──────────────────────────────
+await navigate('admin/market-orders.html');
+await sleep(500);
+await ev(`const s = document.getElementById('market');
+          s.value = [...s.options].find(o => o.textContent.startsWith('Metals')).value; loadOrders(); 1`);
+await sleep(1000);
+await shot('market-orders', CONTENT);
+await ev(`openDeleteModal(orders.findIndex(o => o.account === 'BALTCOM')); 1`);
+await sleep(300);
+await shot('delete-order', '#delete-modal .modal');
+await ev(`closeDeleteModal(); 1`);
+// A reversed trade, so the list shows both marks
+const metalsTrades = await rest('GET', 'api/admin/trades?marketId=2');
+const reversed = metalsTrades[metalsTrades.length - 1];   // the day's first trade
+await rest('POST', `api/admin/trades/${reversed.tradeNo}/reverse`, { instrumentId: reversed.instrumentId, tradeTime: reversed.tradeTime });
+await navigate('admin/market-trades.html');
+await sleep(500);
+await ev(`const s = document.getElementById('market');
+          s.value = [...s.options].find(o => o.textContent.startsWith('Metals')).value; loadTrades(); 1`);
+await sleep(1000);
+await shot('market-trades', CONTENT);
+await ev(`openReverseModal(trades.findIndex(t => !t.reversalOf && !t.reversedBy)); 1`);
+await sleep(300);
+await shot('reverse-trade', '#reverse-modal .modal');
+await ev(`closeReverseModal(); 1`);
 
 // ── Bulletin markets ───────────────────────────────────────────────────
 await navigate('admin/bulletin-markets.html');

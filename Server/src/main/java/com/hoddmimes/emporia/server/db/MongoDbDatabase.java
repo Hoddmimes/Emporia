@@ -13,6 +13,7 @@ import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.ReturnDocument;
@@ -61,7 +62,8 @@ public class MongoDbDatabase implements Database {
      * tradeTime, then _id, which serves both the day range on tradeTime and the latest first sort
      * (tradeTime, _id descending, the index read backwards) in findTrades; and buyAccount and sellAccount,
      * each followed by tradeTime and _id, for a firm's trades (listTradesByFirm: one index per side of
-     * its $or, with the same day range and sort).
+     * its $or, with the same day range and sort); and reversalOf, sparse (only the reversal trades have one),
+     * for listReversalTrades.
      */
     private void createIndexes() {
         var tTrades = mDatabase.getCollection("Trades");
@@ -69,6 +71,7 @@ public class MongoDbDatabase implements Database {
                 tTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")));
+        cLog.info("Trades index {}", tTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
         cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("time", "_id")));
     }
 
@@ -545,12 +548,14 @@ public class MongoDbDatabase implements Database {
     /**
      * The Trades document of a trade. Ids are stored as in the REST API (trade and order ids as hex
      * strings, the instrumentId as a string like in Instruments), prices and quantities as scaled longs and
-     * the trade time as "yyyy-MM-dd HH:mm:ss.SSS" (server local time).
+     * the trade time as "yyyy-MM-dd HH:mm:ss.SSS" (server local time); buyUser/sellUser are the traders
+     * (null if unknown, absent in documents stored before them) and reversalOf the tradeNo a reversal trade
+     * reverses.
      */
     static Document toTradeDocument(InternalTrade pTrade) {
         Order tBuy  = pTrade.getBuyOrder();
         Order tSell = pTrade.getSellOrder();
-        return new Document("tradeNo",       Long.toHexString(pTrade.getTradeNo()))
+        Document tDoc = new Document("tradeNo",       Long.toHexString(pTrade.getTradeNo()))
                 .append("marketId",      (int) (pTrade.getInstrumentId() >>> 32))
                 .append("instrumentId",  String.valueOf(pTrade.getInstrumentId()))
                 .append("price",         pTrade.getPrice())
@@ -563,7 +568,12 @@ public class MongoDbDatabase implements Database {
                 .append("sellOrderId",   Long.toHexString(tSell.getOrderId()))
                 .append("sellAccount",   tSell.getAccount())
                 .append("sellUserRef",   tSell.getUserRef())
-                .append("sellClientAccount", tSell.getClientAccount());
+                .append("sellClientAccount", tSell.getClientAccount())
+                .append("buyUser",       tBuy.getUser())
+                .append("sellUser",      tSell.getUser());
+        // Only reversal trades have the field (sparse index)
+        if (pTrade.isReversal()) tDoc.append("reversalOf", pTrade.getReversalOf());
+        return tDoc;
     }
 
     /**
@@ -582,10 +592,13 @@ public class MongoDbDatabase implements Database {
                 pDoc.getString("buyAccount"),
                 pDoc.getString("buyUserRef"),
                 clientAccountOf(pDoc, "buyClientAccount"),
+                pDoc.getString("buyUser"),
                 Long.parseUnsignedLong(pDoc.getString("sellOrderId"), 16),
                 pDoc.getString("sellAccount"),
                 pDoc.getString("sellUserRef"),
-                clientAccountOf(pDoc, "sellClientAccount"));
+                clientAccountOf(pDoc, "sellClientAccount"),
+                pDoc.getString("sellUser"),
+                pDoc.getString("reversalOf"));
     }
 
     /** A client account field; the default account in documents stored before client accounts. */
@@ -606,9 +619,15 @@ public class MongoDbDatabase implements Database {
 
     @Override
     public long lastTradePrice(long pInstrumentId) {
-        Document tDoc = collection("Trades").find(new Document("instrumentId", String.valueOf(pInstrumentId)))
+        // reversalOf null also matches documents without the field (all trades stored before reversals)
+        Document tDoc = collection("Trades").find(new Document("instrumentId", String.valueOf(pInstrumentId)).append("reversalOf", null))
                 .sort(new Document("tradeTime", -1).append("_id", -1)).first();
         return (tDoc != null) ? tDoc.getLong("price") : 0L;
+    }
+
+    @Override
+    public List<InternalTrade> listReversalTrades() {
+        return findTrades("Trades", new Document("reversalOf", new Document("$type", "string")), MongoDbDatabase::fromTradeDocument);
     }
 
     /** The firm on either side, on the day (all days if pDate is null). */

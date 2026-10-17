@@ -85,6 +85,7 @@ ol.marks li { margin: 6px 0; }
     <div class="group">Markets</div>
     <a href="#markets">Markets</a>
     <a href="#hours">Trading hours and states</a>
+    <a href="#supervision">Market supervision</a>
     <a href="#bulletin-markets">Bulletin markets</a>
     <div class="group">Instruments</div>
     <a href="#instruments">Instruments</a>
@@ -139,7 +140,8 @@ activity, like a trading session.</p>
 </figure>
 <ol class="marks">
     <li><span class="mark">1</span><b>The menu</b>. Each kind of data has a <b>List</b> page and a <b>Create</b>
-        page. On a list page, click a row to open its detail page, where you change or delete it.</li>
+        page. On a list page, click a row to open its detail page, where you change or delete it. The
+        <b>Market</b> section is for watching the trading (<a href="#supervision">Market supervision</a>).</li>
     <li><span class="mark">2</span><b>The signed-in admin</b> and <b>Logout</b>.</li>
     <li><span class="mark">3</span><b>Admin Guide</b> opens this guide in a new tab.</li>
 </ol>
@@ -292,6 +294,64 @@ OPEN at Open and CLOSED at Close. On Saturdays and Sundays the markets stay clos
 (<a href="#instruments">Instruments</a>).</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="supervision">Market supervision: orders and trades</h2>
+<p>The <b>Market</b> section of the menu shows the trading in the order book markets (not the bulletin
+markets): the orders and the trades of all firms, each with its firm and trader (the user who entered the
+order). From there the market supervision can delete an order and reverse a trade.</p>
+
+<h3>Orders</h3>
+<p><b>Orders</b> lists the resting orders. Choose a market, or <b>All markets</b>, under <b>Market</b>: the list
+stays empty until you do. <b>Firm</b> shows one firm's orders, <b>All firms</b> everybody's. The list is a
+snapshot of the moment; <b>Refresh</b> reads it again.</p>
+<figure>
+    <a href="guide/market-orders.png" target="_blank" title="Open full size"><img src="guide/market-orders.png" alt="The resting orders of all firms in the Metals market"></a>
+    <figcaption>Orders: the resting orders of all firms in Metals.</figcaption>
+</figure>
+<table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td>Time</td><td>When the order was entered (hold the mouse over it for the date).</td></tr>
+    <tr><td>Side, Price, Quantity</td><td>The quantity still open, after any part already traded.</td></tr>
+    <tr><td>Firm, Trader</td><td>The firm that owns the order and the user who entered it.</td></tr>
+    <tr><td>Account</td><td>The firm's own client account for the order (<code>omni</code> if none was given).</td></tr>
+    <tr><td>User Ref</td><td>The firm's own reference, if it gave one.</td></tr>
+</table>
+<p><b>Double click an order to delete it.</b> After the confirmation the order is removed, in any trading
+state, also when the market is CLOSED and the firm can't delete it itself. The firm sees the order
+disappear from its orders.</p>
+<figure class="dialog">
+    <a href="guide/delete-order.png" target="_blank" title="Open full size"><img src="guide/delete-order.png" alt="The confirmation before deleting an order"></a>
+    <figcaption>Deleting an order as market supervision.</figcaption>
+</figure>
+
+<h3>Trades</h3>
+<p><b>Trades</b> lists the trades of one day, latest first: today's, or another day's chosen under
+<b>Date</b>. Choose a <b>Market</b> or all of them, and a <b>Firm</b> to see only the trades where that firm
+bought or sold. Each trade shows the buyer and the seller with their trader and client account.</p>
+<figure>
+    <a href="guide/market-trades.png" target="_blank" title="Open full size"><img src="guide/market-trades.png" alt="Today's trades in the Metals market, one of them reversed"></a>
+    <figcaption>Trades: today's trades in Metals; the first one of the day has been reversed.</figcaption>
+</figure>
+<p><b>Double click a trade to reverse it</b>, for example after a trade made by mistake. The reversal is a new
+trade at the same price and quantity in which the roles are swapped: the seller buys and the buyer sells,
+each with the client account of the original trade, so both firms' positions are back where they were
+before the trade. Both firms are told at once, as for any trade (the popup says <i>Trade reversal</i>), and the
+reversal is listed among their trades as <i>reversal of</i> the original trade number.</p>
+<figure class="dialog">
+    <a href="guide/reverse-trade.png" target="_blank" title="Open full size"><img src="guide/reverse-trade.png" alt="The confirmation before reversing a trade"></a>
+    <figcaption>Reversing a trade.</figcaption>
+</figure>
+<ul>
+    <li>A reversal is <b>not a market trade</b>: the market's open, high, last price and volume, and the
+        public list of the day's trades, stay as they were.</li>
+    <li>A trade can be reversed <b>once</b>. The <b>Reversal</b> column shows <i>Reversed by</i> on the
+        original and <i>Reversal of</i> on the reversal; a reversal can't be reversed itself.</li>
+    <li>A trade of an <b>earlier day</b> can be reversed too. The reversal is made now and is listed under
+        today's date.</li>
+</ul>
+<div class="warn">A reversal can't be undone. If a trade was reversed by mistake, the firms have to trade
+again.</div>
+
+<!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="bulletin-markets">Bulletin markets</h2>
 <p>In a bulletin market, firms post bulletins about what they want to buy or sell, and other firms make
 offers on them. Nothing is matched automatically. The instrument of a bulletin is free text, so instead
@@ -410,6 +470,8 @@ entry with OK or ERROR and the reason.</p>
         and delete its instruments first. A market number may be used again by a new market, which is why
         it must be empty.</td></tr>
     <tr><td>Bulletin market</td><td>Refused while it has bulletins. Use <b>Delete All Bulletins</b> first.</td></tr>
+    <tr><td>Order</td><td>Market &rsaquo; Orders: any firm's order, in any trading state
+        (<a href="#supervision">Market supervision</a>).</td></tr>
     <tr><td>Instrument</td><td>Deleted at once, even if it has orders. Delete its orders first: suspend it,
         and ask the firms to delete their orders, or use <b>Delete All Orders</b> on its market.</td></tr>
 </table>

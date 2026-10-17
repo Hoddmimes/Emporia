@@ -91,7 +91,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
      * oldest first, into the statistics (open, high, last, volume) of their instruments' order books
      * (creating the books), then publishes a PriceUpdate per instrument so the bdx snapshot and
      * getPrices show the day's prices before the first new order. The order books themselves are
-     * empty, since orders are not stored.
+     * empty, since orders are not stored. Reversal trades are not replayed: they are no market prices.
      */
     void restoreTrades(List<InternalTrade> pTrades) {
         mTrades.addAll(pTrades);
@@ -99,6 +99,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tOldestFirst.sort(Comparator.comparingLong(InternalTrade::getTradeTime));
         Set<Orderbook> tBooks = new LinkedHashSet<>();
         for (InternalTrade tTrade : tOldestFirst) {
+            if (tTrade.isReversal()) continue;
             Orderbook tBook = getOrCreateOrderbook(tTrade.getInstrumentId());
             if (tBook == null) continue;   // the instrument no longer exists
             synchronized (tBook) {
@@ -201,6 +202,66 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         }
         cLog.info("Admin deleted all orders in market {}: {} order(s)", pMarketId, tDeleted);
         return tDeleted;
+    }
+
+    /**
+     * Market supervision (admin): deletes any firm's resting order, in any market state (no authorization
+     * or trading status checks). The removal is published like a normal delete, so the firm gets its
+     * OwnOrder REMOVED.
+     */
+    public OrderResponse supervisionDeleteOrder(String pOrderId) {
+        long      tOrderId = parseOrderId(pOrderId);
+        Orderbook tBook    = orderbookOf(tOrderId);
+        if (tBook == null) return OrderResponse.error("Order not found: " + pOrderId);
+        synchronized (tBook) {
+            if (tBook.getOrder(tOrderId) == null) return OrderResponse.error("Order not found: " + pOrderId);
+            return tBook.deleteOrder(tOrderId);
+        }
+    }
+
+    /**
+     * Market supervision (admin): the resting orders of all firms, or of one firm (pFirm null: all), in one
+     * market or (pMarketId 0) all markets, sorted by market, instrument, side and price priority.
+     */
+    public JsonArray getAllOrders(int pMarketId, String pFirm) {
+        List<Orderbook> tBooks = new ArrayList<>();
+        for (Orderbook tBook : mOrderbooks.values()) {
+            if (pMarketId == 0 || marketIdOf(tBook.getInstrumentId()) == pMarketId) tBooks.add(tBook);
+        }
+        tBooks.sort(Comparator.comparingLong(Orderbook::getInstrumentId));
+        JsonArray tResult = new JsonArray();
+        for (Orderbook tBook : tBooks) {
+            synchronized (tBook) {
+                List<Order> tOrders = new ArrayList<>(tBook.getBuySide().getOrders());
+                tOrders.addAll(tBook.getSellSide().getOrders());
+                for (Order tOrder : tOrders) {
+                    if (pFirm == null || pFirm.equals(tOrder.getAccount())) tResult.add(orderToJson(tOrder));
+                }
+            }
+        }
+        return tResult;
+    }
+
+    /**
+     * Market supervision (admin): makes the trade reversing pOriginal (InternalTrade.reversal: same
+     * instrument, price and quantity, buyer and seller swapped), stores it durably and sends each firm its
+     * OwnTrade (with reversalOf), then returns it. It does not touch the order book: no public Trade, no
+     * change of the open/high/last/volume statistics. The caller checks that pOriginal may be reversed.
+     */
+    public InternalTrade reverseTrade(InternalTrade pOriginal) {
+        InternalTrade tReversal = InternalTrade.reversal(pOriginal);
+        int tMarketId = marketIdOf(tReversal.getInstrumentId());
+        long tWaitFor;
+        synchronized (mTrades) {   // the trade and its messages queued together, in this order
+            mTrades.add(tReversal);
+            mPersister.trade(tReversal);
+            publishOwnTrade(tReversal, tMarketId, Order.Side.BUY);
+            publishOwnTrade(tReversal, tMarketId, Order.Side.SELL);
+            tWaitFor = mPersister.lastQueued();
+        }
+        mPersister.awaitReleased(tWaitFor);
+        cLog.info("Trade {} reversed by trade {}", tReversal.getReversalOf(), tReversal);
+        return tReversal;
     }
 
     /** The number of resting orders in the market's order books. */
@@ -308,6 +369,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     public JsonArray getPublicTrades(int pMarketId, long pInstrumentId) {
         JsonArray tResult = new JsonArray();
         for (InternalTrade tTrade : todaysTrades()) {
+            if (tTrade.isReversal()) continue;   // no market trade
             if (pInstrumentId != 0 && tTrade.getInstrumentId() != pInstrumentId) continue;
             if (marketIdOf(tTrade.getInstrumentId()) != pMarketId) continue;
             JsonObject tJson = instrumentJson(tTrade.getInstrumentId());
@@ -506,10 +568,10 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
                        .put("quantity", unscale(pOrder.getQuantity()));   // remaining; 0 when removed fully filled
     }
 
-    /** The private OwnTrade for one side of a trade, to the firm of that side's order. */
+    /** The private OwnTrade for one side of a trade, to the firm of that side's order (a reversal's has reversalOf). */
     private void publishOwnTrade(InternalTrade pTrade, int pMarketId, Order.Side pSide) {
         Order tOrder = (pSide == Order.Side.BUY) ? pTrade.getBuyOrder() : pTrade.getSellOrder();
-        mPersister.publish(BdxMessage.forFirm(BdxMessage.OWN_TRADE, pMarketId, pTrade.getInstrumentId(), tOrder.getAccount())
+        BdxMessage tMessage = BdxMessage.forFirm(BdxMessage.OWN_TRADE, pMarketId, pTrade.getInstrumentId(), tOrder.getAccount())
                 .put("side",      pSide.name())
                 .put("price",     unscale(pTrade.getPrice()))
                 .put("quantity",  unscale(pTrade.getQuantity()))
@@ -517,7 +579,9 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
                 .put("tradeTime", pTrade.getTradeTime())
                 .put("orderId",   Long.toHexString(tOrder.getOrderId()))
                 .put("userRef",   tOrder.getUserRef())
-                .put("clientAccount", tOrder.getClientAccount()));
+                .put("clientAccount", tOrder.getClientAccount());
+        if (pTrade.isReversal()) tMessage.put("reversalOf", pTrade.getReversalOf());   // a market supervision reversal
+        mPersister.publish(tMessage);
     }
 
     private int marketIdOf(long pInstrumentId) {
@@ -635,6 +699,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tJson.addProperty("orderTime", pOrder.getCreationTime());
         if (pOrder.getUserRef() != null) tJson.addProperty("userRef", pOrder.getUserRef());
         tJson.addProperty("clientAccount", pOrder.getClientAccount());
+        tJson.addProperty("user", pOrder.getUser());
         return tJson;
     }
 
@@ -650,6 +715,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         tJson.addProperty("account",   tFirmOrder.getAccount());
         if (tFirmOrder.getUserRef() != null) tJson.addProperty("userRef", tFirmOrder.getUserRef());
         tJson.addProperty("clientAccount", tFirmOrder.getClientAccount());
+        tJson.addProperty("user", tFirmOrder.getUser());
+        if (pTrade.isReversal()) tJson.addProperty("reversalOf", pTrade.getReversalOf());
         return tJson;
     }
 }

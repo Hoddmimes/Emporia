@@ -78,7 +78,8 @@ public class SqliteDatabase implements Database {
         CREATE TABLE IF NOT EXISTS Trades (seq INTEGER PRIMARY KEY AUTOINCREMENT, tradeNo TEXT,
             marketId INTEGER, instrumentId TEXT, price INTEGER, quantity INTEGER, tradeTime TEXT,
             buyOrderId TEXT, buyAccount TEXT, buyUserRef TEXT, buyClientAccount TEXT,
-            sellOrderId TEXT, sellAccount TEXT, sellUserRef TEXT, sellClientAccount TEXT)""",
+            sellOrderId TEXT, sellAccount TEXT, sellUserRef TEXT, sellClientAccount TEXT,
+            buyUser TEXT, sellUser TEXT, reversalOf TEXT)""",
         "CREATE INDEX IF NOT EXISTS Trades_tradeTime ON Trades (tradeTime, seq)",
         "CREATE INDEX IF NOT EXISTS Trades_buyAccount ON Trades (buyAccount, tradeTime, seq)",
         "CREATE INDEX IF NOT EXISTS Trades_sellAccount ON Trades (sellAccount, tradeTime, seq)",
@@ -97,6 +98,22 @@ public class SqliteDatabase implements Database {
         "CREATE INDEX IF NOT EXISTS Chat_time ON Chat (time, seq)",
     };
 
+    /**
+     * Columns added to a table after its first version, as table and column definition: added at startup to
+     * the tables of an older database file (CREATE TABLE IF NOT EXISTS leaves an existing table as it is).
+     * A new column is added both here and in its CREATE TABLE.
+     */
+    private static final String[][] ADDED_COLUMNS = {
+        { "Trades", "buyUser TEXT" },
+        { "Trades", "sellUser TEXT" },
+        { "Trades", "reversalOf TEXT" },
+    };
+
+    /** Indexes on added columns, created after the columns. */
+    private static final String[] ADDED_INDEXES = {
+        "CREATE INDEX IF NOT EXISTS Trades_reversalOf ON Trades (reversalOf) WHERE reversalOf IS NOT NULL",
+    };
+
     private final Connection mConnection;
 
     public SqliteDatabase(JsonObject pConfig) {
@@ -109,11 +126,28 @@ public class SqliteDatabase implements Database {
                 s.execute("PRAGMA synchronous = FULL");
                 s.execute("PRAGMA busy_timeout = 10000");
                 for (String tSql : SCHEMA) s.execute(tSql);
+                addMissingColumns(s);
+                for (String tSql : ADDED_INDEXES) s.execute(tSql);
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Cannot open the SQLite database " + tFile + ": " + e.getMessage(), e);
         }
         cLog.info("SQLite database open");
+    }
+
+    /** Adds the ADDED_COLUMNS a table of an older database file does not have yet. */
+    private static void addMissingColumns(Statement pStmt) throws SQLException {
+        for (String[] tAdded : ADDED_COLUMNS) {
+            String tColumn = tAdded[1].split(" ")[0];
+            boolean tExists = false;
+            try (ResultSet rs = pStmt.executeQuery("PRAGMA table_info(" + tAdded[0] + ")")) {
+                while (rs.next()) if (tColumn.equals(rs.getString("name"))) tExists = true;
+            }
+            if (!tExists) {
+                pStmt.execute("ALTER TABLE " + tAdded[0] + " ADD COLUMN " + tAdded[1]);
+                cLog.info("SQLite database: column {}.{} added", tAdded[0], tColumn);
+            }
+        }
     }
 
     @Override
@@ -591,8 +625,8 @@ public class SqliteDatabase implements Database {
             try (PreparedStatement tStmt = mConnection.prepareStatement("""
                     INSERT INTO Trades (tradeNo, marketId, instrumentId, price, quantity, tradeTime,
                         buyOrderId, buyAccount, buyUserRef, buyClientAccount,
-                        sellOrderId, sellAccount, sellUserRef, sellClientAccount)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")) {
+                        sellOrderId, sellAccount, sellUserRef, sellClientAccount, buyUser, sellUser, reversalOf)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""")) {
                 for (InternalTrade t : pTrades) {
                     Order tBuy  = t.getBuyOrder();
                     Order tSell = t.getSellOrder();
@@ -600,7 +634,8 @@ public class SqliteDatabase implements Database {
                             String.valueOf(t.getInstrumentId()), t.getPrice(), t.getQuantity(),
                             Database.formatTradeTime(t.getTradeTime()),
                             Long.toHexString(tBuy.getOrderId()),  tBuy.getAccount(),  tBuy.getUserRef(),  tBuy.getClientAccount(),
-                            Long.toHexString(tSell.getOrderId()), tSell.getAccount(), tSell.getUserRef(), tSell.getClientAccount());
+                            Long.toHexString(tSell.getOrderId()), tSell.getAccount(), tSell.getUserRef(), tSell.getClientAccount(),
+                            tBuy.getUser(), tSell.getUser(), t.getReversalOf());
                     tStmt.addBatch();
                 }
                 tStmt.executeBatch();
@@ -617,9 +652,10 @@ public class SqliteDatabase implements Database {
                 rs.getLong("price"),
                 rs.getLong("quantity"),
                 Long.parseUnsignedLong(rs.getString("buyOrderId"), 16),
-                rs.getString("buyAccount"), rs.getString("buyUserRef"), rs.getString("buyClientAccount"),
+                rs.getString("buyAccount"), rs.getString("buyUserRef"), rs.getString("buyClientAccount"), rs.getString("buyUser"),
                 Long.parseUnsignedLong(rs.getString("sellOrderId"), 16),
-                rs.getString("sellAccount"), rs.getString("sellUserRef"), rs.getString("sellClientAccount"));
+                rs.getString("sellAccount"), rs.getString("sellUserRef"), rs.getString("sellClientAccount"), rs.getString("sellUser"),
+                rs.getString("reversalOf"));
     }
 
     @Override
@@ -648,9 +684,14 @@ public class SqliteDatabase implements Database {
 
     @Override
     public long lastTradePrice(long pInstrumentId) {
-        Long tPrice = queryOne("SELECT price FROM Trades WHERE instrumentId = ? ORDER BY tradeTime DESC, seq DESC LIMIT 1",
+        Long tPrice = queryOne("SELECT price FROM Trades WHERE instrumentId = ? AND reversalOf IS NULL ORDER BY tradeTime DESC, seq DESC LIMIT 1",
                 rs -> rs.getLong(1), String.valueOf(pInstrumentId));
         return (tPrice != null) ? tPrice : 0L;
+    }
+
+    @Override
+    public List<InternalTrade> listReversalTrades() {
+        return query("SELECT * FROM Trades WHERE reversalOf IS NOT NULL ORDER BY tradeTime DESC, seq DESC", SqliteDatabase::toTrade);
     }
 
     // ── Bulletin trades ──────────────────────────────────────────────────

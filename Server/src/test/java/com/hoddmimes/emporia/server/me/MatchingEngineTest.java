@@ -398,6 +398,83 @@ class MatchingEngineTest {
     }
 
     @Test
+    void supervisionSeesAndDeletesEveryFirmsOrders() {
+        mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 5 * S, "A", "a1", "acc", "anna"));
+        add(CONT, Order.Side.SELL, 11.00, 3, "B");
+        add(AUCTION, Order.Side.BUY, 9.00, 2, "A");
+
+        assertEquals(3, mEngine.getAllOrders(0, null).size());
+        assertEquals(2, mEngine.getAllOrders(1, null).size());
+        JsonArray tA = mEngine.getAllOrders(1, "A");
+        assertEquals(1, tA.size());
+        JsonObject tOrder = tA.get(0).getAsJsonObject();
+        assertEquals("anna", tOrder.get("user").getAsString());
+        assertEquals("acc", tOrder.get("clientAccount").getAsString());
+        assertEquals("Cont", tOrder.get("marketName").getAsString());
+
+        // In any market state, of any firm
+        mCache.putMarket(market(1, "Cont", "CONTINUOUS", "CLOSED"));
+        assertTrue(mEngine.supervisionDeleteOrder(tOrder.get("orderId").getAsString()).success());
+        assertFalse(mEngine.supervisionDeleteOrder(tOrder.get("orderId").getAsString()).success());
+        assertFalse(mEngine.supervisionDeleteOrder("zz").success());
+        assertEquals(0, mEngine.getAllOrders(1, "A").size());
+        assertEquals(1, mEngine.getAllOrders(1, "B").size());
+    }
+
+    @Test
+    void tradeCarriesTheTraders() {
+        mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.SELL, 10 * S, 5 * S, "B", null, null, "erik"));
+        mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 5 * S, "A", null, null, "anna"));
+        JsonObject tTrade = mEngine.getTradesByFirm("A", 0).get(0).getAsJsonObject();
+        assertEquals("anna", tTrade.get("user").getAsString());
+        assertFalse(tTrade.has("reversalOf"));
+    }
+
+    @Test
+    void modifiedOrderKeepsItsTrader() {
+        String tOrderId = mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 5 * S, "A", null, null, "anna")).orderId();
+        String tNewId = mEngine.modifyOrder("A", tOrderId, 1050 * S / 100, 6 * S, null).orderId();   // replaced
+        assertNotEquals(tOrderId, tNewId);
+        assertEquals("anna", mEngine.getAllOrders(1, "A").get(0).getAsJsonObject().get("user").getAsString());
+    }
+
+    @Test
+    void reversalSwapsBuyerAndSellerWithoutTouchingThePrices() {
+        mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.SELL, 10 * S, 5 * S, "B", "s1", "bAcc", "erik"));
+        mEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 5 * S, "A", "b1", "aAcc", "anna"));
+        add(CONT, Order.Side.SELL, 11.00, 1, "B");
+        add(CONT, Order.Side.BUY, 11.00, 1, "A");   // last 11, volume 6
+        InternalTrade tOriginal = new InternalTrade(7, 1000, CONT, 10 * S, 5 * S,
+                0xa1, "A", "b1", "aAcc", "anna", 0xb1, "B", "s1", "bAcc", "erik", null);
+
+        InternalTrade tReversal = mEngine.reverseTrade(tOriginal);
+        assertEquals("7", tReversal.getReversalOf());
+        assertNotEquals(7, tReversal.getTradeNo());
+        assertEquals(10 * S, tReversal.getPrice());
+        assertEquals(5 * S, tReversal.getQuantity());
+        assertEquals("B", tReversal.getBuyOrder().getAccount());      // the seller buys back
+        assertEquals("bAcc", tReversal.getBuyOrder().getClientAccount());
+        assertEquals("erik", tReversal.getBuyOrder().getUser());
+        assertEquals("A", tReversal.getSellOrder().getAccount());
+        assertEquals("aAcc", tReversal.getSellOrder().getClientAccount());
+
+        JsonObject tPrices = mEngine.getPrices(1).get(0).getAsJsonObject();
+        assertEquals(11 * S, tPrices.get("last").getAsLong());
+        assertEquals(6 * S, tPrices.get("volume").getAsLong());
+        assertEquals(2, mEngine.getPublicTrades(1, 0).size());       // no market trade
+        JsonArray tTradesOfA = mEngine.getTradesByFirm("A", 0);    // but one of the firms'
+        assertEquals(3, tTradesOfA.size());
+        JsonObject tSide = tTradesOfA.get(2).getAsJsonObject();
+        assertEquals("SELL", tSide.get("side").getAsString());
+        assertEquals("7", tSide.get("reversalOf").getAsString());
+
+        // Reloaded after a restart: not replayed into the statistics
+        MatchingEngine tRestarted = new MatchingEngine(mCache, null, new BdxDistributor(mCache));
+        tRestarted.restoreTrades(List.of(tReversal));
+        assertEquals(0, tRestarted.getPrices(1).get(0).getAsJsonObject().get("volume").getAsLong());
+    }
+
+    @Test
     void reloadedTradesRestoreTheDaysPrices() {
         // As reloaded from the database: latest first
         InternalTrade tLater   = new InternalTrade(2, 2000, CONT, 1050 * S / 100, 3 * S, 11, "A", null, null, 12, "B", null, null);

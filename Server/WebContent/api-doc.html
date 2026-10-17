@@ -370,9 +370,10 @@ it has traded completely.</p>
 <pre><code>{ "orders": [
   { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
     "orderId": "6ace393800000001", "side": "BUY", "price": 10000000, "quantity": 300000,
-    "account": "ThinAir", "orderTime": 1791878914356, "userRef": "b-17", "clientAccount": "client-7" } ] }</code></pre>
-<p><code>quantity</code> is the remaining quantity; <code>account</code> is your firm. <code>userRef</code> is
-missing if none was given.</p>
+    "account": "ThinAir", "orderTime": 1791878914356, "userRef": "b-17", "clientAccount": "client-7",
+    "user": "anna" } ] }</code></pre>
+<p><code>quantity</code> is the remaining quantity; <code>account</code> is your firm and <code>user</code> the
+user who entered the order. <code>userRef</code> is missing if none was given.</p>
 </div>
 
 <h2 id="trades">Own trades</h2>
@@ -383,8 +384,9 @@ market and/or instrument. 400 for an invalid date. The bulletin trades of the sa
 <code>bulletinTrades</code>.</p>
 <pre><code>{ "date": "2026-10-12", "trades": [
   { "marketId": 1, "marketName": "Equities", "instrumentId": 4294967297, "instrumentName": "ABB",
-    "side": "BUY", "price": 10000000, "quantity": 200000, "tradeNo": "1", "tradeTime": 1791899978208,
-    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17", "clientAccount": "client-7" } ],
+    "side": "BUY", "price": 10000000, "quantity": 200000, "tradeNo": "6ace393800000004", "tradeTime": 1791899978208,
+    "orderId": "6ace393800000001", "account": "ThinAir", "userRef": "b-17", "clientAccount": "client-7",
+    "user": "anna" } ],
   "bulletinTrades": [
   { "tradeNo": "6acf8b8700000001", "bulletinId": "6acf8b8700000001", "marketId": 2, "marketName": "OTC",
     "instrument": "Brent Jan", "side": "SELL", "price": 8000000, "quantity": 400000,
@@ -395,7 +397,13 @@ listed twice, once per side. A bulletin trade has the bulletin's free text <code
 user of your firm that added the bulletin or made the offer, and <code>ref</code> that bulletin's
 <code>userRef</code> or that offer's <code>offerRef</code> (missing if none was given). A trade's
 <code>clientAccount</code> is that of your firm's order (<code>omni</code> for trades made before client
-accounts existed); a bulletin trade's <code>clientAccount</code> is that of your firm's bulletin or offer.</p>
+accounts existed) and its <code>user</code> the user who entered that order (null for trades made before
+users were stored); a bulletin trade's <code>clientAccount</code> is that of your firm's bulletin or offer.</p>
+<p>A trade with <code>reversalOf</code> is a <b>reversal</b> made by the market supervision: it reverses your
+firm's trade with that <code>tradeNo</code>, at the same price and quantity with the sides swapped and the same
+client account, so the position is back where it was. Its <code>orderId</code> and <code>userRef</code> are
+those of the reversed trade's order. A reversal is no market trade: it is not in the public trades and does
+not change the prices.</p>
 </div>
 
 <h2 id="portfolio">Portfolio</h2>
@@ -641,7 +649,8 @@ has no <code>marketId</code>: its topic is <code>/Chat</code>). Prices and quant
     <tr><td><code>OwnTrade</code></td><td>One of your firm's orders traded (one message per side; both if you
         traded with yourself).</td><td><code>side</code>, <code>price</code>, <code>quantity</code>,
         <code>tradeNo</code>, <code>tradeTime</code>, <code>orderId</code>, <code>userRef</code>,
-        <code>clientAccount</code></td></tr>
+        <code>clientAccount</code>; <code>reversalOf</code> on a reversal made by the market supervision (see
+        <a href="#trades">Own trades</a>)</td></tr>
     <tr><td><code>OwnBulletin</code></td><td>One of your firm's bulletins changes.</td><td>As Bulletin, plus
         <code>user</code>, <code>userRef</code> and <code>clientAccount</code>.</td></tr>
     <tr><td><code>BulletinOffer</code></td><td>An offer on your bulletin (<code>role</code> OWNER), or your own offer

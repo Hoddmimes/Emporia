@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Market Trades</title>
+    <link rel="stylesheet" href="css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Market Trades</h2>
+            </div>
+
+            <div id="message" class="alert alert-hidden"></div>
+
+            <div class="filter-bar">
+                <div class="form-group">
+                    <label for="date">Date</label>
+                    <input type="date" id="date" onchange="loadTrades()">
+                </div>
+                <div class="form-group">
+                    <label for="market">Market</label>
+                    <select id="market" onchange="loadTrades()">
+                        <option value="0">All markets</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="firm">Firm</label>
+                    <select id="firm" onchange="loadTrades()">
+                        <option value="">All firms</option>
+                    </select>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="loadTrades()">Refresh</button>
+            </div>
+
+            <div class="filter-info" id="info"></div>
+
+            <div class="card" style="padding:0; overflow-x:auto;">
+                <table class="data-table compact">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Market</th>
+                            <th>Instrument</th>
+                            <th class="num">Price</th>
+                            <th class="num">Quantity</th>
+                            <th>Buyer</th>
+                            <th>Buy Trader</th>
+                            <th>Buy Account</th>
+                            <th>Seller</th>
+                            <th>Sell Trader</th>
+                            <th>Sell Account</th>
+                            <th>Trade No</th>
+                            <th>Reversal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-body">
+                        <tr class="empty-row"><td colspan="13">Loading&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Reverse trade (market supervision) -->
+    <div id="reverse-modal" class="modal-overlay" style="display:none;">
+        <div class="modal modal-wide">
+            <h3 id="reverse-title">Reverse Trade</h3>
+            <table class="detail-table" id="reverse-details"></table>
+            <p id="reverse-text"></p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" id="reverse-cancel" onclick="closeReverseModal()">Cancel</button>
+                <button class="btn btn-danger" id="reverse-button" onclick="confirmReverse()">Reverse Trade</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
+    <script>
+        cdNav.render('market-trades');
+        cdSession.guard('user-info');
+
+        const SCALE = 100000;
+        let trades = [];
+        let selected = null;
+        let loadSeq = 0;   // only the latest load's reply is shown
+
+        async function init() {
+            document.getElementById('date').value = today();
+            const [markets, firms] = await Promise.all([
+                cdApi.request('../api/admin/markets'),
+                cdApi.request('../api/admin/firms')
+            ]);
+            if (markets.status === 401 || firms.status === 401) { window.location.href = 'login.html'; return; }
+            if (!markets.ok) { showMessage('Failed to load markets: ' + markets.error, true); return; }
+            if (!firms.ok)   { showMessage('Failed to load firms: ' + firms.error, true); return; }
+            const marketSelect = document.getElementById('market');
+            markets.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m =>
+                marketSelect.add(new Option(`${m.name} (${m.type})`, m.id)));
+            const firmSelect = document.getElementById('firm');
+            firms.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(f =>
+                firmSelect.add(new Option(f.name, f.name)));
+            loadTrades();
+        }
+
+        async function loadTrades() {
+            const date     = document.getElementById('date').value || today();
+            const marketId = document.getElementById('market').value;
+            const firm     = document.getElementById('firm').value;
+            const tbody    = document.getElementById('trades-body');
+            const seq = ++loadSeq;
+            const r = await cdApi.request(`../api/admin/trades?date=${date}&marketId=${marketId}` +
+                                          (firm ? `&firm=${encodeURIComponent(firm)}` : ''));
+            if (seq !== loadSeq) return;
+            if (r.status === 401) { window.location.href = 'login.html'; return; }
+            if (!r.ok) {
+                tbody.innerHTML = `<tr class="empty-row"><td colspan="13">Failed to load trades: ${escHtml(r.error)}</td></tr>`;
+                return;
+            }
+            trades = r.data;
+            setInfo(`${trades.length} trade${trades.length === 1 ? '' : 's'} on ${date}, latest first. Double click a trade to reverse it.`);
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="13">No trades.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = trades.map((t, i) =>
+                `<tr class="row-action${t.reversalOf || t.reversedBy ? ' row-muted' : ''}" ondblclick="openReverseModal(${i})">
+                    <td title="${escHtml(dateTime(t.tradeTime))}">${escHtml(time(t.tradeTime))}</td>
+                    <td>${escHtml(t.marketName)}</td>
+                    <td>${escHtml(t.instrumentName)}</td>
+                    <td class="num">${price(t.price)}</td>
+                    <td class="num">${quantity(t.quantity)}</td>
+                    <td class="side-buy">${escHtml(t.buyFirm)}</td>
+                    <td>${escHtml(t.buyUser)}</td>
+                    <td>${escHtml(t.buyClientAccount)}</td>
+                    <td class="side-sell">${escHtml(t.sellFirm)}</td>
+                    <td>${escHtml(t.sellUser)}</td>
+                    <td>${escHtml(t.sellClientAccount)}</td>
+                    <td class="mono">${escHtml(t.tradeNo)}</td>
+                    <td>${reversalText(t)}</td>
+                </tr>`).join('');
+        }
+
+        function reversalText(t) {
+            if (t.reversalOf) return `<span class="badge badge-warning badge-id">Reversal of ${escHtml(t.reversalOf)}</span>`;
+            if (t.reversedBy) return `<span class="badge badge-inactive badge-id">Reversed by ${escHtml(t.reversedBy)}</span>`;
+            return '';
+        }
+
+        function openReverseModal(index) {
+            selected = trades[index];
+            const t = selected;
+            const what = `${quantity(t.quantity)} ${t.instrumentName} @ ${price(t.price)}`;
+            document.getElementById('reverse-details').innerHTML = rows([
+                ['Trade',       `${t.tradeNo}, ${dateTime(t.tradeTime)}`],
+                ['Market',      t.marketName],
+                ['Instrument',  t.instrumentName],
+                ['Price',       price(t.price)],
+                ['Quantity',    quantity(t.quantity)],
+                ['Buyer',       side(t.buyFirm,  t.buyUser,  t.buyClientAccount)],
+                ['Seller',      side(t.sellFirm, t.sellUser, t.sellClientAccount)]
+            ]);
+            const canReverse = !t.reversalOf && !t.reversedBy;
+            const text = document.getElementById('reverse-text');
+            if (t.reversalOf) {
+                text.textContent = `This trade is the reversal of trade ${t.reversalOf}; a reversal can not be reversed.`;
+            } else if (t.reversedBy) {
+                text.textContent = `This trade is already reversed by trade ${t.reversedBy}.`;
+            } else {
+                text.textContent = `Create a reversal trade as market supervision: ${t.sellFirm} buys ${what} ` +
+                    `from ${t.buyFirm}, with the same client accounts, so both firms' positions are restored. ` +
+                    `Both firms are told of the trade; the market's prices and volume are not changed.`;
+            }
+            document.getElementById('reverse-title').textContent = canReverse ? 'Reverse Trade' : 'Trade';
+            document.getElementById('reverse-button').style.display = canReverse ? '' : 'none';
+            document.getElementById('reverse-button').disabled = false;
+            document.getElementById('reverse-cancel').textContent = canReverse ? 'Cancel' : 'Close';
+            document.getElementById('reverse-modal').style.display = 'flex';
+        }
+
+        function closeReverseModal() {
+            document.getElementById('reverse-modal').style.display = 'none';
+            selected = null;
+        }
+
+        async function confirmReverse() {
+            if (!selected) return;
+            const t = selected;
+            document.getElementById('reverse-button').disabled = true;
+            const r = await cdApi.request(`../api/admin/trades/${encodeURIComponent(t.tradeNo)}/reverse`,
+                                          cdApi.json('POST', { instrumentId: t.instrumentId, tradeTime: t.tradeTime }));
+            closeReverseModal();
+            if (r.status === 401) { window.location.href = 'login.html'; return; }
+            if (r.ok) showMessage(`Trade ${t.tradeNo} reversed by trade ${r.data.tradeNo}: ${r.data.buyFirm} bought ` +
+                                  `${quantity(r.data.quantity)} ${t.instrumentName} @ ${price(r.data.price)} from ${r.data.sellFirm}.`, false);
+            else      showMessage('Failed to reverse the trade: ' + r.error, true);
+            loadTrades();
+        }
+
+        // ── Helpers ──────────────────────────────────────────────────────
+
+        function side(firm, user, account) {
+            return firm + (user ? ` / ${user}` : '') + (account ? `, account ${account}` : '');
+        }
+
+        function rows(pairs) {
+            return pairs.map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v == null ? '' : String(v))}</td></tr>`).join('');
+        }
+
+        function showMessage(text, isError) {
+            const el = document.getElementById('message');
+            el.textContent = text;
+            el.className = 'alert ' + (isError ? 'alert-error' : 'alert-success');
+        }
+
+        function setInfo(text) { document.getElementById('info').textContent = text; }
+
+        function today()      { return new Date().toLocaleDateString('sv-SE'); }
+        function price(v)    { return v == null ? '' : (v / SCALE).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 5 }); }
+        function quantity(v) { return v == null ? '' : (v / SCALE).toLocaleString('en-GB', { maximumFractionDigits: 5 }); }
+        function time(ms)     { return new Date(ms).toLocaleTimeString('en-GB'); }
+        function dateTime(ms) { const d = new Date(ms); return d.toLocaleDateString('sv-SE') + ' ' + d.toLocaleTimeString('en-GB'); }
+
+        function escHtml(s) {
+            return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        init();
+    </script>
+</body>
+</html>

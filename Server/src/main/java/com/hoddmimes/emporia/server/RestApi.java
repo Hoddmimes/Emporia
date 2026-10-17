@@ -270,7 +270,8 @@ public class RestApi {
             new AdminMarketEndpoints(mCtx),
             new AdminBulletinMarketEndpoints(mCtx),
             new AdminInstrumentEndpoints(mCtx),
-            new AdminAuthorizationEndpoints(mCtx)
+            new AdminAuthorizationEndpoints(mCtx),
+            new AdminSupervisionEndpoints(mCtx)
         ));
         if (pJettyWebSocket) tEndpoints.add(new BdxEndpoint(mCtx));
         tEndpoints.forEach(e -> e.register(pApp));

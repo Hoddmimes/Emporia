@@ -176,7 +176,8 @@ public interface Database {
 
     /**
      * Stores the trades durably with one write (one fsync for all of them): used by the matching engine's
-     * TradePersister, which batches the trades of many orders into one call.
+     * TradePersister, which batches the trades of many orders into one call. Besides the trade, each side's
+     * order id, firm (account), userRef, client account and user (trader), and reversalOf for a reversal.
      */
     void saveTrades(List<InternalTrade> pTrades);
 
@@ -196,8 +197,17 @@ public interface Database {
      */
     List<InternalTrade> listTradesByFirm(String pFirm, String pDate);
 
-    /** The price of the instrument's latest stored trade, of any firm and day; 0 if it never traded. */
+    /**
+     * The price of the instrument's latest stored trade, of any firm and day, reversal trades not counted
+     * (they are no market prices); 0 if it never traded.
+     */
     long lastTradePrice(long pInstrumentId);
+
+    /**
+     * All stored reversal trades (made by the market supervision, InternalTrade.getReversalOf not null), of
+     * all days, latest first: a trade is reversed if one of them has its tradeNo and instrument.
+     */
+    List<InternalTrade> listReversalTrades();
 
     // ── Bulletin trades ──────────────────────────────────────────────────
 

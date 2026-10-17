@@ -308,6 +308,37 @@ abstract class DatabaseContractTest {
         assertEquals(0, mDb.lastTradePrice((1L << 32) | 3));
     }
 
+    @Test
+    void tradeUsersAndReversals() {
+        long tWheat = (1L << 32) | 1;
+        InternalTrade tOriginal = new InternalTrade(0x10, time("2026-10-16T09:00:00.000"), tWheat, 100 * S, 5 * S,
+                0xa1, "FA", "b-ref", "bc", "anna",
+                0xb1, "FB", null, "omni", "erik", null);
+        mDb.saveTrades(List.of(tOriginal));
+        assertTrue(mDb.listReversalTrades().isEmpty());
+
+        InternalTrade tBack = mDb.listTradesByDate("2026-10-16").get(0);
+        assertEquals("anna", tBack.getBuyOrder().getUser());
+        assertEquals("erik", tBack.getSellOrder().getUser());
+        assertFalse(tBack.isReversal());
+
+        InternalTrade tReversal = new InternalTrade(0x11, time("2026-10-17T10:00:00.000"), tWheat, 100 * S, 5 * S,
+                0xb1, "FB", null, "omni", "erik",
+                0xa1, "FA", "b-ref", "bc", "anna", "10");
+        mDb.saveTrades(List.of(tReversal, trade(0x12, "2026-10-17T09:00:00.000", tWheat, 120, "FC", "FD")));
+
+        List<InternalTrade> tReversals = mDb.listReversalTrades();
+        assertEquals(1, tReversals.size());
+        assertEquals(0x11, tReversals.get(0).getTradeNo());
+        assertEquals("10", tReversals.get(0).getReversalOf());
+        assertEquals("FB", tReversals.get(0).getBuyOrder().getAccount());
+        assertEquals("erik", tReversals.get(0).getBuyOrder().getUser());
+        // The reversal (stored last, at the latest time) is no market price
+        assertEquals(120 * S, mDb.lastTradePrice(tWheat));
+        // ...but it counts in the firms' trades (positions)
+        assertEquals(List.of(0x11L, 0x10L), tradeNos(mDb.listTradesByFirm("FA", null)));
+    }
+
     private static List<Long> tradeNos(List<InternalTrade> pTrades) {
         return pTrades.stream().map(InternalTrade::getTradeNo).toList();
     }

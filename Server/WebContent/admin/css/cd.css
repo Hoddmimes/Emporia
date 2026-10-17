@@ -455,3 +455,38 @@ body {
     font-size: 11px;
     color: var(--text-light);
 }
+
+/* ── Market supervision (market-orders.html, market-trades.html) ── */
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+.filter-bar .form-group { margin-bottom: 0; }
+.filter-bar select,
+.filter-bar input[type=date] {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--text);
+    background: white;
+    min-width: 170px;
+}
+.filter-info { font-size: 13px; color: var(--text-light); margin-bottom: 8px; }
+.data-table.compact th { padding: 8px 10px; }
+.data-table.compact td { padding: 7px 10px; font-size: 13px; white-space: nowrap; }
+.data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table td.mono { font-family: monospace; font-size: 12px; }
+.data-table tr.row-action:hover td { background: var(--bg); cursor: pointer; }
+.data-table tr.row-muted td { color: var(--text-light); }
+.badge.badge-id { text-transform: none; letter-spacing: 0; }
+.side-buy  { color: #1e7e34; font-weight: 600; }
+.side-sell { color: #c0392b; font-weight: 600; }
+.modal.modal-wide { max-width: 560px; }
+.modal .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13px; }
+.modal .detail-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.modal .detail-table td:first-child { color: var(--text-light); width: 38%; }
+.alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }

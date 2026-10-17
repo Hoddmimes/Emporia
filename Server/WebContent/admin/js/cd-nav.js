@@ -7,7 +7,7 @@
  *   <script>cdNav.render('active-item-id');</script>
  *
  * Active item IDs: 'dashboard', 'list-firms', 'create-firm', 'list-users', 'create-user',
- *                  'list-markets', 'create-market',
+ *                  'list-markets', 'create-market', 'market-orders', 'market-trades',
  *                  'list-bulletin-markets', 'create-bulletin-market',
  *                  'list-instruments', 'create-instrument', 'load-instruments',
  *                  'list-authorizations', 'create-authorization', 'settings'
@@ -26,6 +26,9 @@ const cdNav = (() => {
         { type: 'section', label: 'Markets' },
         { type: 'link', id: 'list-markets',      label: 'List Markets',      href: 'markets.html' },
         { type: 'link', id: 'create-market',     label: 'Create Market',     href: 'create-market.html' },
+        { type: 'section', label: 'Market' },
+        { type: 'link', id: 'market-orders',     label: 'Orders',            href: 'market-orders.html' },
+        { type: 'link', id: 'market-trades',     label: 'Trades',            href: 'market-trades.html' },
         { type: 'section', label: 'Bulletin Markets' },
         { type: 'link', id: 'list-bulletin-markets',  label: 'List Bulletin Markets',  href: 'bulletin-markets.html' },
         { type: 'link', id: 'create-bulletin-market', label: 'Create Bulletin Market', href: 'create-bulletin-market.html' },

@@ -63,7 +63,8 @@ public class OrderEndpoints implements RestEndpoint {
             try { tClientAccount = clientAccountOf(tBody); }
             catch (IllegalArgumentException e) { error(ctx, 400, e.getMessage()); return; }
             OrderResponse tRsp = mCtx.matchingEngine.addOrder(new AddOrderRequest(tInstrumentId, tSide,
-                    tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(), tFirm, tUserRef, tClientAccount));
+                    tBody.get("price").getAsLong(), tBody.get("quantity").getAsLong(), tFirm, tUserRef, tClientAccount,
+                    SessionUser.of(ctx).userId()));
             respond(ctx, 201, tRsp);
         });
 

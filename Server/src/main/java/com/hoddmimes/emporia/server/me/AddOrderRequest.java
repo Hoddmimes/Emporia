@@ -7,10 +7,11 @@ import java.math.BigDecimal;
  * {@link MatchingEngine#SCALE}; the account is the firm that owns the order. The optional
  * clientAccount (free text) is the firm's own account for the order, carried on to its trades, so
  * the firm's positions can be kept per client account; an order without one gets
- * {@link #DEFAULT_CLIENT_ACCOUNT}.
+ * {@link #DEFAULT_CLIENT_ACCOUNT}. The user is the trading user (userId) who entered the order, shown to
+ * the market supervision (admin) and carried on to the trades; null if unknown.
  */
 public record AddOrderRequest(long instrumentId, Order.Side side, long price, long quantity,
-                              String account, String userRef, String clientAccount) {
+                              String account, String userRef, String clientAccount, String user) {
 
     /** The client account of an order entered without one (and of trades stored before client accounts). */
     public static final String DEFAULT_CLIENT_ACCOUNT = "omni";
@@ -19,10 +20,16 @@ public record AddOrderRequest(long instrumentId, Order.Side side, long price, lo
         if (clientAccount == null) clientAccount = DEFAULT_CLIENT_ACCOUNT;
     }
 
-    /** An order without a client account: it gets the default one. */
+    /** An order without a user. */
+    public AddOrderRequest(long instrumentId, Order.Side side, long price, long quantity,
+                           String account, String userRef, String clientAccount) {
+        this(instrumentId, side, price, quantity, account, userRef, clientAccount, null);
+    }
+
+    /** An order without a client account (it gets the default one) and without a user. */
     public AddOrderRequest(long instrumentId, Order.Side side, long price, long quantity,
                            String account, String userRef) {
-        this(instrumentId, side, price, quantity, account, userRef, null);
+        this(instrumentId, side, price, quantity, account, userRef, null, null);
     }
 
     /**
@@ -37,6 +44,7 @@ public record AddOrderRequest(long instrumentId, Order.Side side, long price, lo
                 + ", price="    + unscaled(price)
                 + ", quantity=" + unscaled(quantity)
                 + ", account="  + account
+                + ((user != null) ? ", user=" + user : "")
                 + ", userRef="  + userRef
                 + (DEFAULT_CLIENT_ACCOUNT.equals(clientAccount) ? "" : ", clientAccount=" + clientAccount) + "]";
     }

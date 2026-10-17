@@ -25,6 +25,7 @@ public class Order implements Comparable<Order> {
     private long   mOrderId;
     private String mAccount;
     private String mClientAccount;   // the firm's own account for the order (AddOrderRequest.DEFAULT_CLIENT_ACCOUNT if not given)
+    private String mUser;            // the trading user (userId) who entered the order, null if unknown
 
     /** Construct from an incoming order request. */
     public Order(AddOrderRequest pReq) {
@@ -35,6 +36,7 @@ public class Order implements Comparable<Order> {
         mUserRef      = pReq.userRef();
         mAccount      = pReq.account();
         mClientAccount = pReq.clientAccount();
+        mUser         = pReq.user();
         mCreationTime = System.currentTimeMillis();
         mOrderId      = OrderId.get(mSide);
     }
@@ -54,7 +56,7 @@ public class Order implements Comparable<Order> {
 
     /** An order with a known order id, e.g. one side of a trade read back from the database. */
     Order(long pOrderId, long pInstrumentId, long pPrice, long pQuantity, Side pSide,
-          String pAccount, String pUserRef, String pClientAccount, long pCreationTime) {
+          String pAccount, String pUserRef, String pClientAccount, String pUser, long pCreationTime) {
         mOrderId      = pOrderId;
         mInstrumentId = pInstrumentId;
         mPrice        = pPrice;
@@ -63,6 +65,7 @@ public class Order implements Comparable<Order> {
         mAccount      = pAccount;
         mUserRef      = pUserRef;
         mClientAccount = pClientAccount;
+        mUser         = pUser;
         mCreationTime = pCreationTime;
     }
 
@@ -104,6 +107,7 @@ public class Order implements Comparable<Order> {
     public long   getOrderId()      { return mOrderId; }
     public String getAccount()      { return mAccount; }
     public String getClientAccount() { return mClientAccount; }
+    public String getUser()         { return mUser; }
 
     public void setQuantity(long pQuantity) { mQuantity = pQuantity; }
     public void setPrice(long pPrice)       { mPrice = pPrice; }
@@ -115,6 +119,7 @@ public class Order implements Comparable<Order> {
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         return "inst:" + mInstrumentId + " " + mQuantity + "@" + mPrice
                 + " " + mSide + " acc:" + mAccount
+                + " user:" + mUser
                 + " client:" + mClientAccount
                 + " ref:" + mUserRef
                 + " t:" + sdf.format(mCreationTime)

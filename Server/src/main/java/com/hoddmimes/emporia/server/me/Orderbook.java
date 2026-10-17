@@ -249,7 +249,7 @@ public class Orderbook {
         mCallback.orderbookChanged(mInstrumentId);
 
         return addOrder(new AddOrderRequest(mInstrumentId, tExisting.getSide(), tNewPrice, pQuantity,
-                tExisting.getAccount(), tNewUserRef, tExisting.getClientAccount()), pMatch);
+                tExisting.getAccount(), tNewUserRef, tExisting.getClientAccount(), tExisting.getUser()), pMatch);
     }
 
     // ── Delete order ──────────────────────────────────────────────────────

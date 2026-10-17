@@ -464,7 +464,7 @@
                           + '<td>' + fmtVol(t.quantity / SCALE) + '</td>'
                           + '<td>' + fmtPx(t.price / SCALE) + '</td>'
                           + '<td>' + fmtTime(t.tradeTime) + '</td>'
-                          + '<td>' + escapeHtml(t.userRef || '—') + '</td>'
+                          + '<td>' + escapeHtml(t.reversalOf ? 'reversal of ' + t.reversalOf : (t.userRef || '—')) + '</td>'
                           + '<td>' + escapeHtml(t.clientAccount || '—') + '</td>'
                           + '</tr>').join('') + '</tbody>'
                     +   '<tfoot><tr><td colspan="7">' + trades.length + ' trades</td></tr></tfoot>'
@@ -1412,10 +1412,12 @@
             return instrumentNames.get(instrumentId) || String(instrumentId);
         }
 
+        // A reversal trade made by the market supervision has reversalOf, the reversed trade's tradeNo.
         async function showTradeToast(msg) {
             const name = await instrumentName(msg.marketId, msg.instrumentId);
             const m = markets.find(x => x.id === msg.marketId);
-            showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell', title: 'Trade',
+            showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell',
+                        title: msg.reversalOf ? 'Trade reversal (reverses trade ' + msg.reversalOf + ')' : 'Trade',
                         lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' ' + name
                                 + ' @ ' + fmtPx(msg.price),
                                 (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)
@@ -2187,7 +2189,7 @@
                     + '<td>' + fmtVol(qty) + '</td>'
                     + '<td>' + fmtPx(price) + '</td>'
                     + '<td>' + fmtValue(qty * price) + '</td>'
-                    + '<td>' + escapeHtml(t.orderId) + '</td>'
+                    + '<td>' + escapeHtml(t.reversalOf ? 'reversal of ' + t.reversalOf : t.orderId) + '</td>'
                     + '<td>' + escapeHtml(t.userRef || '—') + '</td>'
                     + '<td>' + escapeHtml(t.clientAccount || '—') + '</td>'
                     + '<td>' + escapeHtml(t.tradeNo) + '</td>'
