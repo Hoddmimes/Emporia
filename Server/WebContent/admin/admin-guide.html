@@ -476,7 +476,8 @@ changed, but they can be deleted. Click the name to open the instrument.</p>
     <tr><td>ISIN</td><td>Optional.</td></tr>
     <tr><td>Tick Size</td><td>Required. Prices must be a multiple of it, e.g. <code>0.25</code>.</td></tr>
     <tr><td>Lot Size</td><td>Required. Quantities must be a multiple of it, e.g. <code>10</code>.</td></tr>
-    <tr><td>Currency</td><td>Optional. The currency of the price, a three-letter code such as <code>EUR</code>.</td></tr>
+    <tr><td>Currency</td><td>Optional. The currency of the price, chosen from the ISO 4217 currencies, such as <code>EUR</code>;
+        the most common ones are at the top of the list.</td></tr>
     <tr><td>Unit</td><td>Optional. The unit of the quantity, up to 16 characters, such as <code>t</code>,
         <code>MWh</code> or <code>bbl</code>. Both are shown to the traders with the instrument.</td></tr>
     <tr><td>Expiration Date, Strike Price, Underlying</td><td>Required for FUTURE and OPTION. Option Type (CALL or PUT) is required for OPTION.</td></tr>
@@ -515,7 +516,7 @@ instruments to delete; either may be left out:</p>
 <ul>
     <li><b>ADD</b>: <code>ID</code> is the instrument's name. <code>market</code> is the market's name or
         number. The other fields are those of Create Instrument: <code>instType</code>, <code>tickSize</code>,
-        <code>lotSize</code>, <code>currency</code>, <code>unit</code>, <code>isin</code>, <code>expirationDate</code>, <code>strikePrice</code>,
+        <code>lotSize</code>, <code>currency</code> (an ISO 4217 code), <code>unit</code>, <code>isin</code>, <code>expirationDate</code>, <code>strikePrice</code>,
         <code>underlying</code>, <code>optionType</code>, and <code>tradingStatus</code>
         (SUSPENDED, otherwise the instrument is ACTIVE). Prices and sizes are decimals.</li>
     <li><b>DELETE</b>: <code>ID</code> is the instrument's number, as stored in the database (the market's

@@ -98,8 +98,9 @@
                             <small style="font-weight:normal;color:var(--text-light);display:block;">(of the price)</small>
                         </span>
                         <span class="detail-value">
-                            <input type="text" id="d-currency" class="field-input" maxlength="3" placeholder="e.g. EUR"
-                                   style="text-transform:uppercase;" oninput="checkChanged()">
+                            <select id="d-currency" class="field-input" style="max-width:320px;" onchange="checkChanged()">
+                                <option value="">None</option>
+                            </select>
                         </span>
                     </div>
                     <div class="detail-row">
@@ -172,6 +173,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-currency.js"></script>
     <script>
         cdNav.render('list-instruments');
         cdSession.guard('user-info');
@@ -216,7 +218,7 @@
                 document.getElementById('d-isin').value           !== originalValues.isin            ||
                 document.getElementById('d-tickSize').value       !== originalValues.tickSizeDisplay ||
                 document.getElementById('d-lotSize').value        !== originalValues.lotSizeDisplay  ||
-                document.getElementById('d-currency').value.trim().toUpperCase() !== originalValues.currency ||
+                document.getElementById('d-currency').value !== originalValues.currency ||
                 document.getElementById('d-unit').value.trim()    !== originalValues.unit            ||
                 document.getElementById('d-expirationDate').value !== originalValues.expirationDate  ||
                 document.getElementById('d-strikePrice').value    !== originalValues.strikePriceDisplay ||
@@ -265,7 +267,7 @@
                 const strikeDisplay = String(toDisplay(inst.strikePrice));
                 document.getElementById('d-tickSize').value        = tickDisplay;
                 document.getElementById('d-lotSize').value         = lotDisplay;
-                document.getElementById('d-currency').value        = inst.currency       || '';
+                await cdCurrency.fill(document.getElementById('d-currency'), inst.currency || '');
                 document.getElementById('d-unit').value            = inst.unit           || '';
                 document.getElementById('d-expirationDate').value  = inst.expirationDate || '';
                 document.getElementById('d-strikePrice').value     = strikeDisplay;
@@ -302,7 +304,7 @@
                 isin:           document.getElementById('d-isin').value.trim(),
                 tickSize:       toInternal(document.getElementById('d-tickSize').value),
                 lotSize:        toInternal(document.getElementById('d-lotSize').value),
-                currency:       document.getElementById('d-currency').value.trim().toUpperCase(),
+                currency:       document.getElementById('d-currency').value,
                 unit:           document.getElementById('d-unit').value.trim(),
                 expirationDate: document.getElementById('d-expirationDate').value,
                 strikePrice:    toInternal(document.getElementById('d-strikePrice').value),

@@ -7,7 +7,10 @@ import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
 
+import java.util.Currency;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -21,6 +24,18 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
 
     @Override
     public void register(Javalin app) {
+        // The currencies for the instrument pages' Currency list: [{"code":"EUR","name":"Euro"}, ...]
+        app.get("/api/admin/currencies", ctx -> {
+            JsonArray tArray = new JsonArray();
+            CURRENCIES.forEach((tCode, tName) -> {
+                JsonObject tJson = new JsonObject();
+                tJson.addProperty("code", tCode);
+                tJson.addProperty("name", tName);
+                tArray.add(tJson);
+            });
+            ctx.json(tArray.toString());
+        });
+
         app.get("/api/admin/instruments", ctx -> {
             String tMarketIdStr = ctx.queryParam("marketId");
             if (tMarketIdStr == null || tMarketIdStr.isBlank()) {
@@ -250,8 +265,17 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
         if (tInstrument != null) mCtx.instrumentCache.putInstrument(tInstrument.value());
     }
 
-    /** The price currency: an ISO 4217 code such as EUR (upper-cased), or empty. */
-    private static final Pattern CURRENCY = Pattern.compile("[A-Z]{3}");
+    /**
+     * The currencies an instrument's price may be in: the ISO 4217 codes the JDK knows
+     * (java.util.Currency), with their English names, sorted by code; without XTS (testing) and XXX (no currency).
+     */
+    static final Map<String, String> CURRENCIES = new TreeMap<>();
+    static {
+        for (Currency tCurrency : Currency.getAvailableCurrencies()) {
+            String tCode = tCurrency.getCurrencyCode();
+            if (!tCode.equals("XTS") && !tCode.equals("XXX")) CURRENCIES.put(tCode, tCurrency.getDisplayName(Locale.ENGLISH));
+        }
+    }
     /** The quantity unit, free text such as t, MWh or bbl: 1-16 letters, digits, spaces or . / - % after trimming. */
     private static final Pattern UNIT = Pattern.compile("[\\p{L}\\p{N} ./%-]{1,16}");
 
@@ -264,8 +288,8 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
     }
 
     private static String validateCurrencyUnit(String pCurrency, String pUnit) {
-        if (!pCurrency.isEmpty() && !CURRENCY.matcher(pCurrency).matches())
-            return "currency must be a three-letter code such as EUR";
+        if (!pCurrency.isEmpty() && !CURRENCIES.containsKey(pCurrency))
+            return "currency must be an ISO 4217 currency code such as EUR";
         if (!pUnit.isEmpty() && !UNIT.matcher(pUnit).matches())
             return "unit must be at most 16 letters, digits, spaces or . / - %";
         return null;

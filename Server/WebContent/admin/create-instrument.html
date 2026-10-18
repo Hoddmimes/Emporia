@@ -72,9 +72,12 @@
                     </div>
                     <div class="form-group">
                         <label for="f-currency">Currency
-                            <small style="font-weight:normal;color:var(--text-light);">(of the price, three letters)</small>
+                            <small style="font-weight:normal;color:var(--text-light);">(of the price)</small>
                         </label>
-                        <input type="text" id="f-currency" placeholder="e.g. EUR" maxlength="3" style="text-transform:uppercase;">
+                        <select id="f-currency"
+                                style="width:100%;padding:10px 13px;border:1px solid var(--border);border-radius:4px;font-size:14px;color:var(--text);outline:none;">
+                            <option value="">None</option>
+                        </select>
                     </div>
                     <div class="form-group">
                         <label for="f-unit">Unit
@@ -122,6 +125,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-currency.js"></script>
     <script>
         cdNav.render('create-instrument');
         cdSession.guard('user-info');
@@ -177,7 +181,7 @@
                 isin:           document.getElementById('f-isin').value.trim(),
                 tickSize:       toInternalPrice(document.getElementById('f-tickSize').value),
                 lotSize:        toInternalPrice(document.getElementById('f-lotSize').value),
-                currency:       document.getElementById('f-currency').value.trim().toUpperCase(),
+                currency:       document.getElementById('f-currency').value,
                 unit:           document.getElementById('f-unit').value.trim(),
                 expirationDate: document.getElementById('f-expirationDate').value,
                 strikePrice:    toInternalPrice(document.getElementById('f-strikePrice').value),
@@ -196,6 +200,7 @@
         }
 
         loadMarkets();
+        cdCurrency.fill(document.getElementById('f-currency'), '');
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('f-name').focus();
         });
