@@ -86,6 +86,7 @@ ol.marks li { margin: 6px 0; }
     <a href="#markets">Markets</a>
     <a href="#hours">Trading hours and states</a>
     <a href="#supervision">Market supervision</a>
+    <a href="#audit">Audit log</a>
     <a href="#bulletin-markets">Bulletin markets</a>
     <div class="group">Instruments</div>
     <a href="#instruments">Instruments</a>
@@ -112,7 +113,8 @@ be traded. It manages:</p>
         answer offers, with the instruments allowed in them.</li>
     <li><b>Instruments</b>: what is traded in the order book markets, with tick size and lot size.</li>
     <li><b>Market supervision</b>: all firms' orders, bulletins and trades in one market or all markets, with
-        the firm and trader of each; delete an order or a bulletin, reverse a trade, export the trades.</li>
+        the firm and trader of each; delete an order or a bulletin, reverse a trade, export the trades; and
+        the audit log of every request and trade.</li>
 </ul>
 <p>Every change applies at once: a new authorization, market or instrument shows in the traders' screens
 without a restart, unless this guide says otherwise.</p>
@@ -378,6 +380,43 @@ reversal is listed among their trades as <i>reversal of</i> the original trade n
 </ul>
 <div class="warn">A reversal can't be undone. If a trade was reversed by mistake, the firms have to trade
 again.</div>
+
+<h3 id="audit">Audit</h3>
+<p>The server keeps an <b>audit log</b>: every request made to it, by the trading screens, by trading programs
+and by this admin interface, with its answer; every trade and bulletin trade with both sides' firm and trader;
+and each start and stop of the server. Each message has the time it was made, to the millisecond, and the
+trading user and firm (or the admin) it came from. Passwords and session ids are never written to it.</p>
+<p><b>Audit</b> shows one day of it: today's, or another day's chosen under <b>Date</b>. Changing the date
+loads that day and replaces what was shown; <b>Refresh</b> loads the day again with what was added since. The
+other filters apply at once to the loaded day:</p>
+<table>
+    <tr><th>Filter</th><th>Shows</th></tr>
+    <tr><td>Start time, End time</td><td>Messages from and up to these times (both included).</td></tr>
+    <tr><td>Firm</td><td>Messages of the firm: its users' requests and answers, and the trades it bought or
+        sold in.</td></tr>
+    <tr><td>Trader</td><td>Messages of the users whose name contains the text: their requests (also their
+        logins) and answers, and their trades.</td></tr>
+    <tr><td>Type</td><td>Requests, responses, trades, bulletin trades, or the server's starts and stops.</td></tr>
+    <tr><td>Search</td><td>Messages containing the text anywhere, e.g. an order id, a trade number or an
+        instrument.</td></tr>
+</table>
+<figure>
+    <a href="guide/audit.png" target="_blank" title="Open full size"><img src="guide/audit.png" alt="The audit log of one trader"></a>
+    <figcaption>Audit, with the trader anna: the login, the requests with their answers, and the trades.</figcaption>
+</figure>
+<p>Each line is one message. A request and its answer have the same <b>Request</b> number (r1, r2, ...;
+the numbers start again at each server start). The <b>Message</b> column gives the request's method and
+path with what was sent, the answer's status (red when it failed) and time taken, or the trade: who bought
+from whom, how much at what price. Prices and quantities in requests and answers are as the programs send
+them, as whole numbers multiplied by 100000; in trades they are as shown on the screens. <b>Click a line</b>
+to see the whole message, with its request or answer.</p>
+<figure class="dialog">
+    <a href="guide/audit-detail.png" target="_blank" title="Open full size"><img src="guide/audit-detail.png" alt="An order request with its answer"></a>
+    <figcaption>An order entered by anna, with the server's answer.</figcaption>
+</figure>
+<p>At most 5000 lines are shown; narrow the filters to see the others. The audit files are kept on the
+server, one per day (<code>audit-yyyy-MM-dd.log</code> in its audit directory); they are never changed or
+deleted by the server.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="bulletin-markets">Bulletin markets</h2>

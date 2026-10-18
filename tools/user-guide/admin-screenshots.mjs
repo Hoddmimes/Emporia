@@ -138,6 +138,17 @@ await ev(`document.getElementById('market').value = 'b:0'; loadTrades(); 1`);
 await sleep(1000);
 await shot('market-bulletin-trades', CONTENT);
 
+// ── Audit ──────────────────────────────────────────────────────────────
+await navigate('admin/audit.html');
+await sleep(1000);
+await set({ trader: 'anna' });
+await sleep(500);
+await shot('audit', CONTENT);
+await ev(`openDetail(shown.findIndex(x => x.m.type === 'REQUEST' && x.m.path === '/api/orders' && x.m.method === 'POST')); 1`);
+await sleep(300);
+await shot('audit-detail', '#detail-modal .modal');
+await ev(`closeDetail(); 1`);
+
 // ── Bulletin markets ───────────────────────────────────────────────────
 await navigate('admin/bulletin-markets.html');
 await shot('bulletin-markets', CONTENT);

@@ -466,7 +466,9 @@ body {
 }
 .filter-bar .form-group { margin-bottom: 0; }
 .filter-bar select,
-.filter-bar input[type=date] {
+.filter-bar input[type=date],
+.filter-bar input[type=time],
+.filter-bar input[type=text] {
     padding: 7px 10px;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -489,4 +491,26 @@ body {
 .modal .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 13px; }
 .modal .detail-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .modal .detail-table td:first-child { color: var(--text-light); width: 38%; }
+/* ── Audit log (audit.html) ── */
+.filter-bar input[type=time] { min-width: 130px; }
+.filter-bar input[type=text] { min-width: 140px; }
+.modal.modal-xwide { max-width: 900px; }
+.audit-json {
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 32vh;
+    overflow: auto;
+    margin: 4px 0 14px;
+}
+.audit-label { font-size: 12px; font-weight: 600; color: var(--text-light); }
+.data-table td.audit-summary { white-space: normal; max-width: 640px; word-break: break-word; }
+.data-table tr.row-error td { color: #c0392b; }
+.data-table tr.row-trade td { background: #f3faf4; }
+.data-table tr.row-system td { background: #f4f6fb; font-weight: 600; }
 .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }

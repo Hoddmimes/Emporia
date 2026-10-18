@@ -149,13 +149,9 @@ class TradePersister extends Thread {
 
     /** Stores the trades, retrying until the write succeeds. */
     private void store(List<InternalTrade> pTrades) {
-        long tStart = System.nanoTime();
         for (int tAttempt = 1; ; tAttempt++) {
             try {
                 mStore.accept(pTrades);
-                if (cLog.isDebugEnabled()) {
-                    cLog.debug("Stored {} trade(s) in {} usec", pTrades.size(), (System.nanoTime() - tStart) / 1000);
-                }
                 if (tAttempt > 1) cLog.info("Stored {} trade(s) after {} attempts", pTrades.size(), tAttempt);
                 return;
             } catch (Exception e) {

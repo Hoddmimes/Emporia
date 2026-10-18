@@ -73,3 +73,6 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-17 Admin Market Trades: Export of the listed trades to a JSON or XML file (save dialog for folder and name)
 * 26-10-17 Admin Market Orders/Trades also for the bulletin markets: list and delete any bulletin, list and reverse bulletin trades
 * 26-10-17 Admin guide and README: market supervision in the intro; Orders and Trades pictures show All order book markets
+* 26-10-18 Audit log (package audit): every REST request and response (firm/user or admin, passwords and session ids masked), every trade and bulletin trade with both sides' firm and trader, server start and stop; written by its own thread from a LinkedBlockingQueue, one fsynced JSON Lines file per day (audit-yyyy-MM-dd.log), appended to after a restart
+* 26-10-18 Matching engine logging: order add/delete INFO lines removed, trade lines removed or moved to TRACE
+* 26-10-18 Admin Market > Audit: a day's audit log (GET /api/admin/audit) with filters start/end time, firm, trader, type and text, a click shows a message with its request or response; admin guide section and pictures

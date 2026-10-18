@@ -2,7 +2,7 @@
 # Makes the screenshots of the user guide (Server/WebContent/user-guide.html) into
 # Server/WebContent/guide and of the admin guide (Server/WebContent/admin/admin-guide.html) into
 # Server/WebContent/admin/guide; the argument user or admin makes only one of them. It builds the
-# server (installDist, no WAR, so the build number stays), starts it in test mode on port 18090 with an emptied database emporia_guide, fills it with demo
+# server (installDist, no WAR, so the build number stays), starts it in test mode on port 18090 with an emptied database emporia_guide (and audit log guide-audit), fills it with demo
 # data (seed.mjs), takes the screenshots with headless Chrome (screenshots.mjs, admin-screenshots.mjs)
 # and stops the server.
 # Needs MongoDB on localhost (the legacy mongo shell), node 22+ and google-chrome.
@@ -16,6 +16,7 @@ LOG=$(mktemp -t emporia-guide-server.XXXXXX.log)
 
 (cd $ROOT && ./gradlew -q :Server:installDist)
 mongo --quiet emporia_guide --eval 'db.dropDatabase()' >/dev/null
+rm -rf guide-audit   # the audit log (guide-server.json): only this run's
 
 $ROOT/Server/build/install/Server/bin/Server -config guide-server.json -mode test > "$LOG" 2>&1 &
 SERVER=$!

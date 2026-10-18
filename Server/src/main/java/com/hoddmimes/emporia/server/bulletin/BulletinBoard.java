@@ -2,6 +2,7 @@ package com.hoddmimes.emporia.server.bulletin;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.db.BulletinTrade;
 import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.db.Stored;
@@ -72,6 +73,7 @@ public class BulletinBoard {
 
     private final Database                 mDatabase;   // null in the unit tests: nothing is stored
     private final Consumer<BdxMessage>     mPublisher;
+    private final AuditLog                 mAudit;
     private final Map<Integer, BulletinMarket> mMarkets   = new ConcurrentHashMap<>();
     private final Map<String, BulletinEntry>   mBulletins = new LinkedHashMap<>();   // bulletinId -> bulletin, oldest first
     private final ScheduledExecutorService mExpiryTimer;
@@ -79,9 +81,15 @@ public class BulletinBoard {
     private long mNextId    = 1;
     private long mNextTrade = 1;
 
+    /** Without an audit log (unit tests). */
     public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher) {
+        this(pDatabase, pPublisher, AuditLog.NONE);
+    }
+
+    public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher, AuditLog pAudit) {
         mDatabase        = pDatabase;
         mPublisher       = pPublisher;
+        mAudit           = pAudit;
         mExpiryTimer     = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "BulletinExpiry");
             t.setDaemon(true);
@@ -218,6 +226,7 @@ public class BulletinBoard {
     public synchronized BulletinTrade reverseTrade(BulletinTrade pOriginal) {
         BulletinTrade tReversal = pOriginal.reversal(Long.toHexString(mIdBase + mNextTrade++), System.currentTimeMillis());
         if (mDatabase != null) mDatabase.saveBulletinTrade(tReversal);
+        auditTrade(tReversal);
         publishOwnReversal(tReversal, tReversal.buyAccount(),  "BUY",  tReversal.buyRef(),  tReversal.buyClientAccount());
         publishOwnReversal(tReversal, tReversal.sellAccount(), "SELL", tReversal.sellRef(), tReversal.sellClientAccount());
         cLog.info("Bulletin trade {} reversed by trade {}: {} buys {}@{} {} from {}", pOriginal.tradeNo(), tReversal.tradeNo(),
@@ -533,7 +542,9 @@ public class BulletinBoard {
         String tTradeNo   = Long.toHexString(mIdBase + mNextTrade++);
         long   tTradeTime = System.currentTimeMillis();
         // Stored (journaled) before anyone is told about the trade
-        if (mDatabase != null) mDatabase.saveBulletinTrade(tradeRecord(pEntry, tTradeNo, tTradeTime));
+        BulletinTrade tTrade = tradeRecord(pEntry, tTradeNo, tTradeTime);
+        if (mDatabase != null) mDatabase.saveBulletinTrade(tTrade);
+        auditTrade(tTrade);
         mPublisher.accept(BdxMessage.market(BdxMessage.BULLETIN_TRADE, pEntry.marketId)
                 .put("bulletinId", pEntry.bulletinId)
                 .put("instrument", pEntry.instrument)
@@ -548,6 +559,30 @@ public class BulletinBoard {
         cLog.info("Bulletin {} traded {}@{}: {} {} / {} {}", pEntry.bulletinId,
                 unscale(pEntry.offerQuantity), unscale(pEntry.offerPrice),
                 pEntry.ownerFirm, pEntry.ownerTradeSide(), pEntry.offerFirm, pEntry.offerSide);
+    }
+
+    /** Queues the bulletin trade's audit message: both sides with their firm, trader, reference and client account. */
+    private void auditTrade(BulletinTrade pTrade) {
+        JsonObject tData = new JsonObject();
+        tData.addProperty("tradeNo",    pTrade.tradeNo());
+        if (pTrade.isReversal()) tData.addProperty("reversalOf", pTrade.reversalOf());
+        tData.addProperty("bulletinId", pTrade.bulletinId());
+        tData.addProperty("marketId",   pTrade.marketId());
+        tData.addProperty("instrument", pTrade.instrument());
+        tData.add("price",    AuditLog.unscaled(pTrade.price()));
+        tData.add("quantity", AuditLog.unscaled(pTrade.quantity()));
+        tData.add("buy",  auditSide(pTrade.buyAccount(),  pTrade.buyUser(),  pTrade.buyRef(),  pTrade.buyClientAccount()));
+        tData.add("sell", auditSide(pTrade.sellAccount(), pTrade.sellUser(), pTrade.sellRef(), pTrade.sellClientAccount()));
+        mAudit.queue(AuditLog.BULLETIN_TRADE, null, null, tData, null);
+    }
+
+    private static JsonObject auditSide(String pFirm, String pUser, String pRef, String pClientAccount) {
+        JsonObject tSide = new JsonObject();
+        tSide.addProperty("firm",          pFirm);
+        tSide.addProperty("user",          pUser);
+        tSide.addProperty("ref",           pRef);
+        tSide.addProperty("clientAccount", clientAccountOrDefault(pClientAccount));
+        return tSide;
     }
 
     /** The stored bulletin trade of a trade on the pending offer (see Database.saveBulletinTrade). */

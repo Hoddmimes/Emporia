@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; Audit</title>
+    <link rel="stylesheet" href="css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>Audit</h2>
+            </div>
+
+            <div id="message" class="alert alert-hidden"></div>
+
+            <div class="filter-bar">
+                <div class="form-group">
+                    <label for="date">Date</label>
+                    <input type="date" id="date" onchange="loadAudit()">
+                </div>
+                <div class="form-group">
+                    <label for="start">Start time</label>
+                    <input type="time" id="start" step="1" oninput="filterLater()">
+                </div>
+                <div class="form-group">
+                    <label for="end">End time</label>
+                    <input type="time" id="end" step="1" oninput="filterLater()">
+                </div>
+                <div class="form-group">
+                    <label for="firm">Firm</label>
+                    <select id="firm" onchange="render()">
+                        <option value="">All firms</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="trader">Trader</label>
+                    <input type="text" id="trader" placeholder="any" oninput="filterLater()">
+                </div>
+                <div class="form-group">
+                    <label for="type">Type</label>
+                    <select id="type" onchange="render()">
+                        <option value="">All types</option>
+                        <option value="REQUEST,RESPONSE">Requests and responses</option>
+                        <option value="REQUEST">Requests</option>
+                        <option value="RESPONSE">Responses</option>
+                        <option value="TRADE,BULLETIN_TRADE">All trades</option>
+                        <option value="TRADE">Trades</option>
+                        <option value="BULLETIN_TRADE">Bulletin trades</option>
+                        <option value="START,STOP">Server start and stop</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="search">Search</label>
+                    <input type="text" id="search" placeholder="text in the message" oninput="filterLater()">
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="loadAudit()">Refresh</button>
+                <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear filters</button>
+            </div>
+
+            <div class="filter-info" id="info"></div>
+
+            <div class="card" style="padding:0; overflow-x:auto;">
+                <table class="data-table compact">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Firm</th>
+                            <th>Trader</th>
+                            <th>Request</th>
+                            <th>Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-body">
+                        <tr class="empty-row"><td colspan="6">Loading&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- One audit message, with its request or response -->
+    <div id="detail-modal" class="modal-overlay" style="display:none;" onclick="if (event.target === this) closeDetail()">
+        <div class="modal modal-xwide">
+            <h3 id="detail-title"></h3>
+            <div id="detail-body"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeDetail()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
+    <script>
+        cdNav.render('market-audit');
+        cdSession.guard('user-info');
+
+        // A day's audit messages (GET /api/admin/audit?date=), loaded whole; the other filters are applied here.
+        // A new date (or Refresh) replaces the loaded messages.
+        const MAX_ROWS = 5000;    // rows shown at most; narrow the filters to see the others
+        let messages = [];
+        let byRequest = new Map();   // "<run>/<rid>" -> { request, response }; request ids restart with the server
+        let loadSeq = 0;             // only the latest load's reply is shown
+        let filterTimer = null;
+        let shown = [];
+
+        async function init() {
+            document.getElementById('date').value = today();
+            const firms = await cdApi.request('../api/admin/firms');
+            if (firms.status === 401) { window.location.href = 'login.html'; return; }
+            if (firms.ok) {
+                const firmSelect = document.getElementById('firm');
+                firms.data.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(f =>
+                    firmSelect.add(new Option(f.name, f.name)));
+            } else {
+                showMessage('Failed to load firms: ' + firms.error, true);
+            }
+            loadAudit();
+        }
+
+        async function loadAudit() {
+            const date = document.getElementById('date').value || today();
+            const seq = ++loadSeq;
+            messages = [];
+            byRequest = new Map();
+            setInfo('');
+            document.getElementById('audit-body').innerHTML = '<tr class="empty-row"><td colspan="6">Loading&hellip;</td></tr>';
+            const r = await cdApi.request(`../api/admin/audit?date=${encodeURIComponent(date)}`);
+            if (seq !== loadSeq) return;
+            if (r.status === 401) { window.location.href = 'login.html'; return; }
+            if (!r.ok) {
+                document.getElementById('audit-body').innerHTML =
+                    `<tr class="empty-row"><td colspan="6">Failed to load the audit log: ${escHtml(r.error)}</td></tr>`;
+                return;
+            }
+            let run = 0;
+            messages = r.data.map((m, i) => {
+                const text = JSON.stringify(m).toLowerCase();
+                if (m.type === 'START') run++;
+                const x = { m, i, run, text, firms: firmsOf(m), users: usersOf(m).map(u => u.toLowerCase()) };
+                if (m.rid) {
+                    const key = run + '/' + m.rid;
+                    const pair = byRequest.get(key) || {};
+                    if (m.type === 'REQUEST') pair.request = x; else if (m.type === 'RESPONSE') pair.response = x;
+                    byRequest.set(key, pair);
+                }
+                return x;
+            });
+            render();
+        }
+
+        function filterLater() {
+            clearTimeout(filterTimer);
+            filterTimer = setTimeout(render, 200);
+        }
+
+        function clearFilters() {
+            for (const id of ['start', 'end', 'trader', 'search']) document.getElementById(id).value = '';
+            document.getElementById('firm').value = '';
+            document.getElementById('type').value = '';
+            render();
+        }
+
+        function render() {
+            const start  = document.getElementById('start').value;
+            const end    = document.getElementById('end').value;
+            const firm   = document.getElementById('firm').value;
+            const trader = document.getElementById('trader').value.trim().toLowerCase();
+            const types  = document.getElementById('type').value;
+            const search = document.getElementById('search').value.trim().toLowerCase();
+            const typeSet = types ? new Set(types.split(',')) : null;
+
+            const matching = messages.filter(x => {
+                const t = x.m.time || '';
+                if (start && t < start) return false;
+                if (end && t.slice(0, end.length) > end) return false;
+                if (typeSet && !typeSet.has(x.m.type)) return false;
+                if (firm && !x.firms.includes(firm)) return false;
+                if (trader && !x.users.some(u => u.includes(trader))) return false;
+                if (search && !x.text.includes(search)) return false;
+                return true;
+            });
+            shown = matching.slice(0, MAX_ROWS);
+
+            const date = document.getElementById('date').value;
+            const filtered = matching.length !== messages.length ? `, ${matching.length} matching the filters` : '';
+            const capped = matching.length > MAX_ROWS ? `; the first ${MAX_ROWS} are shown, narrow the filters to see the others` : '';
+            setInfo(`${messages.length} audit message${messages.length === 1 ? '' : 's'} on ${date}${filtered}${capped}. ` +
+                    'Click a message to see all of it, with its request or response.');
+
+            const tbody = document.getElementById('audit-body');
+            if (shown.length === 0) {
+                tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${messages.length === 0 ? 'No audit messages on this day.' : 'No messages match the filters.'}</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = shown.map((x, i) => {
+                const m = x.m;
+                return `<tr class="row-action ${rowClass(m)}" onclick="openDetail(${i})">
+                    <td class="mono">${escHtml(m.time)}</td>
+                    <td>${escHtml(m.type)}</td>
+                    <td>${escHtml(firmText(m))}</td>
+                    <td>${escHtml(traderText(m))}</td>
+                    <td class="mono">${escHtml(m.rid)}</td>
+                    <td class="audit-summary">${escHtml(summary(m))}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function rowClass(m) {
+            if (m.type === 'RESPONSE' && m.status >= 400) return 'row-error';
+            if (m.type === 'TRADE' || m.type === 'BULLETIN_TRADE') return 'row-trade';
+            if (m.type === 'START' || m.type === 'STOP') return 'row-system';
+            return '';
+        }
+
+        // ── Who a message is about ───────────────────────────────────────
+        // A request or response carries the session's trading user (firm, user) or the admin; a trade both
+        // sides. A login request has no session user yet, so its body's firm and user count.
+
+        function isLogin(m) { return m.type === 'REQUEST' && (m.path === '/api/login' || m.path === '/api/admin/login') && m.body; }
+
+        function firmsOf(m) {
+            const f = [m.firm, m.buy && m.buy.firm, m.sell && m.sell.firm];
+            if (isLogin(m)) f.push(m.body.firm);
+            return f.filter(v => typeof v === 'string' && v);
+        }
+
+        function usersOf(m) {
+            const u = [m.user, m.admin, m.buy && m.buy.user, m.sell && m.sell.user];
+            if (isLogin(m)) u.push(m.body.userId, m.body.username);
+            return u.filter(v => typeof v === 'string' && v);
+        }
+
+        function firmText(m) {
+            if (m.buy || m.sell) return `${side(m.buy).firm} / ${side(m.sell).firm}`;
+            if (m.firm) return m.firm;
+            return isLogin(m) && m.body.firm ? m.body.firm : '';
+        }
+
+        function traderText(m) {
+            if (m.buy || m.sell) return `${side(m.buy).user} / ${side(m.sell).user}`;
+            if (m.user) return m.user;
+            if (m.admin) return m.admin + ' (admin)';
+            if (isLogin(m)) return m.body.userId || (m.body.username ? m.body.username + ' (admin)' : '');
+            return '';
+        }
+
+        function side(s) { return s || {}; }
+
+        // ── One line per message ─────────────────────────────────────────
+
+        function summary(m) {
+            switch (m.type) {
+                case 'START':    return `Server started, ${m.version || ''}, mode ${m.mode || ''}`;
+                case 'STOP':     return 'Server stopped';
+                case 'REQUEST':  return `${m.method} ${m.path}${m.query ? '?' + m.query : ''}${m.body !== undefined ? '  ' + short(m.body) : ''}`;
+                case 'RESPONSE': return `${m.status}, ${m.ms} ms${m.body !== undefined ? '  ' + short(m.body) : ''}${m.bytes !== undefined ? `  (${m.bytes} bytes, not logged)` : ''}`;
+                case 'TRADE':
+                case 'BULLETIN_TRADE': {
+                    const b = side(m.buy), s = side(m.sell);
+                    return (m.reversalOf ? `Reversal of ${m.reversalOf}: ` : '') +
+                        `${b.firm}/${b.user || '-'} bought ${m.quantity} ${m.instrument || m.instrumentId} @ ${m.price} ` +
+                        `from ${s.firm}/${s.user || '-'}, trade ${m.tradeNo}` + (m.bulletinId ? `, bulletin ${m.bulletinId}` : '');
+                }
+                default:         return short(m);
+            }
+        }
+
+        function short(v) {
+            const s = typeof v === 'string' ? v : JSON.stringify(v);
+            return s.length > 240 ? s.slice(0, 240) + '…' : s;
+        }
+
+        // ── Detail ───────────────────────────────────────────────────────
+
+        function openDetail(index) {
+            const x = shown[index];
+            const m = x.m;
+            document.getElementById('detail-title').textContent = `${m.type} ${m.time}` + (m.rid ? ` (request ${m.rid})` : '');
+            let html = block('Message', m);
+            const pair = m.rid ? byRequest.get(x.run + '/' + m.rid) : null;
+            if (pair && m.type === 'REQUEST' && pair.response)  html += block(`Response ${pair.response.m.time}`, pair.response.m);
+            if (pair && m.type === 'RESPONSE' && pair.request)  html = block(`Request ${pair.request.m.time}`, pair.request.m) + html;
+            document.getElementById('detail-body').innerHTML = html;
+            document.getElementById('detail-modal').style.display = 'flex';
+        }
+
+        function block(label, m) {
+            return `<div class="audit-label">${escHtml(label)}</div><pre class="audit-json">${escHtml(JSON.stringify(m, null, 2))}</pre>`;
+        }
+
+        function closeDetail() { document.getElementById('detail-modal').style.display = 'none'; }
+
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+        // ── Helpers ──────────────────────────────────────────────────────
+
+        function showMessage(text, isError) {
+            const el = document.getElementById('message');
+            el.textContent = text;
+            el.className = 'alert ' + (isError ? 'alert-error' : 'alert-success');
+        }
+
+        function setInfo(text) { document.getElementById('info').textContent = text; }
+
+        function today() { return new Date().toLocaleDateString('sv-SE'); }
+
+        function escHtml(s) {
+            return (s == null ? '' : String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        init();
+    </script>
+</body>
+</html>

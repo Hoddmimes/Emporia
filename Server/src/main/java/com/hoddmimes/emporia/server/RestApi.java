@@ -2,6 +2,7 @@ package com.hoddmimes.emporia.server;
 
 import com.hoddmimes.emporia.server.db.Database;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxEndpoint;
 import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
@@ -45,6 +46,12 @@ public class RestApi {
 
     // Request ids: a counter, restarting at 1 when the server restarts
     public  static final String REQUEST_ID     = "rid";   // Log4j ThreadContext key, %X{rid} in the log pattern
+    // Context attributes for the request's RESPONSE audit message
+    private static final String AUDIT_START    = "audit-start";   // System.nanoTime() at the request
+    private static final String AUDIT_WHO      = "audit-who";     // the session's users at the request
+    // GET paths whose successful RESPONSE audit message has the body's size ("bytes") instead of the body: the audit
+    // log's own reader, which would otherwise copy the day into the log on every view
+    private static final Set<String> NO_AUDIT_RESPONSE_BODY = Set.of(AdminAuditEndpoints.PATH);
     private final AtomicLong    mNextRequestId = new AtomicLong(1);
 
     private final RestApiContext mCtx;
@@ -52,7 +59,7 @@ public class RestApi {
     private Javalin              mApp;   // the stand-alone web server, set by start()
 
     public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, AuthorizationCache pAuthorizations, BdxDistributor pBdx,
-                   MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, JsonObject pConfiguration) {
+                   MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, AuditLog pAudit, JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
         int tSessionInactivitySeconds = 300;
@@ -64,7 +71,7 @@ public class RestApi {
         }
 
         mCtx = new RestApiContext(pDatabase, pInstrumentCache, pAuthorizations, pBdx, pMatchingEngine, pBulletinBoard,
-                pConfiguration, tSessionInactivitySeconds);
+                pAudit, pConfiguration, tSessionInactivitySeconds);
     }
 
     public void start() {
@@ -185,7 +192,73 @@ public class RestApi {
             String tRequestId = "r" + mNextRequestId.getAndIncrement();
             ThreadContext.put(REQUEST_ID, tRequestId);
             ctx.header("X-Request-Id", tRequestId);
+            auditRequest(ctx, tRequestId);
         });
+    }
+
+    // ── Audit ─────────────────────────────────────────────────────────────
+
+    /** Who is logged in on the request's session: the trading user and firm, the admin (each null if none). */
+    private record SessionUsers(String firm, String user, String admin) {
+        static SessionUsers of(io.javalin.http.Context ctx) {
+            var tSession = ctx.req().getSession(false);
+            if (tSession == null) return new SessionUsers(null, null, null);
+            try {
+                return new SessionUsers((String) tSession.getAttribute(RestApiContext.FIRM),
+                        (String) tSession.getAttribute(RestApiContext.USER),
+                        (String) tSession.getAttribute(RestApiContext.ADMIN_USER));
+            } catch (IllegalStateException e) {   // invalidated by a logout
+                return new SessionUsers(null, null, null);
+            }
+        }
+        boolean isEmpty() { return firm == null && user == null && admin == null; }
+    }
+
+    // The REQUEST audit message, queued before the auth filter, so refused requests are in it too. Admin
+    // requests carry the admin, the others the trading user and firm.
+    private void auditRequest(io.javalin.http.Context ctx, String pRequestId) {
+        ctx.attribute(AUDIT_START, System.nanoTime());
+        boolean tAdmin = apiPath(ctx).startsWith("/api/admin/");
+        SessionUsers tWho = SessionUsers.of(ctx);
+        ctx.attribute(AUDIT_WHO, tWho);
+        JsonObject tData = new JsonObject();
+        tData.addProperty("rid", pRequestId);
+        if (tAdmin && tWho.admin() != null) tData.addProperty("admin", tWho.admin());
+        tData.addProperty("method", ctx.method().name());
+        tData.addProperty("path",   apiPath(ctx));
+        if (ctx.queryString() != null) tData.addProperty("query", ctx.queryString());
+        tData.addProperty("remote", remoteAddress(ctx));
+        String tBody = ctx.body();
+        mCtx.audit.queue(AuditLog.REQUEST, tAdmin ? null : tWho.firm(), tAdmin ? null : tWho.user(), tData,
+                tBody.isEmpty() ? null : tBody);
+    }
+
+    // The RESPONSE audit message: status, time taken and body. The users are the session's after the
+    // request (a login sets them), or those at the request if a logout removed them.
+    private void auditResponse(io.javalin.http.Context ctx) {
+        Long tStart = ctx.attribute(AUDIT_START);
+        if (tStart == null) return;
+        boolean tAdmin = apiPath(ctx).startsWith("/api/admin/");
+        SessionUsers tWho = SessionUsers.of(ctx);
+        SessionUsers tBefore = ctx.attribute(AUDIT_WHO);
+        if (tWho.isEmpty() && tBefore != null) tWho = tBefore;
+        JsonObject tData = new JsonObject();
+        tData.addProperty("rid",    (String) ThreadContext.get(REQUEST_ID));
+        if (tAdmin && tWho.admin() != null) tData.addProperty("admin", tWho.admin());
+        tData.addProperty("status", ctx.statusCode());
+        tData.addProperty("ms",     (System.nanoTime() - tStart) / 1000000);
+        String tBody = ctx.result();
+        if (tBody != null && ctx.statusCode() < 400 && NO_AUDIT_RESPONSE_BODY.contains(apiPath(ctx))) {
+            tData.addProperty("bytes", tBody.length());
+            tBody = null;
+        }
+        mCtx.audit.queue(AuditLog.RESPONSE, tAdmin ? null : tWho.firm(), tAdmin ? null : tWho.user(), tData, tBody);
+    }
+
+    /** The client's address: the first X-Forwarded-For address behind a proxy (Apache), else the peer's. */
+    private static String remoteAddress(io.javalin.http.Context ctx) {
+        String tForwarded = ctx.header("X-Forwarded-For");
+        return (tForwarded != null && !tForwarded.isBlank()) ? tForwarded.split(",")[0].trim() : ctx.ip();
     }
 
     // ── Auth filter ───────────────────────────────────────────────────────
@@ -243,7 +316,11 @@ public class RestApi {
 
         // Registered last, so it runs after the other after handlers: Jetty reuses its threads, so the
         // request id must not stay in the thread's context for the next request
-        pApp.after("/api/*", ctx -> ThreadContext.remove(REQUEST_ID));
+        // The request's RESPONSE audit message is queued here too, after everything else.
+        pApp.after("/api/*", ctx -> {
+            auditResponse(ctx);
+            ThreadContext.remove(REQUEST_ID);
+        });
     }
 
     // ── REST endpoints ────────────────────────────────────────────────────
@@ -271,7 +348,8 @@ public class RestApi {
             new AdminBulletinMarketEndpoints(mCtx),
             new AdminInstrumentEndpoints(mCtx),
             new AdminAuthorizationEndpoints(mCtx),
-            new AdminSupervisionEndpoints(mCtx)
+            new AdminSupervisionEndpoints(mCtx),
+            new AdminAuditEndpoints(mCtx)
         ));
         if (pJettyWebSocket) tEndpoints.add(new BdxEndpoint(mCtx));
         tEndpoints.forEach(e -> e.register(pApp));

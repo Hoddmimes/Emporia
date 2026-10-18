@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
+import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import org.apache.logging.log4j.LogManager;
@@ -61,10 +62,17 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     private final List<InternalTrade>     mTrades;       // today's trades, synchronized list
     private final Database mDB;
     private final TradePersister          mPersister;
+    private final AuditLog                mAudit;
 
+    /** Without an audit log (unit tests). */
     public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx) {
+        this(pInstrumentCache, pDB, pBdx, AuditLog.NONE);
+    }
+
+    public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx, AuditLog pAudit) {
         mInstrumentCache = pInstrumentCache;
         mDB              = pDB;
+        mAudit           = pAudit;
         mOrderbooks      = new ConcurrentHashMap<>();
         mOrderIndex      = new ConcurrentHashMap<>();
         mTrades          = Collections.synchronizedList(new ArrayList<>());
@@ -255,12 +263,15 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         synchronized (mTrades) {   // the trade and its messages queued together, in this order
             mTrades.add(tReversal);
             mPersister.trade(tReversal);
+            auditTrade(tReversal, tMarketId);
             publishOwnTrade(tReversal, tMarketId, Order.Side.BUY);
             publishOwnTrade(tReversal, tMarketId, Order.Side.SELL);
             tWaitFor = mPersister.lastQueued();
         }
         mPersister.awaitReleased(tWaitFor);
-        cLog.info("Trade {} reversed by trade {}", tReversal.getReversalOf(), tReversal);
+        if (cLog.isTraceEnabled()) {
+            cLog.trace("Trade {} reversed by trade {}", tReversal.getReversalOf(), tReversal);
+        }
         return tReversal;
     }
 
@@ -507,12 +518,12 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     @Override
     public void trade(InternalTrade pTrade) {
         mTrades.add(pTrade);
-        cLog.info("Bdx public trade {}", pTrade);
 
         int tMarketId = marketIdOf(pTrade.getInstrumentId());
 
         // Stored before the messages below are published (TradePersister)
         mPersister.trade(pTrade);
+        auditTrade(pTrade, tMarketId);
 
         mPersister.publish(BdxMessage.instrument(BdxMessage.TRADE, tMarketId, pTrade.getInstrumentId())
                 .put("price",     unscale(pTrade.getPrice()))
@@ -522,6 +533,32 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         publishOwnTrade(pTrade, tMarketId, Order.Side.BUY);
         publishOwnTrade(pTrade, tMarketId, Order.Side.SELL);
 
+    }
+
+    /** Queues the trade's audit message: both sides with their firm, trader, order and client account. */
+    private void auditTrade(InternalTrade pTrade, int pMarketId) {
+        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(pTrade.getInstrumentId());
+        JsonObject tData = new JsonObject();
+        tData.addProperty("tradeNo",      Long.toHexString(pTrade.getTradeNo()));
+        if (pTrade.isReversal()) tData.addProperty("reversalOf", pTrade.getReversalOf());
+        tData.addProperty("marketId",     pMarketId);
+        tData.addProperty("instrumentId", String.valueOf(pTrade.getInstrumentId()));
+        tData.addProperty("instrument",   (tInstrument != null) ? tInstrument.name() : null);
+        tData.add("price",    AuditLog.unscaled(pTrade.getPrice()));
+        tData.add("quantity", AuditLog.unscaled(pTrade.getQuantity()));
+        tData.add("buy",  auditSide(pTrade.getBuyOrder()));
+        tData.add("sell", auditSide(pTrade.getSellOrder()));
+        mAudit.queue(AuditLog.TRADE, null, null, tData, null);
+    }
+
+    private static JsonObject auditSide(Order pOrder) {
+        JsonObject tSide = new JsonObject();
+        tSide.addProperty("firm",          pOrder.getAccount());
+        tSide.addProperty("user",          pOrder.getUser());
+        tSide.addProperty("orderId",       Long.toHexString(pOrder.getOrderId()));
+        tSide.addProperty("clientAccount", pOrder.getClientAccount());
+        tSide.addProperty("userRef",       pOrder.getUserRef());
+        return tSide;
     }
 
     @Override

@@ -14,6 +14,8 @@ Files
   key.pem          its private key (PEM; owner root, group emporia, mode 640)
   emporia.db       the SQLite database, with emporia.db-wal and emporia.db-shm
   server.log       the server's log
+  audit/           the audit log, one file per day: audit-yyyy-MM-dd.log (every request and response,
+                   every trade, server start and stop; one JSON object per line)
   log4j2.xml       the logging configuration
   uninstall.sh     removes the installation
 
@@ -49,6 +51,7 @@ Changing the settings
 ---------------------
   Ports:        https_port and http_port (remove it for HTTPS only) in emporia.json
   Certificate:  replace cert.pem and key.pem (keep the key's group emporia and mode 640)
+  Audit log:    "audit": {"dir": "/path/to/audit"} in emporia.json (default ./audit)
   Memory:       JAVA_OPTS in emporia.env, e.g. JAVA_OPTS="-Xms256m -Xmx2g"
   MongoDB:      to use MongoDB instead of SQLite, set in emporia.json
                   "database": {"type": "mongodb", "host": "127.0.0.1", "port": 27017, "name": "emporia"}
@@ -60,6 +63,7 @@ Backup
 Stop the server and copy emporia.db (with emporia.db-wal if present), or, while it runs (with the
 sqlite3 tool installed):
   sqlite3 emporia.db ".backup /path/to/emporia-backup.db"
+Copy the audit directory too; its files are only appended to, a past day's file never changes.
 
 Upgrade
 -------

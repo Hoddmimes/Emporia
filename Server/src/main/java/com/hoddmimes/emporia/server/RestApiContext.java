@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server;
 import com.hoddmimes.emporia.server.db.Database;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
@@ -30,6 +31,7 @@ public class RestApiContext {
     public final BdxDistributor     bdx;
     public final MatchingEngine     matchingEngine;
     public final BulletinBoard      bulletinBoard;
+    public final AuditLog           audit;
     public final JsonObject         configuration;
     public final int                sessionInactivitySeconds;
 
@@ -39,6 +41,7 @@ public class RestApiContext {
                           BdxDistributor pBdx,
                           MatchingEngine pMatchingEngine,
                           BulletinBoard pBulletinBoard,
+                          AuditLog pAudit,
                           JsonObject pConfiguration,
                           int pSessionInactivitySeconds) {
         database                 = pDatabase;
@@ -47,6 +50,7 @@ public class RestApiContext {
         bdx                      = pBdx;
         matchingEngine           = pMatchingEngine;
         bulletinBoard            = pBulletinBoard;
+        audit                    = pAudit;
         configuration            = pConfiguration;
         sessionInactivitySeconds = pSessionInactivitySeconds;
     }
