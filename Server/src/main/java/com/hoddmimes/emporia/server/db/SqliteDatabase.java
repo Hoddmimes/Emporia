@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * The database in an SQLite file (configuration: "type": "sqlite", "file": the database file, relative to
@@ -205,6 +206,21 @@ public class SqliteDatabase implements Database {
                 }
             }
             return tResult;
+        } catch (SQLException e) {
+            throw failed(e);
+        }
+    }
+
+    /** As query, calling pAction with each row instead of collecting them. */
+    private synchronized <T> void forEach(String pSql, Row<T> pRow, Consumer<T> pAction, Object... pParams) {
+        try (PreparedStatement tStmt = mConnection.prepareStatement(pSql)) {
+            bind(tStmt, pParams);
+            try (ResultSet tRs = tStmt.executeQuery()) {
+                while (tRs.next()) {
+                    T tValue = pRow.map(tRs);
+                    if (tValue != null) pAction.accept(tValue);
+                }
+            }
         } catch (SQLException e) {
             throw failed(e);
         }
@@ -694,6 +710,16 @@ public class SqliteDatabase implements Database {
         if (pDate == null) return new Object[] { pFirm, pFirm };
         String[] tDay = Database.dayRange(pDate);
         return new Object[] { pFirm, pFirm, tDay[0], tDay[1] };
+    }
+
+    @Override
+    public void forEachTrade(Consumer<InternalTrade> pAction) {
+        forEach("SELECT * FROM Trades ORDER BY tradeTime, seq", SqliteDatabase::toTrade, pAction);
+    }
+
+    @Override
+    public void forEachBulletinTrade(Consumer<BulletinTrade> pAction) {
+        forEach("SELECT * FROM BulletinTrades ORDER BY tradeTime, seq", SqliteDatabase::toBulletinTrade, pAction);
     }
 
     @Override

@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -650,6 +651,23 @@ public class MongoDbDatabase implements Database {
         Document tFilter = new Document("$or", List.of(new Document("buyAccount", pFirm), new Document("sellAccount", pFirm)));
         if (pDate != null) tFilter.append("tradeTime", tradeDay(pDate));
         return tFilter;
+    }
+
+    @Override
+    public void forEachTrade(Consumer<InternalTrade> pAction) {
+        forEachOldestFirst("Trades", MongoDbDatabase::fromTradeDocument, pAction);
+    }
+
+    @Override
+    public void forEachBulletinTrade(Consumer<BulletinTrade> pAction) {
+        forEachOldestFirst("BulletinTrades", MongoDbDatabase::toBulletinTrade, pAction);
+    }
+
+    /** All documents of the trade collection, oldest first (the tradeTime, _id index read forwards). */
+    private <T> void forEachOldestFirst(String pCollection, Function<Document, T> pConvert, Consumer<T> pAction) {
+        for (Document tDoc : collection(pCollection).find().sort(new Document("tradeTime", 1).append("_id", 1))) {
+            pAction.accept(pConvert.apply(tDoc));
+        }
     }
 
     private <T> List<T> findTrades(String pCollection, Document pFilter, Function<Document, T> pConvert) {

@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server.db;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.InstrumentCache.MarketEntry;
+import com.hoddmimes.emporia.server.PositionCache;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import org.junit.jupiter.api.AfterEach;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -315,6 +317,11 @@ abstract class DatabaseContractTest {
         assertEquals(102 * S, mDb.lastTradePrice(tWheat));   // the latest stored of the latest millisecond
         assertEquals(50 * S, mDb.lastTradePrice(tCorn));
         assertEquals(0, mDb.lastTradePrice((1L << 32) | 3));
+
+        // All trades, oldest first (the same millisecond in the order stored)
+        List<InternalTrade> tAll = new ArrayList<>();
+        mDb.forEachTrade(tAll::add);
+        assertEquals(List.of(1L, 2L, 3L, 4L), tradeNos(tAll));
     }
 
     @Test
@@ -346,6 +353,21 @@ abstract class DatabaseContractTest {
         assertEquals(120 * S, mDb.lastTradePrice(tWheat));
         // ...but it counts in the firms' trades (positions)
         assertEquals(List.of(0x11L, 0x10L), tradeNos(mDb.listTradesByFirm("FA", null)));
+
+        List<InternalTrade> tAll = new ArrayList<>();
+        mDb.forEachTrade(tAll::add);
+        assertEquals(List.of(0x10L, 0x12L, 0x11L), tradeNos(tAll));
+        assertEquals("10", tAll.get(2).getReversalOf());
+
+        // The positions loaded from the database: the reversed trade nets out, the last price is the database's
+        PositionCache tPositions = new PositionCache();
+        tPositions.load(mDb);
+        assertEquals(mDb.lastTradePrice(tWheat), tPositions.lastTradePrice(tWheat));
+        PositionCache.Position tFa = tPositions.positions("FA").get(0);
+        assertEquals("bc", tFa.clientAccount());
+        assertEquals(5 * S, tFa.bought());
+        assertEquals(0, tFa.position());
+        assertEquals(5 * S, tPositions.positions("FC").get(0).position());
     }
 
     private static List<Long> tradeNos(List<InternalTrade> pTrades) {
@@ -380,6 +402,16 @@ abstract class DatabaseContractTest {
         assertEquals(List.of(tReversal, t2), mDb.listBulletinTradesByFirm("FC", null));
         assertEquals(81 * S, mDb.lastBulletinTradePrice(3, "Brent Jan"));
         assertFalse(mDb.listBulletinTradesByDate("2026-10-16").get(0).isReversal());
+
+        List<BulletinTrade> tAll = new ArrayList<>();
+        mDb.forEachBulletinTrade(tAll::add);
+        assertEquals(List.of(t1, t2, tReversal), tAll);
+
+        PositionCache tPositions = new PositionCache();
+        tPositions.load(mDb);
+        assertEquals(mDb.lastBulletinTradePrice(3, "Brent Jan"), tPositions.lastBulletinTradePrice(3, "Brent Jan"));
+        assertEquals(0, tPositions.bulletinPositions("FC").get(0).position());   // c9: sold 1, bought back 1
+        assertEquals(-4 * S, tPositions.bulletinPositions("FB").get(0).position());   // sold 4 to FA (omni); 1 bought and sold back
     }
 
     // ── Chat ─────────────────────────────────────────────────────────────

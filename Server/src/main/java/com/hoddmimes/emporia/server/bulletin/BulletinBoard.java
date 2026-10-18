@@ -2,6 +2,7 @@ package com.hoddmimes.emporia.server.bulletin;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.PositionCache;
 import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.db.BulletinTrade;
 import com.hoddmimes.emporia.server.db.Database;
@@ -72,6 +73,7 @@ public class BulletinBoard {
     }
 
     private final Database                 mDatabase;   // null in the unit tests: nothing is stored
+    private final PositionCache            mPositions;  // null in the unit tests
     private final Consumer<BdxMessage>     mPublisher;
     private final AuditLog                 mAudit;
     private final Map<Integer, BulletinMarket> mMarkets   = new ConcurrentHashMap<>();
@@ -81,13 +83,15 @@ public class BulletinBoard {
     private long mNextId    = 1;
     private long mNextTrade = 1;
 
-    /** Without an audit log (unit tests). */
+    /** Without an audit log and positions (unit tests). */
     public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher) {
-        this(pDatabase, pPublisher, AuditLog.NONE);
+        this(pDatabase, pPublisher, AuditLog.NONE, null);
     }
 
-    public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher, AuditLog pAudit) {
+    /** pPositions (null: none) gets each bulletin trade once it is stored. */
+    public BulletinBoard(Database pDatabase, Consumer<BdxMessage> pPublisher, AuditLog pAudit, PositionCache pPositions) {
         mDatabase        = pDatabase;
+        mPositions       = pPositions;
         mPublisher       = pPublisher;
         mAudit           = pAudit;
         mExpiryTimer     = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -225,7 +229,7 @@ public class BulletinBoard {
      */
     public synchronized BulletinTrade reverseTrade(BulletinTrade pOriginal) {
         BulletinTrade tReversal = pOriginal.reversal(Long.toHexString(mIdBase + mNextTrade++), System.currentTimeMillis());
-        if (mDatabase != null) mDatabase.saveBulletinTrade(tReversal);
+        store(tReversal);
         auditTrade(tReversal);
         publishOwnReversal(tReversal, tReversal.buyAccount(),  "BUY",  tReversal.buyRef(),  tReversal.buyClientAccount());
         publishOwnReversal(tReversal, tReversal.sellAccount(), "SELL", tReversal.sellRef(), tReversal.sellClientAccount());
@@ -543,7 +547,7 @@ public class BulletinBoard {
         long   tTradeTime = System.currentTimeMillis();
         // Stored (journaled) before anyone is told about the trade
         BulletinTrade tTrade = tradeRecord(pEntry, tTradeNo, tTradeTime);
-        if (mDatabase != null) mDatabase.saveBulletinTrade(tTrade);
+        store(tTrade);
         auditTrade(tTrade);
         mPublisher.accept(BdxMessage.market(BdxMessage.BULLETIN_TRADE, pEntry.marketId)
                 .put("bulletinId", pEntry.bulletinId)
@@ -583,6 +587,13 @@ public class BulletinBoard {
         tSide.addProperty("ref",           pRef);
         tSide.addProperty("clientAccount", clientAccountOrDefault(pClientAccount));
         return tSide;
+    }
+
+    /** Stores the bulletin trade durably, then adds it to the positions. */
+    private void store(BulletinTrade pTrade) {
+        if (mDatabase == null) return;
+        mDatabase.saveBulletinTrade(pTrade);
+        if (mPositions != null) mPositions.addBulletinTrade(pTrade);
     }
 
     /** The stored bulletin trade of a trade on the pending offer (see Database.saveBulletinTrade). */

@@ -16,6 +16,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * The server's database: the master store of the reference data (admin, firms, users, markets, bulletin
@@ -209,6 +210,13 @@ public interface Database {
      */
     List<InternalTrade> listReversalTrades();
 
+    /**
+     * Calls pAction with every stored trade, of all firms and days, reversals included, oldest first (trades
+     * of the same millisecond in the order they were stored), one at a time without holding them all in
+     * memory: the PositionCache's load at startup.
+     */
+    void forEachTrade(Consumer<InternalTrade> pAction);
+
     // ── Bulletin trades ──────────────────────────────────────────────────
 
     /** Stores the bulletin trade durably (it is published only afterwards). */
@@ -226,6 +234,9 @@ public interface Database {
 
     /** All bulletin reversal trades (reversalOf not null), of all days, latest first. */
     List<BulletinTrade> listBulletinReversalTrades();
+
+    /** As forEachTrade, for the bulletin trades. */
+    void forEachBulletinTrade(Consumer<BulletinTrade> pAction);
 
     /**
      * The price of the latest bulletin trade in the (free text) instrument of the bulletin market, reversals

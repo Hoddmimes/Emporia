@@ -36,6 +36,7 @@ public class Server {
     public final Database           database;
     public final InstrumentCache    instrumentCache;
     public final AuthorizationCache authorizations;
+    public final PositionCache      positions;
     public final BdxDistributor     bdx;
     public final MatchingEngine     matchingEngine;
     public final BulletinBoard      bulletinBoard;
@@ -90,10 +91,13 @@ public class Server {
         bdx = new BdxDistributor(instrumentCache);
         bdx.start();
 
-        matchingEngine = new MatchingEngine(instrumentCache, database, bdx, audit);
+        positions = new PositionCache();
+        positions.load(database);
+
+        matchingEngine = new MatchingEngine(instrumentCache, database, bdx, audit, positions);
         mAuctionScheduler = new AuctionScheduler(matchingEngine, instrumentCache);
         mAuctionScheduler.start();
-        bulletinBoard = new BulletinBoard(database, bdx::publish, audit);
+        bulletinBoard = new BulletinBoard(database, bdx::publish, audit, positions);
         bulletinBoard.load();
         mMarketStateScheduler = new MarketStateScheduler(database, instrumentCache, bulletinBoard);
         mMarketStateScheduler.start(pTestMode);
@@ -120,7 +124,7 @@ public class Server {
     }
 
     public RestApi restApi() {
-        return new RestApi(database, instrumentCache, authorizations, bdx, matchingEngine, bulletinBoard, audit, config);
+        return new RestApi(database, instrumentCache, authorizations, bdx, matchingEngine, bulletinBoard, positions, audit, config);
     }
 
     /**

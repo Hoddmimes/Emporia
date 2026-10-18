@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.InstrumentCache;
+import com.hoddmimes.emporia.server.PositionCache;
 import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
@@ -64,12 +65,14 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
     private final TradePersister          mPersister;
     private final AuditLog                mAudit;
 
-    /** Without an audit log (unit tests). */
+    /** Without an audit log and positions (unit tests). */
     public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx) {
-        this(pInstrumentCache, pDB, pBdx, AuditLog.NONE);
+        this(pInstrumentCache, pDB, pBdx, AuditLog.NONE, null);
     }
 
-    public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx, AuditLog pAudit) {
+    /** pPositions (null: none) gets each trade once it is stored. */
+    public MatchingEngine(InstrumentCache pInstrumentCache, Database pDB, BdxDistributor pBdx, AuditLog pAudit,
+                          PositionCache pPositions) {
         mInstrumentCache = pInstrumentCache;
         mDB              = pDB;
         mAudit           = pAudit;
@@ -77,7 +80,10 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         mOrderIndex      = new ConcurrentHashMap<>();
         mTrades          = Collections.synchronizedList(new ArrayList<>());
         // Without a database (unit tests) messages are published at once and trades are not stored
-        mPersister       = new TradePersister((mDB != null) ? mDB::saveTrades : null, pBdx::publish);
+        mPersister       = new TradePersister((mDB != null) ? tTrades -> {
+                                mDB.saveTrades(tTrades);
+                                if (pPositions != null) pPositions.addTrades(tTrades);
+                            } : null, pBdx::publish);
         mPersister.startPersisting();
 
         mInstrumentCache.addMarketSubscription(new InstrumentCache.MarketCallbacks() {

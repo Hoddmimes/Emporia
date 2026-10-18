@@ -3,10 +3,15 @@ package com.hoddmimes.emporia.server.me;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache;
+import com.hoddmimes.emporia.server.PositionCache;
+import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.db.Database;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -472,6 +477,38 @@ class MatchingEngineTest {
         MatchingEngine tRestarted = new MatchingEngine(mCache, null, new BdxDistributor(mCache));
         tRestarted.restoreTrades(List.of(tReversal));
         assertEquals(0, tRestarted.getPrices(1).get(0).getAsJsonObject().get("volume").getAsLong());
+    }
+
+    @Test
+    void storedTradesUpdateThePositions(@TempDir Path pDir) {
+        JsonObject tConfig = new JsonObject();
+        tConfig.addProperty("type", "sqlite");
+        tConfig.addProperty("file", pDir.resolve("emporia.db").toString());
+        Database tDb = Database.open(tConfig);
+        PositionCache tPositions = new PositionCache();
+        MatchingEngine tEngine = new MatchingEngine(mCache, tDb, new BdxDistributor(mCache), AuditLog.NONE, tPositions);
+        try {
+            tEngine.addOrder(new AddOrderRequest(CONT, Order.Side.SELL, 10 * S, 5 * S, "A", null));
+            // The answer comes after the trade is stored, and then it is in the positions
+            assertEquals(3 * S, tEngine.addOrder(new AddOrderRequest(CONT, Order.Side.BUY, 10 * S, 3 * S, "B", null)).matched());
+            assertEquals(-3 * S, tPositions.positions("A").get(0).position());
+            assertEquals(3 * S, tPositions.positions("B").get(0).position());
+            assertEquals(10 * S, tPositions.lastTradePrice(CONT));
+
+            tEngine.reverseTrade(tDb.listTradesByFirm("B", null).get(0));
+            assertEquals(0, tPositions.positions("B").get(0).position());
+            assertEquals(3 * S, tPositions.positions("B").get(0).sold());
+
+            // The same as loaded from the database at a restart
+            PositionCache tLoaded = new PositionCache();
+            tLoaded.load(tDb);
+            assertEquals(tPositions.positions("A"), tLoaded.positions("A"));
+            assertEquals(tPositions.positions("B"), tLoaded.positions("B"));
+            assertEquals(10 * S, tLoaded.lastTradePrice(CONT));
+        } finally {
+            tEngine.stop();
+            tDb.close();
+        }
     }
 
     @Test

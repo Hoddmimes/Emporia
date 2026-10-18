@@ -59,7 +59,8 @@ public class RestApi {
     private Javalin              mApp;   // the stand-alone web server, set by start()
 
     public RestApi(Database pDatabase, InstrumentCache pInstrumentCache, AuthorizationCache pAuthorizations, BdxDistributor pBdx,
-                   MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, AuditLog pAudit, JsonObject pConfiguration) {
+                   MatchingEngine pMatchingEngine, BulletinBoard pBulletinBoard, PositionCache pPositions, AuditLog pAudit,
+                   JsonObject pConfiguration) {
         jHttpIfConfig = pConfiguration.getAsJsonObject("http_interface");
 
         int tSessionInactivitySeconds = 300;
@@ -71,7 +72,7 @@ public class RestApi {
         }
 
         mCtx = new RestApiContext(pDatabase, pInstrumentCache, pAuthorizations, pBdx, pMatchingEngine, pBulletinBoard,
-                pAudit, pConfiguration, tSessionInactivitySeconds);
+                pPositions, pAudit, pConfiguration, tSessionInactivitySeconds);
     }
 
     public void start() {

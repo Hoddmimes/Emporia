@@ -31,6 +31,7 @@ public class RestApiContext {
     public final BdxDistributor     bdx;
     public final MatchingEngine     matchingEngine;
     public final BulletinBoard      bulletinBoard;
+    public final PositionCache      positions;
     public final AuditLog           audit;
     public final JsonObject         configuration;
     public final int                sessionInactivitySeconds;
@@ -41,6 +42,7 @@ public class RestApiContext {
                           BdxDistributor pBdx,
                           MatchingEngine pMatchingEngine,
                           BulletinBoard pBulletinBoard,
+                          PositionCache pPositions,
                           AuditLog pAudit,
                           JsonObject pConfiguration,
                           int pSessionInactivitySeconds) {
@@ -50,6 +52,7 @@ public class RestApiContext {
         bdx                      = pBdx;
         matchingEngine           = pMatchingEngine;
         bulletinBoard            = pBulletinBoard;
+        positions                = pPositions;
         audit                    = pAudit;
         configuration            = pConfiguration;
         sessionInactivitySeconds = pSessionInactivitySeconds;
