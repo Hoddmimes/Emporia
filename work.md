@@ -80,3 +80,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-18 Startup system message: the server tells the trading users that it was started and the earlier orders are cancelled
 * 26-10-18 Self-trade prevention per market (Allow Self-Trade): an incoming order's rest is cancelled at the firm's own order; in an uncross the later order is removed
 * 26-10-18 Instrument currency and unit: set in the admin instrument pages and the bulk load, shown in the trading price table, order dialog, order book, trade popup and portfolio (totals per currency)
+* 26-10-18 MongoDB indexes for the portfolio: Trades instrumentId (last price), BulletinTrades buyAccount/sellAccount (a firm's bulletin trades) and marketId+instrument (last bulletin price), as SQLite already had

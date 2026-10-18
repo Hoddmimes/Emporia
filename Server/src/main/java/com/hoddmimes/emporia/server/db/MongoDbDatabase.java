@@ -62,8 +62,9 @@ public class MongoDbDatabase implements Database {
      * tradeTime, then _id, which serves both the day range on tradeTime and the latest first sort
      * (tradeTime, _id descending, the index read backwards) in findTrades; and buyAccount and sellAccount,
      * each followed by tradeTime and _id, for a firm's trades (listTradesByFirm: one index per side of
-     * its $or, with the same day range and sort); and reversalOf, sparse (only the reversal trades have one),
-     * for listReversalTrades.
+     * its $or, with the same day range and sort); instrumentId, tradeTime, _id for lastTradePrice; and
+     * reversalOf, sparse (only the reversal trades have one), for listReversalTrades. BulletinTrades: the
+     * same per firm side, and marketId, instrument, tradeTime, _id for lastBulletinTradePrice.
      */
     private void createIndexes() {
         var tTrades = mDatabase.getCollection("Trades");
@@ -71,10 +72,14 @@ public class MongoDbDatabase implements Database {
                 tTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
                 tTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")));
+        cLog.info("Trades index {}", tTrades.createIndex(Indexes.ascending("instrumentId", "tradeTime", "_id")));
         cLog.info("Trades index {}", tTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
         var tBulletinTrades = mDatabase.getCollection("BulletinTrades");
-        cLog.info("BulletinTrades indexes {}, {}",
+        cLog.info("BulletinTrades indexes {}, {}, {}, {}, {}",
                 tBulletinTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
+                tBulletinTrades.createIndex(Indexes.ascending("buyAccount", "tradeTime", "_id")),
+                tBulletinTrades.createIndex(Indexes.ascending("sellAccount", "tradeTime", "_id")),
+                tBulletinTrades.createIndex(Indexes.ascending("marketId", "instrument", "tradeTime", "_id")),
                 tBulletinTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
         cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("time", "_id")));
         cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("system", "time", "_id")));
