@@ -546,4 +546,89 @@ class MatchingEngineTest {
             assertTrue(tBook.getAsJsonArray("bids").isEmpty() || tBook.getAsJsonArray("asks").isEmpty());
         }
     }
+
+    // ── Self-trade prevention ─────────────────────────────────────────────
+
+    private void preventSelfTrade(int pMarketId, String pName, String pType, String pStatus) {
+        mCache.putMarket(new InstrumentCache.MarketEntry(pMarketId, pName, "", pType, "", "", false, "", "", "", "", pStatus, false));
+    }
+
+    @Test
+    void selfTradeIsAllowedByDefault() {
+        add(CONT, Order.Side.SELL, 10.00, 2, "A");
+        OrderResponse tBuy = add(CONT, Order.Side.BUY, 10.00, 2, "A");
+        assertEquals(2 * S, tBuy.matched());
+        assertEquals(0, tBuy.selfTradeCancelled());
+        assertEquals(2, mEngine.getTradesByFirm("A", 0).size());   // the trade, as the buyer and as the seller
+    }
+
+    @Test
+    void selfTradePreventionCancelsTheRestOfTheIncomingOrder() {
+        preventSelfTrade(1, "Cont", "CONTINUOUS", "OPEN");
+        add(CONT, Order.Side.SELL, 10.00, 2, "B");
+        String tOwn = add(CONT, Order.Side.SELL, 10.10, 3, "A").orderId();
+        add(CONT, Order.Side.SELL, 10.20, 2, "C");
+
+        OrderResponse tBuy = add(CONT, Order.Side.BUY, 10.20, 6, "A");
+        assertTrue(tBuy.success());
+        assertEquals(2 * S, tBuy.matched());              // with B, ahead of the own order
+        assertEquals(4 * S, tBuy.selfTradeCancelled());   // the rest, not put in the book
+        assertEquals(0, tBuy.remaining());
+        assertFalse(tBuy.inserted());
+
+        JsonArray tOrders = orders("A");
+        assertEquals(1, tOrders.size());                   // only the resting sell, untouched
+        assertEquals(tOwn, tOrders.get(0).getAsJsonObject().get("orderId").getAsString());
+        assertEquals(3 * S, tOrders.get(0).getAsJsonObject().get("quantity").getAsLong());
+        assertEquals(1, orders("C").size());
+        assertEquals(1, mEngine.getTradesByFirm("A", 0).size());
+
+        // Own orders that don't cross may rest side by side, and other firms still trade with them
+        assertTrue(add(CONT, Order.Side.BUY, 10.00, 1, "A").inserted());
+        assertEquals(3 * S, add(CONT, Order.Side.BUY, 10.10, 3, "D").matched());
+    }
+
+    @Test
+    void selfTradePreventionAppliesToAModifyThatReplacesTheOrder() {
+        preventSelfTrade(1, "Cont", "CONTINUOUS", "OPEN");
+        add(CONT, Order.Side.SELL, 10.10, 3, "A");
+        String tBuy = add(CONT, Order.Side.BUY, 10.00, 2, "A").orderId();
+        OrderResponse tModify = mEngine.modifyOrder("A", tBuy, Math.round(10.10 * S), 2 * S, null);
+        assertTrue(tModify.success());
+        assertEquals(2 * S, tModify.selfTradeCancelled());
+        assertEquals(0, mEngine.getTradesByFirm("A", 0).size());
+        assertEquals(1, orders("A").size());              // the sell
+    }
+
+    @Test
+    void selfTradePreventionInTheOpeningUncrossRemovesTheLaterOrder() {
+        preventSelfTrade(1, "Cont", "CONTINUOUS", "PREOPEN");
+        add(CONT, Order.Side.SELL, 10.00, 5, "A");
+        add(CONT, Order.Side.BUY,  10.00, 2, "B");
+        add(CONT, Order.Side.BUY,  10.50, 3, "A");          // later than A's sell: removed
+        preventSelfTrade(1, "Cont", "CONTINUOUS", "OPEN");  // opening uncross
+
+        JsonArray tTrades = mEngine.getTradesByFirm("A", 0);
+        assertEquals(1, tTrades.size());
+        assertEquals(2 * S, tTrades.get(0).getAsJsonObject().get("quantity").getAsLong());
+        JsonArray tOrders = orders("A");
+        assertEquals(1, tOrders.size());
+        assertEquals("SELL", tOrders.get(0).getAsJsonObject().get("side").getAsString());
+        assertEquals(3 * S, tOrders.get(0).getAsJsonObject().get("quantity").getAsLong());
+        JsonObject tBook = mEngine.getOrderbook(CONT, "A");
+        assertTrue(tBook.getAsJsonArray("bids").isEmpty());   // not left crossed
+    }
+
+    @Test
+    void selfTradePreventionInAnAuction() {
+        preventSelfTrade(2, "Auct", "AUCTION", "OPEN");
+        add(AUCTION, Order.Side.BUY,  10.00, 4, "A");
+        add(AUCTION, Order.Side.SELL, 10.00, 4, "A");          // later: removed
+        add(AUCTION, Order.Side.SELL, 10.00, 1, "B");
+        AuctionResult tResult = mEngine.triggerAuction(AUCTION);
+        assertTrue(tResult.success());
+        assertEquals(1 * S, tResult.matchedVolume());
+        assertEquals(3 * S, orders("A").get(0).getAsJsonObject().get("quantity").getAsLong());   // the buy's rest
+        assertEquals(1, orders("A").size());
+    }
 }

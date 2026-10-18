@@ -235,6 +235,9 @@ Quote it when reporting a problem; the server log shows it on every line about t
     <tr><td><code>tradingStatus</code></td><td>See <a href="#conventions">Trading status</a>.</td></tr>
     <tr><td><code>auctionInterval</code>, <code>randomAuctionInterval</code></td><td>Auction markets: the time
         between auctions.</td></tr>
+    <tr><td><code>selfTrade</code></td><td><code>false</code> if the market prevents self-trade: your firm's
+        orders never trade with each other (see <code>selfTradeCancelled</code> under <code>POST /api/orders</code>).
+        <code>true</code>: they may.</td></tr>
 </table>
 </div>
 
@@ -334,6 +337,12 @@ suspended.</p>
     <tr><td><code>remaining</code></td><td>The quantity left in the book.</td></tr>
     <tr><td><code>inserted</code></td><td><code>true</code> if a remainder rests in the book, <code>false</code> if
         the order traded completely.</td></tr>
+    <tr><td><code>selfTradeCancelled</code></td><td>Only in a market that prevents self-trade
+        (<code>selfTrade</code> false), and only when it happened: the quantity cancelled because the order would
+        have traded with a resting order of your own firm. The order trades with the other firms' orders ahead of
+        that one; then the rest is cancelled and not put in the book (your resting order stays). The same applies
+        to a <code>PATCH</code> that replaces the order. In an auction, or the uncross when the market opens, the
+        later of two crossing orders of your firm loses its remaining quantity (an <code>OwnOrder</code> REMOVED).</td></tr>
 </table>
 </div>
 

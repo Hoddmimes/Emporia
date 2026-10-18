@@ -36,6 +36,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
             String tOpen                  = RestApiContext.field(tBody, "open",                  "");
             String tClose                 = RestApiContext.field(tBody, "close",                 "");
             boolean tInverse              = tBody.has("inverse") && tBody.get("inverse").getAsBoolean();
+            boolean tSelfTrade            = !tBody.has("selfTrade") || tBody.get("selfTrade").getAsBoolean();   // default allowed
             String tPreOpenTime           = RestApiContext.field(tBody, "preOpenTime",           "");
             String tOpenAuctionTime       = RestApiContext.field(tBody, "openAuctionTime",       "");
             String tAuctionInterval       = RestApiContext.field(tBody, "auctionInterval",       "");
@@ -52,7 +53,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
             String tDatabaseId = mCtx.database.createMarket(new MarketEntry(tMarketId, tName, tDescription, tType,
                     tOpen, tClose, tInverse, tPreOpenTime, tOpenAuctionTime,
-                    tAuctionInterval, tRandomAuctionInterval, tTradingStatus));
+                    tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade));
             mCtx.instrumentCache.putMarket(mCtx.database.getMarket(tDatabaseId).value());
             mCtx.refreshClientAuthorizations();   // firms authorized for "*" get the new market
             ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
@@ -76,6 +77,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
             String tOpen                  = RestApiContext.field(tBody, "open",                  "");
             String tClose                 = RestApiContext.field(tBody, "close",                 "");
             boolean tInverse              = tBody.has("inverse") && tBody.get("inverse").getAsBoolean();
+            boolean tSelfTrade            = !tBody.has("selfTrade") || tBody.get("selfTrade").getAsBoolean();   // default allowed
             String tPreOpenTime           = RestApiContext.field(tBody, "preOpenTime",           "");
             String tOpenAuctionTime       = RestApiContext.field(tBody, "openAuctionTime",       "");
             String tAuctionInterval       = RestApiContext.field(tBody, "auctionInterval",       "");
@@ -91,7 +93,7 @@ public class AdminMarketEndpoints implements RestEndpoint {
                 String tDatabaseId = ctx.pathParam("id");
                 mCtx.database.updateMarket(tDatabaseId, new MarketEntry(0, tName, tDescription, tType,
                         tOpen, tClose, tInverse, tPreOpenTime, tOpenAuctionTime,
-                        tAuctionInterval, tRandomAuctionInterval, tTradingStatus));
+                        tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade));
                 var tMarket = mCtx.database.getMarket(tDatabaseId);
                 if (tMarket != null) mCtx.instrumentCache.putMarket(tMarket.value());
                 ctx.json("{\"success\":true}");

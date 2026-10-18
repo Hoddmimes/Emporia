@@ -33,7 +33,8 @@ await rest('POST', 'api/admin/users', { userId: 'olof', name: 'Olof Ek', firm: '
 await rest('POST', 'api/admin/authorizations', { firm: 'EASTGRAIN', market: '1' });
 await rest('POST', 'api/admin/authorizations', { firm: 'EASTGRAIN', market: '3' });
 await rest('POST', 'api/admin/markets', { name: 'Dairy', description: 'Butter and milk powder, call auctions',
-    type: 'AUCTION', open: '09:00', close: '16:00', tradingStatus: 'CLOSED', auctionInterval: '900', randomAuctionInterval: '60' });
+    type: 'AUCTION', open: '09:00', close: '16:00', tradingStatus: 'CLOSED', auctionInterval: '900', randomAuctionInterval: '60',
+    selfTrade: false });
 
 // ── Chrome ─────────────────────────────────────────────────────────────
 const { ev, navigate, shot, mark, unmark, resize, close } = await startChrome(BASE, OUT);

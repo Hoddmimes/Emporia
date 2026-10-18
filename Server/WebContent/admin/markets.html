@@ -33,11 +33,12 @@
                             <th>Name</th>
                             <th>Description</th>
                             <th>Type</th>
+                            <th>Self-Trade</th>
                             <th>Trading Status</th>
                         </tr>
                     </thead>
                     <tbody id="markets-body">
-                        <tr class="empty-row"><td colspan="4">Loading&hellip;</td></tr>
+                        <tr class="empty-row"><td colspan="5">Loading&hellip;</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -57,14 +58,14 @@
                 if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     document.getElementById('markets-body').innerHTML =
-                        `<tr class="empty-row"><td colspan="4">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
+                        `<tr class="empty-row"><td colspan="5">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
                     return;
                 }
                 const markets = r.data;
                 const tbody = document.getElementById('markets-body');
 
                 if (markets.length === 0) {
-                    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No markets defined yet.</td></tr>';
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No markets defined yet.</td></tr>';
                     return;
                 }
 
@@ -75,12 +76,13 @@
                             <td>${escHtml(m.name)}</td>
                             <td>${escHtml(m.description)}</td>
                             <td>${escHtml(m.type)}</td>
+                            <td>${m.selfTrade === false ? 'Prevented' : 'Allowed'}</td>
                             <td>${tradingStatusBadge(m.tradingStatus)}</td>
                         </tr>`
                     ).join('');
             } catch (e) {
                 document.getElementById('markets-body').innerHTML =
-                    '<tr class="empty-row"><td colspan="4">Failed to load markets.</td></tr>';
+                    '<tr class="empty-row"><td colspan="5">Failed to load markets.</td></tr>';
             }
         }
 

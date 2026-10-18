@@ -261,6 +261,11 @@ updated the next time they reload the page.</p>
     <tr><td>Auction Interval</td><td>Auction only, required. Seconds between auctions.</td></tr>
     <tr><td>Random Auction Interval</td><td>Seconds. In an auction market, each auction happens at a random moment within
         this last part of the interval, so no one can time an order to the second.</td></tr>
+    <tr><td>Allow Self-Trade</td><td>Checked (the default): a firm's orders may trade with each other. Unchecked:
+        they never do. An incoming order then trades with the other firms' orders ahead of the firm's own order,
+        and the rest of it is cancelled (the trader's popup says so); in an auction, or the uncross at Open, the
+        later of two crossing orders of the same firm is removed. Can be changed at any time; it applies to the
+        next order.</td></tr>
     <tr><td>Inverse, Open Auction Time</td><td>Continuous only. Stored with the market but not used by the trading engine.</td></tr>
 </table>
 <figure class="form">

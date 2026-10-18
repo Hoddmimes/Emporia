@@ -207,6 +207,10 @@ wrong, the dialog shows the reason and stays open.</p>
 <p>The order trades at once with orders on the other side at your price or better. The trade is at the
 resting order's price. Whatever is not traded stays in the book as a resting order and is shown under
 <b>My Orders</b>. Orders can only be entered while the market is OPEN or PREOPEN.</p>
+<p>Some markets don't allow <b>self-trade</b>: your firm's orders never trade with each other there. If your
+order would trade with a resting order of your own firm (yours or a colleague's), it trades with the other
+firms' better orders first, and the rest of it is <b>cancelled</b> instead of trading or resting; the popup
+says how much. Your firm's resting order stays as it was.</p>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="delete-order">Deleting an order</h2>

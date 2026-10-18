@@ -84,6 +84,14 @@
                         </span>
                     </div>
 
+                    <div class="detail-row">
+                        <span class="detail-label">Allow Self-Trade</span>
+                        <span class="detail-value">
+                            <input type="checkbox" id="d-selfTrade" onchange="checkChanged()"
+                                   title="Unchecked: a firm's orders never trade with each other; an incoming order that would trade with an order of its own firm has its rest cancelled">
+                        </span>
+                    </div>
+
                     <!-- CONTINUOUS only -->
                     <div class="detail-row" id="row-inverse">
                         <span class="detail-label">Inverse</span>
@@ -188,6 +196,7 @@
                 document.getElementById('d-open').value                  !== originalValues.open               ||
                 document.getElementById('d-close').value                 !== originalValues.close              ||
                 document.getElementById('d-inverse').checked             !== originalValues.inverse            ||
+                document.getElementById('d-selfTrade').checked           !== originalValues.selfTrade          ||
                 document.getElementById('d-preOpenTime').value           !== originalValues.preOpenTime        ||
                 document.getElementById('d-openAuctionTime').value       !== originalValues.openAuctionTime    ||
                 document.getElementById('d-auctionInterval').value       !== originalValues.auctionInterval    ||
@@ -211,6 +220,7 @@
                 document.getElementById('d-open').value               = m.open                 || '';
                 document.getElementById('d-close').value              = m.close                || '';
                 document.getElementById('d-inverse').checked          = !!m.inverse;
+                document.getElementById('d-selfTrade').checked        = m.selfTrade !== false;
                 document.getElementById('d-preOpenTime').value        = m.preOpenTime          || '';
                 document.getElementById('d-openAuctionTime').value    = m.openAuctionTime      || '';
                 document.getElementById('d-auctionInterval').value    = m.auctionInterval      || '';
@@ -225,6 +235,7 @@
                     open:                 m.open                 || '',
                     close:                m.close                || '',
                     inverse:              !!m.inverse,
+                    selfTrade:            m.selfTrade !== false,
                     preOpenTime:          m.preOpenTime          || '',
                     openAuctionTime:      m.openAuctionTime      || '',
                     auctionInterval:      m.auctionInterval      || '',
@@ -244,6 +255,7 @@
                 open:                 document.getElementById('d-open').value.trim(),
                 close:                document.getElementById('d-close').value.trim(),
                 inverse:              document.getElementById('d-inverse').checked,
+                selfTrade:            document.getElementById('d-selfTrade').checked,
                 preOpenTime:          document.getElementById('d-preOpenTime').value.trim(),
                 openAuctionTime:      document.getElementById('d-openAuctionTime').value.trim(),
                 auctionInterval:      document.getElementById('d-auctionInterval').value.trim(),
@@ -262,6 +274,7 @@
                     open:                 body.open,
                     close:                body.close,
                     inverse:              body.inverse,
+                    selfTrade:            body.selfTrade,
                     preOpenTime:          body.preOpenTime,
                     openAuctionTime:      body.openAuctionTime,
                     auctionInterval:      body.auctionInterval,

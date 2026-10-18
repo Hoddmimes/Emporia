@@ -17,6 +17,11 @@ import java.util.TreeSet;
  * PREOPEN); an AUCTION book always collects orders. Collected orders are matched by
  * {@link #uncross()} at a single clearing price.
  *
+ * Self-trade (both orders of the same firm, the account) can be prevented per market (the pSelfTrade
+ * arguments, false = prevented): an incoming order trades with the other firms' orders ahead of the first
+ * own order it would trade with, and the rest of it is then cancelled (not put in the book); in an uncross
+ * the later of the two orders (higher order id) loses its remaining quantity, and the uncross goes on.
+ *
  * Not thread-safe by itself: the MatchingEngine locks the book (synchronized on the Orderbook
  * object) around every call, so orders in different books are matched in parallel.
  */
@@ -60,8 +65,16 @@ public class Orderbook {
 
     // ── Add order ─────────────────────────────────────────────────────────
 
-    /** Adds an order; with pMatch false (or in an AUCTION book) the order is only put in the book. */
+    /** Adds an order, self-trade allowed. */
     public OrderResponse addOrder(AddOrderRequest pReq, boolean pMatch) {
+        return addOrder(pReq, pMatch, true);
+    }
+
+    /**
+     * Adds an order; with pMatch false (or in an AUCTION book) the order is only put in the book. pSelfTrade
+     * false: it doesn't trade with an order of its own firm (see the class comment).
+     */
+    public OrderResponse addOrder(AddOrderRequest pReq, boolean pMatch, boolean pSelfTrade) {
         String tErr = validateOrder(pReq.price(), pReq.quantity());
         if (tErr != null) return OrderResponse.error(tErr);
 
@@ -78,39 +91,53 @@ public class Orderbook {
 
         // Continuous: match immediately
         if (tOrder.getSide() == Order.Side.BUY) {
-            return matchBook(mSellSide, tOrder);
+            return matchBook(mSellSide, tOrder, pSelfTrade);
         } else {
-            return matchBook(mBuySide, tOrder);
+            return matchBook(mBuySide, tOrder, pSelfTrade);
         }
     }
 
     // ── Trigger auction ───────────────────────────────────────────────────
 
     public AuctionResult triggerAuction() {
+        return triggerAuction(true);
+    }
+
+    public AuctionResult triggerAuction(boolean pSelfTrade) {
         if (!TYPE_AUCTION.equals(mType)) {
             return AuctionResult.error("Not an auction orderbook");
         }
-        return uncross();
+        return uncross(pSelfTrade);
+    }
+
+    /** Uncrosses, self-trade allowed. */
+    public AuctionResult uncross() {
+        return uncross(true);
     }
 
     /**
      * Matches all crossing orders at a single clearing price (any book type).
-     * Used for scheduled auctions and to uncross a continuous book when its market opens.
+     * Used for scheduled auctions and to uncross a continuous book when its market opens. With pSelfTrade
+     * false an order that loses its quantity to the self-trade rule can leave the book crossed, so it is
+     * uncrossed again (each round trades or cancels something); the result has the first round's price.
      */
-    public AuctionResult uncross() {
-        List<Order> tBuys  = new ArrayList<>(mBuySide.getOrders());
-        List<Order> tSells = new ArrayList<>(mSellSide.getOrders());
-
-        long tClearingPrice = findClearingPrice(tBuys, tSells);
-        long tTotalMatched  = 0L;
-
-        if (tClearingPrice > 0L) {
-            tTotalMatched = executeAtClearingPrice(tClearingPrice, tBuys, tSells);
-        }
+    public AuctionResult uncross(boolean pSelfTrade) {
+        long   tTotalMatched  = 0L;
+        long   tFirstPrice    = 0L;
+        long[] tCancelled     = new long[1];
+        do {
+            tCancelled[0] = 0L;
+            List<Order> tBuys  = new ArrayList<>(mBuySide.getOrders());
+            List<Order> tSells = new ArrayList<>(mSellSide.getOrders());
+            long tClearingPrice = findClearingPrice(tBuys, tSells);
+            if (tClearingPrice == 0L) break;
+            if (tFirstPrice == 0L) tFirstPrice = tClearingPrice;
+            tTotalMatched += executeAtClearingPrice(tClearingPrice, tBuys, tSells, pSelfTrade, tCancelled);
+        } while (tCancelled[0] > 0);
 
         mCallback.orderbookChanged(mInstrumentId);
 
-        return new AuctionResult(true, null, mInstrumentId, tTotalMatched, tClearingPrice);
+        return new AuctionResult(true, null, mInstrumentId, tTotalMatched, tFirstPrice);
     }
 
     /**
@@ -159,7 +186,10 @@ public class Orderbook {
         return tClearingPrice;
     }
 
-    private long executeAtClearingPrice(long pClearingPrice, List<Order> pAllBuys, List<Order> pAllSells) {
+    // Matches the crossing orders at the price; with pSelfTrade false, of a buy and a sell of the same firm the later
+    // one is removed (its remaining quantity added to pCancelled[0]) instead of trading
+    private long executeAtClearingPrice(long pClearingPrice, List<Order> pAllBuys, List<Order> pAllSells,
+                                        boolean pSelfTrade, long[] pCancelled) {
         List<Order> tBuys  = new ArrayList<>();
         List<Order> tSells = new ArrayList<>();
         for (Order o : pAllBuys)  { if (o.getPrice() >= pClearingPrice) tBuys.add(o); }
@@ -179,6 +209,17 @@ public class Orderbook {
         while (tBuyIdx < tBuys.size() && tSellIdx < tSells.size()) {
             Order tBuy  = tBuys.get(tBuyIdx);
             Order tSell = tSells.get(tSellIdx);
+
+            if (!pSelfTrade && tBuy.getAccount() != null && tBuy.getAccount().equals(tSell.getAccount())) {
+                boolean tBuyLater = tBuy.getOrderId() > tSell.getOrderId();
+                Order tLater = tBuyLater ? tBuy : tSell;
+                pCancelled[0] += tLater.getQuantity();
+                selfTradeCancelled(tLater);
+                tLater.setQuantity(0);
+                mCallback.orderRemoved(tLater, ++mSeqNo);
+                if (tBuyLater) tBuyIdx++; else tSellIdx++;
+                continue;
+            }
 
             long tQty = Math.min(tBuy.getQuantity(), tSell.getQuantity());
             recordTrade(pClearingPrice, tQty);
@@ -214,6 +255,12 @@ public class Orderbook {
      * current price and a null pUserRef keeps the current userRef, in both cases.
      */
     public OrderResponse modifyOrder(long pOrderId, long pPrice, long pQuantity, String pUserRef, boolean pMatch) {
+        return modifyOrder(pOrderId, pPrice, pQuantity, pUserRef, pMatch, true);
+    }
+
+    /** As above; pSelfTrade as for addOrder, for the new order of a full modify. */
+    public OrderResponse modifyOrder(long pOrderId, long pPrice, long pQuantity, String pUserRef, boolean pMatch,
+                                     boolean pSelfTrade) {
         Order tExisting = getOrder(pOrderId);
         if (tExisting == null) {
             return OrderResponse.error("Order not found: " + Long.toHexString(pOrderId));
@@ -245,7 +292,7 @@ public class Orderbook {
         mCallback.orderbookChanged(mInstrumentId);
 
         return addOrder(new AddOrderRequest(mInstrumentId, tExisting.getSide(), tNewPrice, pQuantity,
-                tExisting.getAccount(), tNewUserRef, tExisting.getClientAccount(), tExisting.getUser()), pMatch);
+                tExisting.getAccount(), tNewUserRef, tExisting.getClientAccount(), tExisting.getUser()), pMatch, pSelfTrade);
     }
 
     // ── Delete order ──────────────────────────────────────────────────────
@@ -311,14 +358,22 @@ public class Orderbook {
 
     // ── Internals ─────────────────────────────────────────────────────────
 
-    private OrderResponse matchBook(OrderMapInterface pBook, Order pNewOrder) {
+    private OrderResponse matchBook(OrderMapInterface pBook, Order pNewOrder, boolean pSelfTrade) {
         long    tTotMatched = 0;
+        long    tCancelled  = 0;
         boolean tEndOfMatch = false;
 
         Iterator<Order> tItr = pBook.iterator();
         while (tItr.hasNext() && pNewOrder.getQuantity() > 0 && !tEndOfMatch) {
             Order tBookOrder = tItr.next();
-            if (pNewOrder.match(tBookOrder)) {
+            if (pNewOrder.match(tBookOrder) && !pSelfTrade && pNewOrder.getAccount() != null
+                    && pNewOrder.getAccount().equals(tBookOrder.getAccount())) {
+                // Would trade with its own firm: the rest of the incoming order is cancelled
+                tCancelled = pNewOrder.getQuantity();
+                selfTradeCancelled(pNewOrder);
+                pNewOrder.setQuantity(0);
+                tEndOfMatch = true;
+            } else if (pNewOrder.match(tBookOrder)) {
                 long tMatchedQty = Math.min(tBookOrder.getQuantity(), pNewOrder.getQuantity());
 
                 recordTrade(tBookOrder.getPrice(), tMatchedQty);
@@ -343,14 +398,19 @@ public class Orderbook {
         if (pNewOrder.getQuantity() > 0) {
             addOrderToBook(pNewOrder);
             mCallback.orderAdded(pNewOrder, ++mSeqNo);
-        } else {
+        } else if (tCancelled == 0) {
             mCallback.newOrderMatched(pNewOrder, mSeqNo);
         }
 
         mCallback.orderbookChanged(mInstrumentId);
 
         return new OrderResponse(true, null, Long.toHexString(pNewOrder.getOrderId()),
-                pNewOrder.getQuantity() > 0, tTotMatched, pNewOrder.getQuantity(), pNewOrder.getUserRef());
+                pNewOrder.getQuantity() > 0, tTotMatched, pNewOrder.getQuantity(), pNewOrder.getUserRef(), tCancelled);
+    }
+
+    private void selfTradeCancelled(Order pOrder) {
+        cLog.info("Self-trade prevented: order {} of {} cancelled, quantity {}", Long.toHexString(pOrder.getOrderId()),
+                pOrder.getAccount(), pOrder.getQuantity());
     }
 
     /** Restores the statistics (open, high, last, volume) of a trade reloaded at startup. */

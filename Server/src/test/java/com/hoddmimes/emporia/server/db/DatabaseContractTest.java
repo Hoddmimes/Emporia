@@ -181,6 +181,15 @@ abstract class DatabaseContractTest {
         mDb.updateMarket(tId, new MarketEntry(0, "Cereals", "", "CONTINUOUS", "", "", false, "", "", "", "", "CLOSED"));
         assertEquals("Cereals", mDb.getMarket(tId).value().name());
 
+        // Self-trade: allowed by default, stored when prevented
+        assertTrue(mDb.getMarket(tId).value().selfTrade());
+        mDb.updateMarket(tId, new MarketEntry(0, "", "", "CONTINUOUS", "", "", false, "", "", "", "", "CLOSED", false));
+        assertFalse(mDb.getMarket(tId).value().selfTrade());
+        String tNoSelfTrade = mDb.createMarket(new MarketEntry(3, "NoSelf", "", "CONTINUOUS", "", "", false, "", "", "", "", "CLOSED", false));
+        assertFalse(mDb.getMarket(tNoSelfTrade).value().selfTrade());
+        assertFalse(mDb.setMarketStatus(3, "OPEN").selfTrade());
+        mDb.deleteMarket(tNoSelfTrade);
+
         assertEquals("OPEN", mDb.setMarketStatus(1, "OPEN").tradingStatus());
         assertEquals("OPEN", mDb.getMarket(tId).value().tradingStatus());
         assertNull(mDb.setMarketStatus(7, "OPEN"));

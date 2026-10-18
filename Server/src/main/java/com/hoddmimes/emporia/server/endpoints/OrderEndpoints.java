@@ -171,6 +171,8 @@ public class OrderEndpoints implements RestEndpoint {
         tOut.addProperty("matched",   pRsp.matched());
         tOut.addProperty("remaining", pRsp.remaining());
         if (pRsp.userRef() != null) tOut.addProperty("userRef", pRsp.userRef());
+        // the incoming order's rest, cancelled since it would have traded with the firm's own order
+        if (pRsp.selfTradeCancelled() > 0) tOut.addProperty("selfTradeCancelled", pRsp.selfTradeCancelled());
         ctx.status(pStatus).json(tOut.toString());
     }
 }

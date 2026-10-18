@@ -55,7 +55,7 @@ public class SqliteDatabase implements Database {
         """
         CREATE TABLE IF NOT EXISTS Markets (id TEXT PRIMARY KEY, marketId INTEGER NOT NULL, name TEXT,
             description TEXT, type TEXT, open TEXT, close TEXT, inverse INTEGER, preOpenTime TEXT,
-            openAuctionTime TEXT, auctionInterval TEXT, randomAuctionInterval TEXT, tradingStatus TEXT)""",
+            openAuctionTime TEXT, auctionInterval TEXT, randomAuctionInterval TEXT, tradingStatus TEXT, selfTrade INTEGER)""",
         "CREATE INDEX IF NOT EXISTS Markets_marketId ON Markets (marketId)",
         """
         CREATE TABLE IF NOT EXISTS BulletinMarkets (id TEXT PRIMARY KEY, marketId INTEGER NOT NULL, name TEXT,
@@ -109,6 +109,7 @@ public class SqliteDatabase implements Database {
         { "Trades", "reversalOf TEXT" },
         { "BulletinTrades", "reversalOf TEXT" },
         { "Chat", "system INTEGER" },
+        { "Markets", "selfTrade INTEGER" },
     };
 
     /** Indexes on added columns, created after the columns. */
@@ -396,7 +397,8 @@ public class SqliteDatabase implements Database {
         return new MarketEntry(rs.getInt("marketId"), str(rs, "name"), str(rs, "description"), str(rs, "type"),
                 str(rs, "open"), str(rs, "close"), rs.getInt("inverse") != 0,
                 str(rs, "preOpenTime"), str(rs, "openAuctionTime"),
-                str(rs, "auctionInterval"), str(rs, "randomAuctionInterval"), str(rs, "tradingStatus"));
+                str(rs, "auctionInterval"), str(rs, "randomAuctionInterval"), str(rs, "tradingStatus"),
+                rs.getObject("selfTrade") == null || rs.getInt("selfTrade") != 0);   // NULL in markets stored before: allowed
     }
 
     @Override
@@ -414,10 +416,11 @@ public class SqliteDatabase implements Database {
         String tId = DatabaseIds.newId();
         update("""
                 INSERT INTO Markets (id, marketId, name, description, type, open, close, inverse, preOpenTime,
-                    openAuctionTime, auctionInterval, randomAuctionInterval, tradingStatus)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    openAuctionTime, auctionInterval, randomAuctionInterval, tradingStatus, selfTrade)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 tId, m.marketId(), m.name(), m.description(), m.type(), m.open(), m.close(), m.inverse(),
-                m.preOpenTime(), m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus());
+                m.preOpenTime(), m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(),
+                m.selfTrade());
         return tId;
     }
 
@@ -427,10 +430,10 @@ public class SqliteDatabase implements Database {
         update("""
                 UPDATE Markets SET name = CASE WHEN ? = '' THEN name ELSE ? END, description = ?, type = ?, open = ?,
                     close = ?, inverse = ?, preOpenTime = ?, openAuctionTime = ?, auctionInterval = ?,
-                    randomAuctionInterval = ?, tradingStatus = ?
+                    randomAuctionInterval = ?, tradingStatus = ?, selfTrade = ?
                 WHERE id = ?""",
                 m.name(), m.name(), m.description(), m.type(), m.open(), m.close(), m.inverse(), m.preOpenTime(),
-                m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(), tId);
+                m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(), m.selfTrade(), tId);
     }
 
     @Override

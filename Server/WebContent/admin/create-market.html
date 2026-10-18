@@ -69,6 +69,13 @@
                         <input type="text" id="f-close" placeholder="HH:MM">
                     </div>
 
+                    <div class="form-group">
+                        <label for="f-selfTrade">Allow Self-Trade</label>
+                        <input type="checkbox" id="f-selfTrade" style="width:auto;" checked>
+                        <div class="form-hint">Unchecked: a firm's orders never trade with each other. An incoming
+                            order that would trade with an order of its own firm has its rest cancelled.</div>
+                    </div>
+
                     <!-- CONTINUOUS only -->
                     <div class="form-group" id="row-inverse" style="display:none;">
                         <label for="f-inverse">Inverse</label>
@@ -148,6 +155,7 @@
                 open:                 document.getElementById('f-open').value.trim(),
                 close:                document.getElementById('f-close').value.trim(),
                 inverse:              document.getElementById('f-inverse').checked,
+                selfTrade:            document.getElementById('f-selfTrade').checked,
                 preOpenTime:          document.getElementById('f-preOpenTime').value.trim(),
                 openAuctionTime:      document.getElementById('f-openAuctionTime').value.trim(),
                 auctionInterval:      document.getElementById('f-auctionInterval').value.trim(),

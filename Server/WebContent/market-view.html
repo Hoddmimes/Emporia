@@ -1352,8 +1352,10 @@
                 showToast({ kind: 'bulletin', title: 'Bulletin added', lines: [what,
                     'Expires ' + new Date(d.expiresAt).toLocaleString()] });
             } else {
+                // selfTradeCancelled: the rest cancelled, it would have traded with an own order (market without self-trade)
                 showToast({ kind: body.side === 'BUY' ? 'buy' : 'sell', title: 'Order accepted', lines: [what,
-                    'Matched ' + d.matched / SCALE + ', ' + (d.inserted ? 'in the book ' + d.remaining / SCALE : 'nothing left in the book')] });
+                    'Matched ' + d.matched / SCALE + ', ' + (d.inserted ? 'in the book ' + d.remaining / SCALE : 'nothing left in the book')]
+                    .concat(d.selfTradeCancelled ? ['Cancelled ' + d.selfTradeCancelled / SCALE + ': would have traded with your own firm\'s order'] : []) });
             }
             document.getElementById('of-userRef').value = '';   // a reference names one order
             saveClientAccount(body.clientAccount || '');

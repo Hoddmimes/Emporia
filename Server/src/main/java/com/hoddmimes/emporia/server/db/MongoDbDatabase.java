@@ -280,13 +280,14 @@ public class MongoDbDatabase implements Database {
     static MarketEntry toMarket(Document pDoc) {
         Integer tMarketId = pDoc.getInteger("marketId");
         if (tMarketId == null) return null;
-        Boolean tInverse = pDoc.getBoolean("inverse");
+        Boolean tInverse   = pDoc.getBoolean("inverse");
+        Boolean tSelfTrade = pDoc.getBoolean("selfTrade");   // absent in markets stored before: allowed
         return new MarketEntry(tMarketId,
                 str(pDoc, "name"), str(pDoc, "description"), str(pDoc, "type"),
                 str(pDoc, "open"), str(pDoc, "close"), tInverse != null && tInverse,
                 str(pDoc, "preOpenTime"), str(pDoc, "openAuctionTime"),
                 str(pDoc, "auctionInterval"), str(pDoc, "randomAuctionInterval"),
-                str(pDoc, "tradingStatus"));
+                str(pDoc, "tradingStatus"), tSelfTrade == null || tSelfTrade);
     }
 
     /** The fields of a market that an update writes (all but the marketId and name). */
@@ -300,7 +301,8 @@ public class MongoDbDatabase implements Database {
                 .append("openAuctionTime",      m.openAuctionTime())
                 .append("auctionInterval",      m.auctionInterval())
                 .append("randomAuctionInterval",m.randomAuctionInterval())
-                .append("tradingStatus",        m.tradingStatus());
+                .append("tradingStatus",        m.tradingStatus())
+                .append("selfTrade",            m.selfTrade());
     }
 
     @Override

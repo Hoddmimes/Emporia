@@ -159,7 +159,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             // Checked again under the book's lock, which the uncross at open takes after the status changed
             String tStatusErr = checkTradingStatus(pReq.instrumentId());
             if (tStatusErr != null) return OrderResponse.error(tStatusErr);
-            return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()));
+            return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()), isSelfTradeAllowed(pReq.instrumentId()));
         });
     }
 
@@ -172,7 +172,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             if (!isFirmsOrder(tBook, pFirm, tOrderId)) return OrderResponse.error("Order not found: " + pOrderId);
             String tErr = checkTradingStatus(tBook.getInstrumentId());
             if (tErr != null) return OrderResponse.error(tErr);
-            return tBook.modifyOrder(tOrderId, pPrice, pQuantity, pUserRef, isMarketOpen(tBook.getInstrumentId()));
+            return tBook.modifyOrder(tOrderId, pPrice, pQuantity, pUserRef, isMarketOpen(tBook.getInstrumentId()),
+                    isSelfTradeAllowed(tBook.getInstrumentId()));
         });
     }
 
@@ -306,7 +307,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         if (!Orderbook.TYPE_AUCTION.equals(tBook.getType())) {
             return AuctionResult.error("Not an auction book: " + pInstrumentId);
         }
-        AuctionResult tResult = durable(tBook, tBook::triggerAuction);
+        AuctionResult tResult = durable(tBook, () -> tBook.triggerAuction(isSelfTradeAllowed(pInstrumentId)));
         if (tResult.success()) {
             cLog.info("Auction triggered for instrument {}, matched volume: {}",
                     pInstrumentId, tResult.matchedVolume());
@@ -650,6 +651,13 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         return tMarket != null && MARKET_OPEN.equals(tMarket.tradingStatus());
     }
 
+    /** True unless the instrument's market prevents self-trade (MarketEntry.selfTrade false). */
+    private boolean isSelfTradeAllowed(long pInstrumentId) {
+        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(pInstrumentId);
+        InstrumentCache.MarketEntry tMarket = (tInstrument != null) ? mInstrumentCache.getMarket(tInstrument.marketId()) : null;
+        return tMarket == null || tMarket.selfTrade();
+    }
+
     /** Uncrosses the market's continuous books, which may hold crossing orders collected in PREOPEN. */
     private void uncrossAtOpen(int pMarketId) {
         for (Orderbook tBook : mOrderbooks.values()) {
@@ -660,7 +668,7 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             // matching (PREOPEN) and is uncrossed here, one that gets it after this matches at once
             AuctionResult tResult;
             synchronized (tBook) {
-                tResult = tBook.uncross();
+                tResult = tBook.uncross(isSelfTradeAllowed(tBook.getInstrumentId()));
             }
             if (tResult.matchedVolume() > 0) {
                 cLog.info("Market {} opened: instrument {} uncrossed at {}, matched volume: {}",

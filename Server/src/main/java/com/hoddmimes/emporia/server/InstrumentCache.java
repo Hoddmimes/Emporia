@@ -40,7 +40,17 @@ public class InstrumentCache {
                               String open, String close, boolean inverse,
                               String preOpenTime, String openAuctionTime,
                               String auctionInterval, String randomAuctionInterval,
-                              String tradingStatus) {
+                              String tradingStatus, boolean selfTrade) {
+
+        /** A market that allows self-trade (the default). */
+        public MarketEntry(int marketId, String name, String description, String type,
+                           String open, String close, boolean inverse,
+                           String preOpenTime, String openAuctionTime,
+                           String auctionInterval, String randomAuctionInterval,
+                           String tradingStatus) {
+            this(marketId, name, description, type, open, close, inverse, preOpenTime, openAuctionTime,
+                 auctionInterval, randomAuctionInterval, tradingStatus, true);
+        }
 
 
         public JsonObject toJson() {
@@ -57,6 +67,7 @@ public class InstrumentCache {
             j.addProperty("auctionInterval",       auctionInterval);
             j.addProperty("randomAuctionInterval", randomAuctionInterval);
             j.addProperty("tradingStatus",         tradingStatus);
+            j.addProperty("selfTrade",             selfTrade);
             return j;
         }
     }
