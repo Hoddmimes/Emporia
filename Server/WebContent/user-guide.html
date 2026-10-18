@@ -166,6 +166,8 @@ right corner. If you are idle for a while, the session ends by itself and you ha
     <tr><td>Open, High, Last</td><td>Today's first, highest and latest trade price.</td></tr>
     <tr><td>Volume</td><td>The quantity traded today.</td></tr>
 </table>
+<p>An instrument's currency and unit, if the market has given them, are shown after its name, e.g.
+<i>EUR / t</i>: prices in euro per tonne, quantities in tonnes.</p>
 <p>A value that changes flashes <span class="buy">green</span> when it went up and
 <span class="sell">red</span> when it went down. A dash (—) means there is no value, for example no buy
 orders.</p>
@@ -195,9 +197,10 @@ table to get the dialog filled in.</p>
     <tr><th>Field</th><th>Meaning</th></tr>
     <tr><td>Instrument</td><td>What you buy or sell.</td></tr>
     <tr><td>Side</td><td><span class="buy">BUY</span> or <span class="sell">SELL</span>.</td></tr>
-    <tr><td>Price</td><td>Your limit price. It must be a multiple of the instrument's <b>tick size</b>, shown
-        below the field. A buy order trades at this price or lower, a sell order at this price or higher.</td></tr>
-    <tr><td>Quantity</td><td>A multiple of the instrument's <b>lot size</b>, shown below the field.</td></tr>
+    <tr><td>Price</td><td>Your limit price, per unit of the quantity. It must be a multiple of the
+        instrument's <b>tick size</b>, shown below the field with its currency, if it has one. A buy order trades at this price or lower, a sell order at this price or higher.</td></tr>
+    <tr><td>Quantity</td><td>A multiple of the instrument's <b>lot size</b>, shown below the field with its
+        unit, if it has one.</td></tr>
     <tr><td>Reference</td><td>Optional, your own text. It is shown with the order and its trades.</td></tr>
     <tr><td>Client account</td><td>Optional, the account the trades are booked in, see
         <a href="#accounts">Client accounts</a>. The dialog remembers the last one you used.</td></tr>
@@ -261,7 +264,8 @@ arrows. <b>Today</b> goes back to today. Bulletin trades are listed too, with th
 <h2 id="portfolio">My Portfolio</h2>
 <p>The <b>My Portfolio</b> view shows your firm's position in each instrument. It is computed from all
 trades of every day: bought minus sold. Each position is valued at the latest trade price (Last Price),
-and the total value of all positions is shown at the bottom. Positions from bulletin trades are shown
+in the instrument's currency, and the total value of all positions is shown at the bottom, per currency
+when the instruments have different currencies. Positions from bulletin trades are shown
 per bulletin market and instrument, in teal.</p>
 <figure>
     <a href="guide/portfolio.png" target="_blank" title="Open full size"><img src="guide/portfolio.png" alt="My Portfolio per client account"></a>

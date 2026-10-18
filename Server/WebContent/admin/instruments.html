@@ -43,12 +43,14 @@
                             <th>ISIN</th>
                             <th>Tick Size</th>
                             <th>Lot Size</th>
+                            <th>Currency</th>
+                            <th>Unit</th>
                             <th>Status</th>
                             <th style="width:120px;"></th>
                         </tr>
                     </thead>
                     <tbody id="inst-body">
-                        <tr class="empty-row"><td colspan="7">Select a market to list instruments.</td></tr>
+                        <tr class="empty-row"><td colspan="9">Select a market to list instruments.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -83,7 +85,7 @@
                 if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
                     document.getElementById('inst-body').innerHTML =
-                        `<tr class="empty-row"><td colspan="7">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
+                        `<tr class="empty-row"><td colspan="9">Failed to load markets: ${escHtml(r.error)}</td></tr>`;
                     return;
                 }
                 const markets = r.data;
@@ -104,7 +106,7 @@
             const marketId = document.getElementById('market-select').value;
             const tbody    = document.getElementById('inst-body');
             if (!marketId) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Select a market to list instruments.</td></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Select a market to list instruments.</td></tr>';
                 return;
             }
             sessionStorage.setItem('inst-market', marketId);
@@ -112,12 +114,12 @@
                 const r = await cdApi.request(`../api/admin/instruments?marketId=${encodeURIComponent(marketId)}`);
                 if (r.status === 401) { window.location.href = 'login.html'; return; }
                 if (!r.ok) {
-                    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Failed to load instruments: ${escHtml(r.error)}</td></tr>`;
+                    tbody.innerHTML = `<tr class="empty-row"><td colspan="9">Failed to load instruments: ${escHtml(r.error)}</td></tr>`;
                     return;
                 }
                 const instruments = r.data;
                 if (instruments.length === 0) {
-                    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No instruments in this market.</td></tr>';
+                    tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No instruments in this market.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = instruments
@@ -129,6 +131,8 @@
                             <td>${escHtml(i.isin)}</td>
                             <td>${fmtPrice(i.tickSize)}</td>
                             <td>${fmtPrice(i.lotSize)}</td>
+                            <td>${escHtml(i.currency)}</td>
+                            <td>${escHtml(i.unit)}</td>
                             <td>${statusBadge(i.tradingStatus)}</td>
                             <td style="text-align:right;">
                                 ${i.tradingStatus === 'ACTIVE'
@@ -139,7 +143,7 @@
                         </tr>`
                     ).join('');
             } catch (e) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Failed to load instruments.</td></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Failed to load instruments.</td></tr>';
             }
         }
 

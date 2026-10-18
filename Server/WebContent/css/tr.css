@@ -372,6 +372,7 @@ body {
 .mv-price-table tr:last-child td { border-bottom: none; }
 .mv-price-table tr:hover td { background: #f8fafd; }
 .mv-instr-name { font-weight: 600; color: var(--text); }
+.mv-instr-units { font-weight: 400; font-size: 0.85em; color: var(--text-light); margin-left: 4px; }
 .mv-bid { color: #1c7c44; }
 .mv-ask { color: #c0392b; }
 .mv-empty {

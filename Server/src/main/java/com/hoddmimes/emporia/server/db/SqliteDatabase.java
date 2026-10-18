@@ -69,7 +69,8 @@ public class SqliteDatabase implements Database {
         """
         CREATE TABLE IF NOT EXISTS Instruments (id TEXT PRIMARY KEY, instrumentId TEXT NOT NULL,
             marketId INTEGER, name TEXT, instType TEXT, tickSize INTEGER, lotSize INTEGER, tradingStatus TEXT,
-            isin TEXT, expirationDate TEXT, strikePrice INTEGER, underlying TEXT, optionType TEXT)""",
+            isin TEXT, expirationDate TEXT, strikePrice INTEGER, underlying TEXT, optionType TEXT,
+            currency TEXT, unit TEXT)""",
         "CREATE INDEX IF NOT EXISTS Instruments_marketId ON Instruments (marketId)",
         "CREATE INDEX IF NOT EXISTS Instruments_instrumentId ON Instruments (instrumentId)",
         "CREATE TABLE IF NOT EXISTS Authorization (id TEXT PRIMARY KEY, firm TEXT NOT NULL, market TEXT NOT NULL)",
@@ -110,6 +111,8 @@ public class SqliteDatabase implements Database {
         { "BulletinTrades", "reversalOf TEXT" },
         { "Chat", "system INTEGER" },
         { "Markets", "selfTrade INTEGER" },
+        { "Instruments", "currency TEXT" },
+        { "Instruments", "unit TEXT" },
     };
 
     /** Indexes on added columns, created after the columns. */
@@ -537,7 +540,8 @@ public class SqliteDatabase implements Database {
         catch (NumberFormatException e) { return null; }
         return new InstrumentEntry(tInstrumentId, rs.getInt("marketId"), str(rs, "name"), str(rs, "instType"),
                 rs.getLong("tickSize"), rs.getLong("lotSize"), str(rs, "isin"), str(rs, "tradingStatus"),
-                str(rs, "expirationDate"), rs.getLong("strikePrice"), str(rs, "underlying"), str(rs, "optionType"));
+                str(rs, "expirationDate"), rs.getLong("strikePrice"), str(rs, "underlying"), str(rs, "optionType"),
+                str(rs, "currency"), str(rs, "unit"));
     }
 
     @Override
@@ -555,10 +559,11 @@ public class SqliteDatabase implements Database {
         String tId = DatabaseIds.newId();
         update("""
                 INSERT INTO Instruments (id, instrumentId, marketId, name, instType, tickSize, lotSize, tradingStatus,
-                    isin, expirationDate, strikePrice, underlying, optionType)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    isin, expirationDate, strikePrice, underlying, optionType, currency, unit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 tId, String.valueOf(i.instrumentId()), i.marketId(), i.name(), i.instType(), i.tickSize(), i.lotSize(),
-                i.tradingStatus(), i.isin(), i.expirationDate(), i.strikePrice(), i.underlying(), i.optionType());
+                i.tradingStatus(), i.isin(), i.expirationDate(), i.strikePrice(), i.underlying(), i.optionType(),
+                i.currency(), i.unit());
         return tId;
     }
 
@@ -567,10 +572,11 @@ public class SqliteDatabase implements Database {
         String tId = DatabaseIds.check(pId);
         update("""
                 UPDATE Instruments SET name = CASE WHEN ? = '' THEN name ELSE ? END, marketId = ?, instType = ?,
-                    tickSize = ?, lotSize = ?, isin = ?, expirationDate = ?, strikePrice = ?, underlying = ?, optionType = ?
+                    tickSize = ?, lotSize = ?, isin = ?, expirationDate = ?, strikePrice = ?, underlying = ?, optionType = ?,
+                    currency = ?, unit = ?
                 WHERE id = ?""",
                 i.name(), i.name(), i.marketId(), i.instType(), i.tickSize(), i.lotSize(), i.isin(), i.expirationDate(),
-                i.strikePrice(), i.underlying(), i.optionType(), tId);
+                i.strikePrice(), i.underlying(), i.optionType(), i.currency(), i.unit(), tId);
     }
 
     @Override

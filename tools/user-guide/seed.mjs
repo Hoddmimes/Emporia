@@ -40,14 +40,16 @@ await call(admin, 'POST', '/api/admin/bulletin-markets', { name: 'OTC-Energy', d
     tradingStatus: 'OPEN', open: '08:00', close: '18:00', maxOrderTime: '72:00',
     instruments: ['/Brent .*/', '/Diesel .*/', 'Jet Fuel', 'Fuel Oil 0.5%'] });
 
-// Grains: tick 0.25, lot 10; metals: tick 0.5, lot 1
+// Grains: tick 0.25, lot 10, EUR per tonne; metals: tick 0.5, lot 1, USD per tonne
 const GRAINS = { 'WHEAT-DEC': 228.50, 'CORN-DEC': 196.25, 'BARLEY-DEC': 205.00, 'OATS-DEC': 172.75,
                  'RAPESEED-NOV': 468.50, 'SOYBEAN-JAN': 412.00 };
 const METALS = { 'COPPER': 9850, 'ALUMINIUM': 2615, 'ZINC': 2940, 'NICKEL': 16850, 'TIN': 31200 };
 for (const name of Object.keys(GRAINS)) await call(admin, 'POST', '/api/admin/instruments',
-    { marketId: '1', name, instType: 'COMMODITY', tickSize: 0.25 * SCALE, lotSize: 10 * SCALE });
+    { marketId: '1', name, instType: 'COMMODITY', tickSize: 0.25 * SCALE, lotSize: 10 * SCALE,
+      currency: 'EUR', unit: 't' });
 for (const name of Object.keys(METALS)) await call(admin, 'POST', '/api/admin/instruments',
-    { marketId: '2', name, instType: 'COMMODITY', tickSize: 0.5 * SCALE, lotSize: 1 * SCALE });
+    { marketId: '2', name, instType: 'COMMODITY', tickSize: 0.5 * SCALE, lotSize: 1 * SCALE,
+      currency: 'USD', unit: 't' });
 
 // ── Trading ────────────────────────────────────────────────────────────
 const s = {};

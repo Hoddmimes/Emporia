@@ -247,12 +247,17 @@ Quote it when reporting a problem; the server log shows it on every line about t
 <p>The market's instruments. <code>marketId</code> is required.</p>
 <pre><code>{ "instruments": [
   { "id": 4294967297, "marketId": 1, "name": "ABB", "instType": "EQUITY",
-    "tickSize": 1000, "lotSize": 100000, "isin": "CH0012221716", "tradingStatus": "ACTIVE", ... } ] }</code></pre>
+    "tickSize": 1000, "lotSize": 100000, "isin": "CH0012221716", "tradingStatus": "ACTIVE",
+    "currency": "CHF", "unit": "share", ... } ] }</code></pre>
 <table>
     <tr><th>Field</th><th>Description</th></tr>
     <tr><td><code>id</code></td><td>The instrumentId, used in orders.</td></tr>
     <tr><td><code>tickSize</code>, <code>lotSize</code></td><td>Scaled. Prices must be multiples of
         <code>tickSize</code>, quantities of <code>lotSize</code>.</td></tr>
+    <tr><td><code>currency</code></td><td>The currency of the price, a three-letter code such as
+        <code>EUR</code>; empty if none was set.</td></tr>
+    <tr><td><code>unit</code></td><td>The unit of the quantity, free text such as <code>t</code>,
+        <code>MWh</code> or <code>bbl</code>; empty if none was set. A price is per unit.</td></tr>
     <tr><td><code>tradingStatus</code></td><td><code>ACTIVE</code> or <code>SUSPENDED</code>.</td></tr>
     <tr><td><code>instType</code></td><td><code>COMMODITY</code>, <code>EQUITY</code>, <code>OPTION</code>,
         <code>FUTURE</code> or <code>OTC</code>; options and futures also have <code>expirationDate</code>,
@@ -423,11 +428,16 @@ not change the prices.</p>
 Positions of 0 are left out. Sorted by market, instrument and client account.</p>
 <pre><code>{ "positions": [
   { "instrumentId": 4294967297, "instrument": "ABB", "marketId": 1, "market": "Equities",
-    "clientAccount": "client-7", "position": 500000, "bought": 1500000, "sold": 1000000,
+    "clientAccount": "client-7", "currency": "CHF", "unit": "share",
+    "position": 500000, "bought": 1500000, "sold": 1000000,
     "lastPrice": 10200000, "value": 51000000 } ],
-  "totalValue": 51000000 }</code></pre>
+  "totalValue": 51000000, "totalValues": { "CHF": 51000000 } }</code></pre>
 <p><code>lastPrice</code> is the latest trade price (<code>null</code> if the instrument never traded);
-<code>value</code> = position &times; last price, negative for a short position.</p>
+<code>value</code> = position &times; last price, negative for a short position, in the instrument's
+<code>currency</code> (the position is in its <code>unit</code>; both as in <a href="#instruments">the
+instruments</a>, empty if not set). <code>totalValues</code> adds the values up per currency, with
+instruments without a currency and the bulletin positions under <code>""</code>; <code>totalValue</code> is
+the sum of all values whatever their currency.</p>
 <p><code>clientAccount</code> is the client account of your firm's orders, bulletins or offers in the trades
 (<code>omni</code> for trades made before client accounts existed). Add the rows of an instrument up for
 your firm's total position in it. A trade between two of your own orders with different client accounts moves

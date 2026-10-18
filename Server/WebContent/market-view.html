@@ -570,7 +570,7 @@
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const data = await r.json();
                 instruments = (data.instruments || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-                instruments.forEach(i => instrumentNames.set(i.id, i.name));
+                instruments.forEach(i => instrumentInfo.set(i.id, i));
                 renderPriceTable();
             } catch (e) {
                 console.error('Failed to load instruments', e);
@@ -601,7 +601,8 @@
             const rows = instruments.map(i => {
                 const p = priceState.get(i.id) || {};
                 return '<tr data-instrument-id="' + i.id + '" title="Click for the order book, double click to enter an order">'
-                    + '<td class="mv-instr-name">' + escapeHtml(i.name) + '</td>'
+                    + '<td class="mv-instr-name">' + escapeHtml(i.name)
+                    + (unitsText(i) ? ' <span class="mv-instr-units">' + escapeHtml(unitsText(i)) + '</span>' : '') + '</td>'
                     + PRICE_COLUMNS.map(c => '<td class="' + c.cls + '"' + (c.side ? ' data-side="' + c.side + '"' : '') + '>'
                                              + c.fmt(p[c.key]) + '</td>').join('')
                     + '</tr>';
@@ -621,6 +622,11 @@
         // ── Formatters ────────────────────────────────────────────────────
         function fmtPx(v)   { return (v == null || isNaN(v)) ? '—' : Number(v).toFixed(2); }
         function fmtVol(v)  { return (v == null || isNaN(v)) ? '—' : String(v); }
+        // An instrument's price currency and quantity unit, e.g. "EUR / t" (price per unit); "" if it has none
+        function unitsText(i) {
+            if (!i) return '';
+            return [i.currency, i.unit].filter(x => x).join(' / ');
+        }
         // A bulletin's side: BUY, SELL, or none (null), shown as EITHER
         function sideText(side)  { return side || 'EITHER'; }
         function sideClass(side) { return side === 'BUY' ? 'mv-bid' : side === 'SELL' ? 'mv-ask' : 'mv-any'; }
@@ -972,7 +978,7 @@
             bookInstrument = { id: instrumentId, name: i ? i.name : String(instrumentId) };
             bookLevels     = { bids: [], asks: [] };
             document.getElementById('bk-title').textContent = bookInstrument.name + ' — Order Book';
-            document.getElementById('bk-sub').textContent = bookMarket.name;
+            document.getElementById('bk-sub').textContent = bookMarket.name + (unitsText(i) ? '  ·  ' + unitsText(i) : '');
             document.getElementById('bk-book').innerHTML = '<div class="mv-empty">Loading…</div>';
             document.getElementById('bk-error').classList.add('alert-hidden');
             document.getElementById('book-dialog').showModal();
@@ -1228,10 +1234,12 @@
         function updateSizeHints() {
             if (!orderMarket || orderMarket.bulletin) return;
             const i = orderInstrument();
-            document.getElementById('of-price-hint').textContent =
-                (i && i.tickSize > 0) ? 'Tick size ' + i.tickSize / SCALE : '';
-            document.getElementById('of-quantity-hint').textContent =
-                (i && i.lotSize > 0) ? 'Lot size ' + i.lotSize / SCALE : '';
+            document.getElementById('of-price-hint').textContent = [
+                (i && i.currency) ? 'In ' + i.currency + (i.unit ? ' per ' + i.unit : '') : '',
+                (i && i.tickSize > 0) ? 'Tick size ' + i.tickSize / SCALE : ''].filter(x => x).join(', ');
+            document.getElementById('of-quantity-hint').textContent = [
+                (i && i.unit) ? 'In ' + i.unit : '',
+                (i && i.lotSize > 0) ? 'Lot size ' + i.lotSize / SCALE : ''].filter(x => x).join(', ');
         }
 
         // A decimal number as a long scaled by SCALE, exactly (no floating point rounding);
@@ -1399,30 +1407,33 @@
             box.appendChild(toast);
         }
 
-        // An own trade (OwnTrade, display units): "Bought 100 ABB @ 101.50". The message has no instrument
-        // name: it is looked up in the instrument names, loading the market's instruments if needed.
-        const instrumentNames = new Map();       // instrumentId -> name
-        const instrumentNamesLoaded = new Map(); // marketId -> Promise, so a market is only fetched once
+        // An own trade (OwnTrade, display units): "Bought 100 t WHEAT @ 101.50 EUR". The message has no
+        // instrument name, unit or currency: they are looked up in the instruments, loading the market's
+        // instruments if needed.
+        const instrumentInfo = new Map();        // instrumentId -> instrument (GET /api/instruments)
+        const instrumentInfoLoaded = new Map();  // marketId -> Promise, so a market is only fetched once
 
-        async function instrumentName(marketId, instrumentId) {
-            if (!instrumentNames.has(instrumentId) && !instrumentNamesLoaded.has(marketId)) {
-                instrumentNamesLoaded.set(marketId, fetch('api/instruments?marketId=' + encodeURIComponent(marketId))
+        async function instrumentOf(marketId, instrumentId) {
+            if (!instrumentInfo.has(instrumentId) && !instrumentInfoLoaded.has(marketId)) {
+                instrumentInfoLoaded.set(marketId, fetch('api/instruments?marketId=' + encodeURIComponent(marketId))
                     .then(r => r.ok ? r.json() : { instruments: [] })
-                    .then(d => (d.instruments || []).forEach(i => instrumentNames.set(i.id, i.name)))
-                    .catch(() => instrumentNamesLoaded.delete(marketId)));
+                    .then(d => (d.instruments || []).forEach(i => instrumentInfo.set(i.id, i)))
+                    .catch(() => instrumentInfoLoaded.delete(marketId)));
             }
-            await instrumentNamesLoaded.get(marketId);
-            return instrumentNames.get(instrumentId) || String(instrumentId);
+            await instrumentInfoLoaded.get(marketId);
+            return instrumentInfo.get(instrumentId) || null;
         }
 
         // A reversal trade made by the market supervision has reversalOf, the reversed trade's tradeNo.
         async function showTradeToast(msg) {
-            const name = await instrumentName(msg.marketId, msg.instrumentId);
+            const i = await instrumentOf(msg.marketId, msg.instrumentId);
+            const name = i ? i.name : String(msg.instrumentId);
             const m = markets.find(x => x.id === msg.marketId);
             showToast({ kind: msg.side === 'BUY' ? 'buy' : 'sell',
                         title: msg.reversalOf ? 'Trade reversal (reverses trade ' + msg.reversalOf + ')' : 'Trade',
-                        lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' ' + name
-                                + ' @ ' + fmtPx(msg.price),
+                        lines: [(msg.side === 'BUY' ? 'Bought ' : 'Sold ') + fmtVol(msg.quantity) + ' '
+                                + (i && i.unit ? i.unit + ' ' : '') + name
+                                + ' @ ' + fmtPx(msg.price) + (i && i.currency ? ' ' + i.currency : ''),
                                 (m ? m.name + '  ·  ' : '') + fmtTime(msg.tradeTime)
                                 + (msg.clientAccount ? '  ·  ' + msg.clientAccount : '')] });
         }
@@ -2221,7 +2232,7 @@
         // instrument and account), added up per instrument (the firm's total), or for one account only.
         const PF_PER_ACCOUNT = '*per-account', PF_TOTAL = '*total';   // '*' is not allowed in a client account
         let portfolioView    = false;
-        let portfolio        = [];               // { instrumentId, market, instrument, clientAccount, position, bought, sold, lastPrice, value } in display units
+        let portfolio        = [];               // { instrumentId, market, instrument, clientAccount, currency, unit, position, bought, sold, lastPrice, value } in display units
         let portfolioAccount = PF_PER_ACCOUNT;   // the Account selector's choice, kept while the page is open
         let portfolioSort    = 'instrument';     // per account: 'instrument' (market, instrument, account) or 'account' (account first)
 
@@ -2250,6 +2261,7 @@
                 portfolio = (data.positions || []).map(p => ({
                     instrumentId: p.instrumentId, market: p.market, instrument: p.instrument,
                     marketId: p.marketId, bulletin: !!p.bulletin, clientAccount: p.clientAccount,
+                    currency: p.currency || '', unit: p.unit || '',
                     position: unscale(p.position), bought: unscale(p.bought), sold: unscale(p.sold),
                     lastPrice: unscale(p.lastPrice), value: unscale(p.value)
                 }));
@@ -2348,17 +2360,22 @@
             const showAccount = portfolioAccount === PF_PER_ACCOUNT;
             const shown       = (showAccount && portfolioSort === 'account') ? sortByAccount(portfolioRows()) : portfolioRows();
             const signed = (v) => '<span class="' + (v > 0 ? 'mv-bid' : 'mv-ask') + '">' + (v > 0 ? '+' : '') + v + '</span>';
-            const total  = shown.reduce((sum, p) => sum + (p.value || 0), 0);
+            // The total value per currency (instruments without a currency, and bulletins, under ''),
+            // since values in different currencies can't be added up
+            const totals = new Map();
+            shown.forEach(p => totals.set(p.currency, (totals.get(p.currency) || 0) + (p.value || 0)));
+            const totalText = [...totals.keys()].sort().map(c => fmtValue(totals.get(c)) + (c ? ' ' + c : '')).join('<br>');
+            const withUnit = (text, unit) => text + (unit ? ' <span class="mv-instr-units">' + escapeHtml(unit) + '</span>' : '');
             const rows = shown.map(p =>
                 '<tr>'
                 + '<td class="mv-instr-name' + (p.bulletin ? ' mv-any' : '') + '">' + escapeHtml(p.market) + '</td>'
                 + '<td>' + escapeHtml(p.instrument) + '</td>'
                 + (showAccount ? '<td>' + escapeHtml(p.clientAccount) + '</td>' : '')
-                + '<td>' + signed(p.position) + '</td>'
+                + '<td>' + withUnit(signed(p.position), p.unit) + '</td>'
                 + '<td>' + fmtVol(p.bought) + '</td>'
                 + '<td>' + fmtVol(p.sold) + '</td>'
                 + '<td>' + fmtPx(p.lastPrice) + '</td>'
-                + '<td>' + fmtValue(p.value) + '</td>'
+                + '<td>' + withUnit(fmtValue(p.value), p.currency) + '</td>'
                 + '</tr>').join('');
             container.innerHTML = toolbar + (shown.length === 0
                 ? '<div class="mv-empty">No holdings in this account.</div>'
@@ -2369,7 +2386,7 @@
                 +     '<th>Last Price</th><th>Value</th>'
                 +   '</tr></thead>'
                 +   '<tbody>' + rows + '</tbody>'
-                +   '<tfoot><tr class="mv-total"><td colspan="' + (showAccount ? 7 : 6) + '">Total value</td><td>' + fmtValue(total) + '</td></tr></tfoot>'
+                +   '<tfoot><tr class="mv-total"><td colspan="' + (showAccount ? 7 : 6) + '">Total value</td><td>' + totalText + '</td></tr></tfoot>'
                 + '</table>');
         }
 

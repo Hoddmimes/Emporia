@@ -75,8 +75,15 @@ public class InstrumentCache {
     public record InstrumentEntry(long instrumentId, int marketId, String name, String instType,
                                   long tickSize, long lotSize, String isin, String tradingStatus,
                                   String expirationDate, long strikePrice,
-                                  String underlying, String optionType) {
+                                  String underlying, String optionType, String currency, String unit) {
 
+        /** Without currency and unit. */
+        public InstrumentEntry(long instrumentId, int marketId, String name, String instType,
+                               long tickSize, long lotSize, String isin, String tradingStatus,
+                               String expirationDate, long strikePrice, String underlying, String optionType) {
+            this(instrumentId, marketId, name, instType, tickSize, lotSize, isin, tradingStatus,
+                 expirationDate, strikePrice, underlying, optionType, "", "");
+        }
 
         public JsonObject toJson() {
             JsonObject j = new JsonObject();
@@ -92,6 +99,8 @@ public class InstrumentCache {
             j.addProperty("strikePrice",    strikePrice);
             j.addProperty("underlying",     underlying);
             j.addProperty("optionType",     optionType);
+            j.addProperty("currency",       currency);
+            j.addProperty("unit",           unit);
             return j;
         }
     }

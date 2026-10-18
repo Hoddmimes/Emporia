@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * The logged-in user's firm's holdings: GET /api/portfolio. A position per instrument is the sum of
@@ -49,6 +50,7 @@ public class PortfolioEndpoints implements RestEndpoint {
             String tFirm = OrderEndpoints.firm(ctx);
             List<JsonObject> tRows = new ArrayList<>();
             long tTotalValue = 0;
+            Map<String, Long> tTotalValues = new TreeMap<>();   // per currency; "" = none, and bulletins
             for (Position tPos : positions(tFirm, mCtx.database.listTradesByFirm(tFirm, null))) {
                 if (tPos.position() == 0) continue;
                 long tLast = mCtx.matchingEngine.getLastTradePrice(tPos.instrumentId());
@@ -62,6 +64,8 @@ public class PortfolioEndpoints implements RestEndpoint {
                 tJson.addProperty("marketId",     tPos.marketId());
                 tJson.addProperty("market",       tMarket != null ? tMarket.name() : String.valueOf(tPos.marketId()));
                 tJson.addProperty("clientAccount", tPos.clientAccount());
+                tJson.addProperty("currency",     tInstrument != null ? tInstrument.currency() : "");
+                tJson.addProperty("unit",         tInstrument != null ? tInstrument.unit() : "");
                 tJson.addProperty("position",     tPos.position());
                 tJson.addProperty("bought",       tPos.bought());
                 tJson.addProperty("sold",         tPos.sold());
@@ -70,6 +74,7 @@ public class PortfolioEndpoints implements RestEndpoint {
                     long tValue = value(tPos.position(), tLast);
                     tJson.addProperty("value", tValue);
                     tTotalValue += tValue;
+                    tTotalValues.merge(tInstrument != null ? tInstrument.currency() : "", tValue, Long::sum);
                 } else {
                     tJson.add("value", null);
                 }
@@ -81,6 +86,7 @@ public class PortfolioEndpoints implements RestEndpoint {
                 BulletinMarket tMarket = mCtx.bulletinBoard.getMarket(tPos.marketId());
                 long tValue = value(tPos.position(), tLast);
                 tTotalValue += tValue;
+                tTotalValues.merge("", tValue, Long::sum);
 
                 JsonObject tJson = new JsonObject();
                 tJson.add("instrumentId", null);
@@ -104,6 +110,9 @@ public class PortfolioEndpoints implements RestEndpoint {
             JsonObject tOut = new JsonObject();
             tOut.add("positions", tArray);
             tOut.addProperty("totalValue", tTotalValue);
+            JsonObject tTotals = new JsonObject();
+            tTotalValues.forEach(tTotals::addProperty);
+            tOut.add("totalValues", tTotals);
             ctx.json(tOut.toString());
         });
     }

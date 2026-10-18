@@ -7,7 +7,9 @@ import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
 
+import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public class AdminInstrumentEndpoints implements RestEndpoint {
 
@@ -86,14 +88,18 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                     long   tStrikePrice    = Math.round((tInst.has("strikePrice") ? tInst.get("strikePrice").getAsDouble() : 0.0) * 100000);
                     String tUnderlying     = tInst.has("underlying")     ? tInst.get("underlying").getAsString()            : "";
                     String tOptionType     = tInst.has("optionType")     ? tInst.get("optionType").getAsString()            : "";
+                    String tCurrency       = currencyOf(tInst);
+                    String tUnit           = unitOf(tInst);
                     String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, true);
+                    if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
                     if (tErr != null) {
                         tResult.addProperty("status", "ERROR"); tResult.addProperty("message", tErr);
                         tResults.add(tResult); continue;
                     }
                     long tId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
                     String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tId, tMarketId, tName, tInstType,
-                            tTickSize, tLotSize, tIsin, tTradingStatus, tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+                            tTickSize, tLotSize, tIsin, tTradingStatus, tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
+                            tCurrency, tUnit));
                     mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
                     tResult.addProperty("status", "OK");
                     tResults.add(tResult);
@@ -146,6 +152,8 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             long   tStrikePrice    = tBody.has("strikePrice") ? tBody.get("strikePrice").getAsLong() : 0L;
             String tUnderlying     = RestApiContext.field(tBody, "underlying",     "");
             String tOptionType     = RestApiContext.field(tBody, "optionType",     "");
+            String tCurrency       = currencyOf(tBody);
+            String tUnit           = unitOf(tBody);
             if (tMarketIdStr.isEmpty())  { ctx.status(400).json("{\"error\":\"marketId is required\"}"); return; }
             int tMarketId;
             try { tMarketId = Integer.parseInt(tMarketIdStr); }
@@ -155,10 +163,12 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             }
             if (tName.isEmpty())         { ctx.status(400).json("{\"error\":\"name is required\"}"); return; }
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, true);
+            if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
             long tInstrumentId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
             String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tInstrumentId, tMarketId, tName, tInstType,
-                    tTickSize, tLotSize, tIsin, "ACTIVE", tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+                    tTickSize, tLotSize, tIsin, "ACTIVE", tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
+                    tCurrency, tUnit));
             mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
             ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
         });
@@ -185,15 +195,19 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             long   tStrikePrice    = tBody.has("strikePrice") ? tBody.get("strikePrice").getAsLong() : 0L;
             String tUnderlying     = RestApiContext.field(tBody, "underlying",     "");
             String tOptionType     = RestApiContext.field(tBody, "optionType",     "");
+            String tCurrency       = currencyOf(tBody);
+            String tUnit           = unitOf(tBody);
             int tMarketId;
             try { tMarketId = tMarketIdStr.isEmpty() ? 0 : Integer.parseInt(tMarketIdStr); }
             catch (NumberFormatException e) { ctx.status(400).json("{\"error\":\"marketId must be an integer\"}"); return; }
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, false);
+            if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
             try {
                 String tDatabaseId = ctx.pathParam("id");
                 mCtx.database.updateInstrument(tDatabaseId, new InstrumentEntry(0, tMarketId, tName, tInstType,
-                        tTickSize, tLotSize, tIsin, "", tExpirationDate, tStrikePrice, tUnderlying, tOptionType));
+                        tTickSize, tLotSize, tIsin, "", tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
+                        tCurrency, tUnit));
                 putInstrument(tDatabaseId);
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {
@@ -234,6 +248,27 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
     private void putInstrument(String pDatabaseId) {
         var tInstrument = mCtx.database.getInstrument(pDatabaseId);
         if (tInstrument != null) mCtx.instrumentCache.putInstrument(tInstrument.value());
+    }
+
+    /** The price currency: an ISO 4217 code such as EUR (upper-cased), or empty. */
+    private static final Pattern CURRENCY = Pattern.compile("[A-Z]{3}");
+    /** The quantity unit, free text such as t, MWh or bbl: 1-16 letters, digits, spaces or . / - % after trimming. */
+    private static final Pattern UNIT = Pattern.compile("[\\p{L}\\p{N} ./%-]{1,16}");
+
+    private static String currencyOf(JsonObject pBody) {
+        return RestApiContext.field(pBody, "currency", "").trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String unitOf(JsonObject pBody) {
+        return RestApiContext.field(pBody, "unit", "").trim();
+    }
+
+    private static String validateCurrencyUnit(String pCurrency, String pUnit) {
+        if (!pCurrency.isEmpty() && !CURRENCY.matcher(pCurrency).matches())
+            return "currency must be a three-letter code such as EUR";
+        if (!pUnit.isEmpty() && !UNIT.matcher(pUnit).matches())
+            return "unit must be at most 16 letters, digits, spaces or . / - %";
+        return null;
     }
 
     private String validateInstrument(String pInstType, String pExpirationDate,

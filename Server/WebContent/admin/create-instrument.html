@@ -70,6 +70,18 @@
                         </label>
                         <input type="number" id="f-lotSize" placeholder="1" step="any" min="0" required>
                     </div>
+                    <div class="form-group">
+                        <label for="f-currency">Currency
+                            <small style="font-weight:normal;color:var(--text-light);">(of the price, three letters)</small>
+                        </label>
+                        <input type="text" id="f-currency" placeholder="e.g. EUR" maxlength="3" style="text-transform:uppercase;">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-unit">Unit
+                            <small style="font-weight:normal;color:var(--text-light);">(of the quantity)</small>
+                        </label>
+                        <input type="text" id="f-unit" placeholder="e.g. t, MWh, bbl" maxlength="16">
+                    </div>
 
                     <!-- OPTION + FUTURE fields -->
                     <div id="row-expirationDate" style="display:none;" class="form-group">
@@ -165,6 +177,8 @@
                 isin:           document.getElementById('f-isin').value.trim(),
                 tickSize:       toInternalPrice(document.getElementById('f-tickSize').value),
                 lotSize:        toInternalPrice(document.getElementById('f-lotSize').value),
+                currency:       document.getElementById('f-currency').value.trim().toUpperCase(),
+                unit:           document.getElementById('f-unit').value.trim(),
                 expirationDate: document.getElementById('f-expirationDate').value,
                 strikePrice:    toInternalPrice(document.getElementById('f-strikePrice').value),
                 underlying:     document.getElementById('f-underlying').value.trim(),

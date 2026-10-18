@@ -93,6 +93,24 @@
                             <input type="number" id="d-lotSize" class="field-input" step="any" min="0" oninput="checkChanged()">
                         </span>
                     </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Currency
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(of the price)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="text" id="d-currency" class="field-input" maxlength="3" placeholder="e.g. EUR"
+                                   style="text-transform:uppercase;" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Unit
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(of the quantity)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="text" id="d-unit" class="field-input" maxlength="16" placeholder="e.g. t, MWh, bbl"
+                                   oninput="checkChanged()">
+                        </span>
+                    </div>
 
                     <!-- OPTION + FUTURE -->
                     <div class="detail-row" id="row-expirationDate">
@@ -198,6 +216,8 @@
                 document.getElementById('d-isin').value           !== originalValues.isin            ||
                 document.getElementById('d-tickSize').value       !== originalValues.tickSizeDisplay ||
                 document.getElementById('d-lotSize').value        !== originalValues.lotSizeDisplay  ||
+                document.getElementById('d-currency').value.trim().toUpperCase() !== originalValues.currency ||
+                document.getElementById('d-unit').value.trim()    !== originalValues.unit            ||
                 document.getElementById('d-expirationDate').value !== originalValues.expirationDate  ||
                 document.getElementById('d-strikePrice').value    !== originalValues.strikePriceDisplay ||
                 document.getElementById('d-underlying').value     !== originalValues.underlying      ||
@@ -245,6 +265,8 @@
                 const strikeDisplay = String(toDisplay(inst.strikePrice));
                 document.getElementById('d-tickSize').value        = tickDisplay;
                 document.getElementById('d-lotSize').value         = lotDisplay;
+                document.getElementById('d-currency').value        = inst.currency       || '';
+                document.getElementById('d-unit').value            = inst.unit           || '';
                 document.getElementById('d-expirationDate').value  = inst.expirationDate || '';
                 document.getElementById('d-strikePrice').value     = strikeDisplay;
                 document.getElementById('d-underlying').value      = inst.underlying     || '';
@@ -260,6 +282,8 @@
                     isin:              inst.isin           || '',
                     tickSizeDisplay:   tickDisplay,
                     lotSizeDisplay:    lotDisplay,
+                    currency:          inst.currency       || '',
+                    unit:              inst.unit           || '',
                     expirationDate:    inst.expirationDate || '',
                     strikePriceDisplay:strikeDisplay,
                     underlying:        inst.underlying     || '',
@@ -278,6 +302,8 @@
                 isin:           document.getElementById('d-isin').value.trim(),
                 tickSize:       toInternal(document.getElementById('d-tickSize').value),
                 lotSize:        toInternal(document.getElementById('d-lotSize').value),
+                currency:       document.getElementById('d-currency').value.trim().toUpperCase(),
+                unit:           document.getElementById('d-unit').value.trim(),
                 expirationDate: document.getElementById('d-expirationDate').value,
                 strikePrice:    toInternal(document.getElementById('d-strikePrice').value),
                 underlying:     document.getElementById('d-underlying').value.trim(),
@@ -295,6 +321,8 @@
                     isin:              body.isin,
                     tickSizeDisplay:   document.getElementById('d-tickSize').value,
                     lotSizeDisplay:    document.getElementById('d-lotSize').value,
+                    currency:          body.currency,
+                    unit:              body.unit,
                     expirationDate:    body.expirationDate,
                     strikePriceDisplay:document.getElementById('d-strikePrice').value,
                     underlying:        body.underlying,

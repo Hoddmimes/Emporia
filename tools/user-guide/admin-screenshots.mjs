@@ -174,14 +174,14 @@ await navigate('admin/create-instrument.html');
 await sleep(500);
 await ev(`const s = document.getElementById('f-marketId');
           s.value = [...s.options].find(o => o.textContent.startsWith('Grains')).value; 1`);
-await set({ 'f-name': 'WHEAT-MAR', 'f-instType': 'FUTURE', 'f-tickSize': '0.25', 'f-lotSize': '10',
+await set({ 'f-name': 'WHEAT-MAR', 'f-instType': 'FUTURE', 'f-tickSize': '0.25', 'f-lotSize': '10', 'f-currency': 'EUR', 'f-unit': 't',
             'f-expirationDate': '2027-03-15', 'f-strikePrice': '230', 'f-underlying': 'Milling wheat' });
 await shot('create-instrument', FORM);
 
 // Load Instruments: a file with two new metals and the delete of an instrument that does not exist
 const load = { ADD: [
-        { ID: 'LEAD',   market: 'Metals', instType: 'COMMODITY', tickSize: 0.5, lotSize: 1 },
-        { ID: 'COBALT', market: 'Metals', instType: 'COMMODITY', tickSize: 1,   lotSize: 1 }],
+        { ID: 'LEAD',   market: 'Metals', instType: 'COMMODITY', tickSize: 0.5, lotSize: 1, currency: 'USD', unit: 't' },
+        { ID: 'COBALT', market: 'Metals', instType: 'COMMODITY', tickSize: 1,   lotSize: 1, currency: 'USD', unit: 't' }],
     DELETE: [ { ID: '8589934699' } ] };
 await navigate('admin/load-instruments.html');
 await ev(`parsedJson = ${JSON.stringify(load)}; showPreview('metals-2026-10.json', parsedJson); 1`);

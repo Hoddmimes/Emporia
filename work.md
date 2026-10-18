@@ -79,3 +79,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-18 System chat messages: sent by an admin (System Messages page), stored with a system flag, broadcast to all trading users; the trading Chat view merges the latest 10 in an amber color and pops them up; admin Dashboard shows the latest 10
 * 26-10-18 Startup system message: the server tells the trading users that it was started and the earlier orders are cancelled
 * 26-10-18 Self-trade prevention per market (Allow Self-Trade): an incoming order's rest is cancelled at the firm's own order; in an uncross the later order is removed
+* 26-10-18 Instrument currency and unit: set in the admin instrument pages and the bulk load, shown in the trading price table, order dialog, order book, trade popup and portfolio (totals per currency)

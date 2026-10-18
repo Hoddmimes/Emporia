@@ -225,7 +225,7 @@ abstract class DatabaseContractTest {
 
     static InstrumentEntry instrument(long pInstrumentId, int pMarketId, String pName) {
         return new InstrumentEntry(pInstrumentId, pMarketId, pName, "FUTURE", S / 4, 10 * S, "SE0001",
-                "ACTIVE", "2027-03-15", 230 * S, "Wheat", "");
+                "ACTIVE", "2027-03-15", 230 * S, "Wheat", "", "EUR", "t");
     }
 
     @Test
@@ -238,8 +238,8 @@ abstract class DatabaseContractTest {
         assertEquals(List.of("WHEAT", "CORN"), mDb.listInstrumentsByMarket(1).stream().map(i -> i.value().name()).toList());
 
         // The instrumentId and status never change in an update, the name only if one is given
-        mDb.updateInstrument(tId, new InstrumentEntry(0, 1, "", "COMMODITY", S, S, "", "", "", 0, "", ""));
-        assertEquals(new InstrumentEntry(tWheat, 1, "WHEAT", "COMMODITY", S, S, "", "ACTIVE", "", 0, "", ""),
+        mDb.updateInstrument(tId, new InstrumentEntry(0, 1, "", "COMMODITY", S, S, "", "", "", 0, "", "", "SEK", "bushel"));
+        assertEquals(new InstrumentEntry(tWheat, 1, "WHEAT", "COMMODITY", S, S, "", "ACTIVE", "", 0, "", "", "SEK", "bushel"),
                 mDb.getInstrument(tId).value());
         mDb.updateInstrumentStatus(tId, "SUSPENDED");
         assertEquals("SUSPENDED", mDb.getInstrument(tId).value().tradingStatus());

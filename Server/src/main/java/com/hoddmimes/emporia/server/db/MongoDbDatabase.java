@@ -448,7 +448,8 @@ public class MongoDbDatabase implements Database {
                 str(pDoc, "name"), str(pDoc, "instType"),
                 lng(pDoc, "tickSize"), lng(pDoc, "lotSize"),
                 str(pDoc, "isin"), str(pDoc, "tradingStatus"), str(pDoc, "expirationDate"),
-                lng(pDoc, "strikePrice"), str(pDoc, "underlying"), str(pDoc, "optionType"));
+                lng(pDoc, "strikePrice"), str(pDoc, "underlying"), str(pDoc, "optionType"),
+                str(pDoc, "currency"), str(pDoc, "unit"));
     }
 
     /** The fields of an instrument that an update writes (all but the instrumentId, name and tradingStatus). */
@@ -461,7 +462,9 @@ public class MongoDbDatabase implements Database {
                 .append("expirationDate",i.expirationDate())
                 .append("strikePrice",   i.strikePrice())
                 .append("underlying",    i.underlying())
-                .append("optionType",    i.optionType());
+                .append("optionType",    i.optionType())
+                .append("currency",      i.currency())
+                .append("unit",          i.unit());
     }
 
     @Override
