@@ -77,6 +77,7 @@ public class MongoDbDatabase implements Database {
                 tBulletinTrades.createIndex(Indexes.ascending("tradeTime", "_id")),
                 tBulletinTrades.createIndex(Indexes.ascending("reversalOf"), new IndexOptions().sparse(true)));
         cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("time", "_id")));
+        cLog.info("Chat index {}", mDatabase.getCollection("Chat").createIndex(Indexes.ascending("system", "time", "_id")));
     }
 
     @Override
@@ -720,7 +721,8 @@ public class MongoDbDatabase implements Database {
                 .append("firm", m.firm())
                 .append("user", m.user())
                 .append("text", m.text())
-                .append("tag",  m.tag()));
+                .append("tag",  m.tag())
+                .append("system", m.system()));
     }
 
     @Override
@@ -731,10 +733,21 @@ public class MongoDbDatabase implements Database {
         if (pTag != null && !pTag.isEmpty()) {
             tFilter.append("tag", new Document("$regex", escapeRegex(pTag)).append("$options", "i"));
         }
+        return latestChatMessages(tFilter, pLimit);
+    }
+
+    @Override
+    public List<ChatMessage> listSystemChatMessages(int pLimit) {
+        return latestChatMessages(new Document("system", true), pLimit);
+    }
+
+    // The latest pLimit messages matching the filter, oldest first
+    private List<ChatMessage> latestChatMessages(Document pFilter, int pLimit) {
         List<ChatMessage> tOut = new ArrayList<>();
-        for (Document d : collection("Chat").find(tFilter).sort(Sorts.descending("time", "_id")).limit(pLimit)) {
+        for (Document d : collection("Chat").find(pFilter).sort(Sorts.descending("time", "_id")).limit(pLimit)) {
             tOut.add(new ChatMessage(d.getString("chatId"), Database.parseTradeTime(d.getString("time")),
-                    d.getString("firm"), d.getString("user"), d.getString("text"), Database.orEmpty(d.getString("tag"))));
+                    d.getString("firm"), d.getString("user"), d.getString("text"), Database.orEmpty(d.getString("tag")),
+                    Boolean.TRUE.equals(d.getBoolean("system"))));   // absent in messages stored before system messages
         }
         Collections.reverse(tOut);
         return tOut;

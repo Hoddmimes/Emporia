@@ -10,7 +10,7 @@
  *                  'list-markets', 'create-market', 'market-orders', 'market-trades', 'market-audit',
  *                  'list-bulletin-markets', 'create-bulletin-market',
  *                  'list-instruments', 'create-instrument', 'load-instruments',
- *                  'list-authorizations', 'create-authorization', 'settings'
+ *                  'list-authorizations', 'create-authorization', 'system-messages', 'settings'
  */
 const cdNav = (() => {
 
@@ -41,6 +41,7 @@ const cdNav = (() => {
         { type: 'link', id: 'list-authorizations',  label: 'List Authorizations',  href: 'authorizations.html' },
         { type: 'link', id: 'create-authorization', label: 'Create Authorization', href: 'create-authorization.html' },
         { type: 'section', label: 'System' },
+        { type: 'link', id: 'system-messages', label: 'System Messages', href: 'system-messages.html' },
         { type: 'link', id: 'change-password', label: 'Change Password', href: 'change-password.html' },
         { type: 'link', id: 'settings',        label: 'Settings',        href: '#' },
         { type: 'section', label: 'Help' },

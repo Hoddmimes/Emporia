@@ -203,6 +203,11 @@ await ev(`const m = document.getElementById('f-market');
 await set({ 'f-firm': 'EASTGRAIN' });
 await shot('create-authorization', FORM);
 
+// ── System messages ────────────────────────────────────────────────────
+await navigate('admin/system-messages.html');
+await set({ 'f-text': 'The Metals market opens at 10:00 today instead of 08:00.', 'f-tag': 'Opening' });
+await shot('system-messages', CONTENT);
+
 // ── Change password ────────────────────────────────────────────────────
 await navigate('admin/change-password.html');
 await set({ 'f-current': 'changeit', 'f-new': 'a-better-one', 'f-confirm': 'a-better-one' });

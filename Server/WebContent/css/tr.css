@@ -5,6 +5,8 @@
     --primary:      #1a6fd4;
     --primary-dark: #155bb5;
     --bulletin:     #0f8a8f;   /* bulletin markets in the market list: a teal close to --primary */
+    --system:       #a15c07;   /* system chat messages (from the market operator) */
+    --system-bg:    #fff4dc;
     --bg:           #f4f6f9;
     --surface:      #ffffff;
     --border:       #d0d7e3;
@@ -616,6 +618,10 @@ body {
 .mv-chat-tag  { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; color: var(--text); }
 .mv-chat-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
 .mv-chat-note { color: var(--text-light); font-size: 12px; padding: 6px 0; }
+.mv-chat-system { background: var(--system-bg); border-left: 4px solid var(--system); padding-left: 8px; padding-right: 8px; margin: 2px 0; border-radius: 4px; }
+.mv-chat-system .mv-chat-who { color: var(--system); }
+.mv-toast-system { background: var(--system-bg); border-left-color: var(--system); }
+.mv-toast-system .mv-toast-title { color: var(--system); }
 .mv-chat-compose { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; flex-wrap: wrap; }
 .mv-chat-compose input, .mv-chat-compose textarea {
     padding: 6px 9px;

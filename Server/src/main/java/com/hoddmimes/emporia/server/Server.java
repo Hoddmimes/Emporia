@@ -6,6 +6,9 @@ import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.audit.AuditLog;
 import com.hoddmimes.emporia.server.audit.FileAuditLog;
 import com.hoddmimes.emporia.server.bdx.BdxDistributor;
+import com.hoddmimes.emporia.server.db.ChatMessage;
+import com.hoddmimes.emporia.server.db.DatabaseIds;
+import com.hoddmimes.emporia.server.endpoints.ChatEndpoints;
 import com.hoddmimes.emporia.server.bulletin.BulletinBoard;
 import com.hoddmimes.emporia.server.me.AuctionScheduler;
 import com.hoddmimes.emporia.server.me.MatchingEngine;
@@ -16,6 +19,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.io.UncheckedIOException;
+import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 
 /**
  * The server: the database, instrument cache, authorization cache, broadcast distributor, matching engine, bulletin board and
@@ -36,6 +41,10 @@ public class Server {
     public final BulletinBoard      bulletinBoard;
     private final AuctionScheduler     mAuctionScheduler;
     private final MarketStateScheduler mMarketStateScheduler;
+
+    // The startup system chat message's sender and tag
+    static final String STARTUP_MESSAGE_USER = "System";
+    static final String STARTUP_MESSAGE_TAG  = "Restart";
 
     public static void main(String[] args) throws Exception {
         String tConfigPath = null;
@@ -88,6 +97,26 @@ public class Server {
         bulletinBoard.load();
         mMarketStateScheduler = new MarketStateScheduler(database, instrumentCache, bulletinBoard);
         mMarketStateScheduler.start(pTestMode);
+
+        sendStartupMessage();
+    }
+
+    /**
+     * Tells the trading users that the system was started, as a system chat message (stored, so it is among
+     * the latest system messages every trading page loads): the orders of before the start are gone, since
+     * orders live in memory only.
+     */
+    private void sendStartupMessage() {
+        long tNow = System.currentTimeMillis();
+        String tText = "The trading system was started at "
+                + LocalTime.now().truncatedTo(ChronoUnit.SECONDS) + ". Orders entered before the start have been cancelled; "
+                + "enter them again if they are still wanted.";
+        try {
+            ChatEndpoints.send(database, bdx, new ChatMessage(DatabaseIds.newId(), tNow, "", STARTUP_MESSAGE_USER, tText,
+                    STARTUP_MESSAGE_TAG, true));
+        } catch (RuntimeException e) {
+            cLog.error("Failed to send the startup system message: {}", e.toString());
+        }
     }
 
     public RestApi restApi() {

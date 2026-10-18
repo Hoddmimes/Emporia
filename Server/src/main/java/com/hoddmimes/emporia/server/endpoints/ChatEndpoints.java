@@ -6,8 +6,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.RestApiContext;
 import com.hoddmimes.emporia.server.SessionUser;
+import com.hoddmimes.emporia.server.bdx.BdxDistributor;
 import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import com.hoddmimes.emporia.server.db.ChatMessage;
+import com.hoddmimes.emporia.server.db.Database;
 import com.hoddmimes.emporia.server.db.DatabaseIds;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -24,6 +26,11 @@ import java.util.List;
  * the sender's firm and user and the time, durably, and then broadcasts it as a global Chat bdx message
  * to every connected trading client. GET /api/chat lists the stored messages up to and including a date,
  * optionally from a date and with a tag containing a text.
+ *
+ * System messages (system true) are sent by an admin: POST /api/admin/chat (same fields and rules; firm "",
+ * user the admin), stored and broadcast like the others. GET /api/chat/system and GET /api/admin/chat/system
+ * return the latest ones of any day (?limit=, default SYSTEM_LIMIT), oldest first, which the trading page and
+ * the admin interface load at startup.
  */
 public class ChatEndpoints implements RestEndpoint {
 
@@ -33,6 +40,8 @@ public class ChatEndpoints implements RestEndpoint {
     static final int MAX_TAG_BYTES  = 64;
     static final int DEFAULT_LIMIT  = 1000;
     static final int MAX_LIMIT      = 5000;
+    static final int SYSTEM_LIMIT   = 10;
+    static final int MAX_SYSTEM_LIMIT = 100;
 
     private final RestApiContext mCtx;
 
@@ -43,37 +52,14 @@ public class ChatEndpoints implements RestEndpoint {
     @Override
     public void register(Javalin app) {
         app.post("/api/chat", ctx -> {
-            JsonObject tBody;
-            try { tBody = JsonParser.parseString(ctx.body()).getAsJsonObject(); }
-            catch (Exception e) { OrderEndpoints.error(ctx, 400, "Request body must be a JSON object"); return; }
             SessionUser tUser = SessionUser.of(ctx);
-
-            String tText, tTag;
-            try {
-                tText = string(tBody, "text");
-                tTag  = string(tBody, "tag");
-            } catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, e.getMessage()); return; }
-            String tErr  = validate(tText, tTag);
-            if (tErr != null) { OrderEndpoints.error(ctx, 400, tErr); return; }
-            tText = tText.strip();
-            tTag  = (tTag == null) ? "" : tTag.strip();
-
-            long tNow = System.currentTimeMillis();
-            String tChatId = DatabaseIds.newId();
-            // Stored (durably) before anyone is told about it
-            mCtx.database.saveChatMessage(new ChatMessage(tChatId, tNow, tUser.firm(), tUser.userId(), tText, tTag));
-            mCtx.bdx.publish(BdxMessage.global(BdxMessage.CHAT)
-                    .put("chatId", tChatId)
-                    .put("time",   tNow)
-                    .put("firm",   tUser.firm())
-                    .put("user",   tUser.userId())
-                    .put("text",   tText)
-                    .put("tag",    tTag));
-            cLog.info("Chat {} from {}/{}, tag '{}', {} bytes", tChatId, tUser.firm(), tUser.userId(), tTag,
-                    tText.getBytes(StandardCharsets.UTF_8).length);
-
-            ctx.status(201).json(messageJson(tChatId, tNow, tUser.firm(), tUser.userId(), tText, tTag).toString());
+            post(ctx, tUser.firm(), tUser.userId(), false);
         });
+
+        app.post("/api/admin/chat", ctx -> post(ctx, "", ctx.sessionAttribute(RestApiContext.ADMIN_USER), true));
+
+        app.get("/api/chat/system",       this::listSystem);
+        app.get("/api/admin/chat/system", this::listSystem);
 
         // ?date=yyyy-MM-dd (default today: up to and including that day), ?fromDate=yyyy-MM-dd (from that day),
         // ?tag= (tag contains, case-insensitive), ?limit= (the latest ones, default DEFAULT_LIMIT)
@@ -98,7 +84,7 @@ public class ChatEndpoints implements RestEndpoint {
             boolean tMore = tStored.size() > tLimit;   // older messages left out
             JsonArray tMessages = new JsonArray();
             for (ChatMessage m : tMore ? tStored.subList(1, tStored.size()) : tStored) {
-                tMessages.add(messageJson(m.chatId(), m.time(), m.firm(), m.user(), m.text(), m.tag()));
+                tMessages.add(messageJson(m));
             }
             JsonObject tOut = new JsonObject();
             tOut.addProperty("date", tDate);
@@ -108,6 +94,65 @@ public class ChatEndpoints implements RestEndpoint {
             tOut.add("messages", tMessages);
             ctx.json(tOut.toString());
         });
+    }
+
+    // Stores and broadcasts a message from the request body's text and tag; pSystem: a system message (admin)
+    private void post(Context ctx, String pFirm, String pUser, boolean pSystem) {
+        JsonObject tBody;
+        try { tBody = JsonParser.parseString(ctx.body()).getAsJsonObject(); }
+        catch (Exception e) { OrderEndpoints.error(ctx, 400, "Request body must be a JSON object"); return; }
+
+        String tText, tTag;
+        try {
+            tText = string(tBody, "text");
+            tTag  = string(tBody, "tag");
+        } catch (IllegalArgumentException e) { OrderEndpoints.error(ctx, 400, e.getMessage()); return; }
+        String tErr  = validate(tText, tTag);
+        if (tErr != null) { OrderEndpoints.error(ctx, 400, tErr); return; }
+        tText = tText.strip();
+        tTag  = (tTag == null) ? "" : tTag.strip();
+
+        ChatMessage tMessage = send(mCtx.database, mCtx.bdx,
+                new ChatMessage(DatabaseIds.newId(), System.currentTimeMillis(), pFirm, pUser, tText, tTag, pSystem));
+        ctx.status(201).json(messageJson(tMessage).toString());
+    }
+
+    /**
+     * Stores the message durably, then broadcasts it as a global Chat bdx message to every connected trading
+     * client; also used by the server for its startup system message (Server.sendStartupMessage).
+     */
+    public static ChatMessage send(Database pDatabase, BdxDistributor pBdx, ChatMessage pMessage) {
+        // Stored (durably) before anyone is told about it
+        pDatabase.saveChatMessage(pMessage);
+        pBdx.publish(BdxMessage.global(BdxMessage.CHAT)
+                .put("chatId", pMessage.chatId())
+                .put("time",   pMessage.time())
+                .put("firm",   pMessage.firm())
+                .put("user",   pMessage.user())
+                .put("text",   pMessage.text())
+                .put("tag",    pMessage.tag())
+                .put("system", pMessage.system()));
+        cLog.info("{} {} from {}/{}, tag '{}', {} bytes", pMessage.system() ? "System chat" : "Chat", pMessage.chatId(),
+                pMessage.firm(), pMessage.user(), pMessage.tag(), pMessage.text().getBytes(StandardCharsets.UTF_8).length);
+        return pMessage;
+    }
+
+    // The latest system messages: ?limit= (1..MAX_SYSTEM_LIMIT, default SYSTEM_LIMIT)
+    private void listSystem(Context ctx) {
+        int tLimit = SYSTEM_LIMIT;
+        String tLimitParam = param(ctx, "limit");
+        if (tLimitParam != null) {
+            try { tLimit = Integer.parseInt(tLimitParam); }
+            catch (NumberFormatException e) { tLimit = 0; }
+            if (tLimit < 1 || tLimit > MAX_SYSTEM_LIMIT) {
+                OrderEndpoints.error(ctx, 400, "limit must be 1.." + MAX_SYSTEM_LIMIT); return;
+            }
+        }
+        JsonArray tMessages = new JsonArray();
+        for (ChatMessage m : mCtx.database.listSystemChatMessages(tLimit)) tMessages.add(messageJson(m));
+        JsonObject tOut = new JsonObject();
+        tOut.add("messages", tMessages);
+        ctx.json(tOut.toString());
     }
 
     /** Null if the text and tag are valid, otherwise the error. */
@@ -122,14 +167,15 @@ public class ChatEndpoints implements RestEndpoint {
         return null;
     }
 
-    private static JsonObject messageJson(String pChatId, long pTime, String pFirm, String pUser, String pText, String pTag) {
+    private static JsonObject messageJson(ChatMessage m) {
         JsonObject tJson = new JsonObject();
-        tJson.addProperty("chatId", pChatId);
-        tJson.addProperty("time",   pTime);
-        tJson.addProperty("firm",   pFirm);
-        tJson.addProperty("user",   pUser);
-        tJson.addProperty("text",   pText);
-        tJson.addProperty("tag",    (pTag != null) ? pTag : "");
+        tJson.addProperty("chatId", m.chatId());
+        tJson.addProperty("time",   m.time());
+        tJson.addProperty("firm",   m.firm());
+        tJson.addProperty("user",   m.user());
+        tJson.addProperty("text",   m.text());
+        tJson.addProperty("tag",    (m.tag() != null) ? m.tag() : "");
+        tJson.addProperty("system", m.system());
         return tJson;
     }
 

@@ -384,7 +384,7 @@ its remaining quantity, or is removed when nothing is left.</p>
 the sender and the sender's firm, and an optional tag. Your own messages are highlighted.</p>
 <figure>
     <a href="guide/chat.png" target="_blank" title="Open full size"><img src="guide/chat.png" alt="The Chat view with a new message popup"></a>
-    <figcaption>The Chat view. A new message from another user also shows a popup in the middle of the screen.</figcaption>
+    <figcaption>The Chat view, with the system messages of the server start and of the market operator at the top. A new message from another user also shows a popup in the middle of the screen.</figcaption>
 </figure>
 <ul>
     <li><b>Reading:</b> the view shows the messages from the date in <b>From</b> up to now, today by default.
@@ -395,6 +395,12 @@ the sender and the sender's firm, and an optional tag. Your own messages are hig
         characters (fewer if you use special characters), and a tag up to 64.</li>
     <li><b>New messages:</b> a message from someone else shows a popup in the middle of the screen in every
         view. The popup stays a bit longer than the other popups.</li>
+    <li><b>System messages</b> come from the market operator, e.g. about opening hours, a trading halt or
+        maintenance. They have a light orange background, here and in their popup, and say <i>System
+        message</i> instead of a sender. The latest 10 are always in the list, also those older than the date in
+        <b>From</b>, so you see the operator's recent announcements when you sign in. When the trading system
+        is started, it sends one itself (tag <i>Restart</i>): the orders entered before the start are gone and
+        must be entered again if they are still wanted.</li>
 </ul>
 
 <!-- ───────────────────────────────────────────────────────────── -->

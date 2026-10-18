@@ -547,6 +547,11 @@ quantity. Otherwise, and after a reject, it is <code>ACTIVE</code> again. Reject
 <p>A chat between the trading users of all firms. Every message is stored with the time and the sender's firm and
 user, and sent to every connected trading user as a <code>Chat</code> message on the WebSocket, whatever their
 markets.</p>
+<p>The market operator sends <b>system messages</b> from the admin interface, e.g. about opening hours or
+maintenance. They are chat messages with <code>"system": true</code>, <code>firm</code> empty and
+<code>user</code> the operator's admin name; they are listed and broadcast like the others. A trading user can't
+send one. The server sends one itself when it starts (<code>user</code> <code>"System"</code>, <code>tag</code>
+<code>"Restart"</code>): the orders entered before the start are gone.</p>
 
 <div class="endpoint">
 <div class="sig"><span class="m POST">POST</span>/api/chat</div>
@@ -561,7 +566,7 @@ markets.</p>
 <pre><code>{ "text": "Anyone selling Brent Jan?", "tag": "oil" }</code></pre>
 <p>201, the stored message, also as broadcast:</p>
 <pre><code>{ "chatId": "6ad07f87c1ce2a3a51f8ddf3", "time": 1792049031393, "firm": "ThinAir", "user": "Geek",
-  "text": "Anyone selling Brent Jan?", "tag": "oil" }</code></pre>
+  "text": "Anyone selling Brent Jan?", "tag": "oil", "system": false }</code></pre>
 <p><code>time</code> is the server's time in epoch milliseconds. The message is stored (on disk) before it is
 broadcast and answered. 400 if the text is missing or too long or the tag too long.</p>
 </div>
@@ -582,9 +587,24 @@ broadcast and answered. 400 if the text is missing or too long or the tag too lo
 </table>
 <pre><code>{ "date": "2026-10-15", "fromDate": "2026-10-15", "tag": "oil", "more": false, "messages": [
   { "chatId": "6ad07f87c1ce2a3a51f8ddf3", "time": 1792049031393, "firm": "ThinAir", "user": "Geek",
-    "text": "Anyone selling Brent Jan?", "tag": "oil" } ] }</code></pre>
+    "text": "Anyone selling Brent Jan?", "tag": "oil", "system": false } ] }</code></pre>
 <p><code>more</code> is true if older messages were left out because of the limit. 400 for an invalid date or
 limit.</p>
+</div>
+
+<div class="endpoint">
+<div class="sig"><span class="m GET">GET</span>/api/chat/system<span class="opt">?limit=</span></div>
+<p>The latest system messages, of any day, oldest first; e.g. to show the operator's recent announcements when an
+application starts.</p>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>limit</code> <span class="opt">optional</span></td><td>At most this many, the latest ones;
+        1&ndash;100, default 10.</td></tr>
+</table>
+<pre><code>{ "messages": [
+  { "chatId": "6ad4bb86956efbc23d6ed907", "time": 1792326534892, "firm": "", "user": "Admin",
+    "text": "The Grains market opens at 10:00 today.", "tag": "Opening", "system": true } ] }</code></pre>
+<p>400 for an invalid limit.</p>
 </div>
 
 <h2 id="websocket">WebSocket</h2>
@@ -672,7 +692,8 @@ has no <code>marketId</code>: its topic is <code>/Chat</code>). Prices and quant
     <tr><th>Type</th><th>When</th><th>Fields</th></tr>
     <tr><td><code>Chat</code></td><td>A chat message was sent (also your own), to every connected trading
         user.</td><td><code>chatId</code>, <code>time</code> (epoch ms), <code>firm</code>, <code>user</code>,
-        <code>text</code>, <code>tag</code> (empty if none)</td></tr>
+        <code>text</code>, <code>tag</code> (empty if none), <code>system</code> (true for a system message from the
+        market operator)</td></tr>
 </table>
 <p>The counterparty of a trade or offer is never revealed. New message types or fields may be added; ignore what
 you don't recognize.</p>

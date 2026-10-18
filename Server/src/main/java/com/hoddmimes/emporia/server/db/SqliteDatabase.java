@@ -94,7 +94,7 @@ public class SqliteDatabase implements Database {
         "CREATE INDEX IF NOT EXISTS BulletinTrades_instrument ON BulletinTrades (marketId, instrument, tradeTime, seq)",
         """
         CREATE TABLE IF NOT EXISTS Chat (seq INTEGER PRIMARY KEY AUTOINCREMENT, chatId TEXT, time TEXT,
-            firm TEXT, user TEXT, text TEXT, tag TEXT)""",
+            firm TEXT, user TEXT, text TEXT, tag TEXT, system INTEGER)""",
         "CREATE INDEX IF NOT EXISTS Chat_time ON Chat (time, seq)",
     };
 
@@ -108,6 +108,7 @@ public class SqliteDatabase implements Database {
         { "Trades", "sellUser TEXT" },
         { "Trades", "reversalOf TEXT" },
         { "BulletinTrades", "reversalOf TEXT" },
+        { "Chat", "system INTEGER" },
     };
 
     /** Indexes on added columns, created after the columns. */
@@ -115,6 +116,7 @@ public class SqliteDatabase implements Database {
         "CREATE INDEX IF NOT EXISTS Trades_reversalOf ON Trades (reversalOf) WHERE reversalOf IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS BulletinTrades_reversalOf ON BulletinTrades (reversalOf) WHERE reversalOf IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS BulletinTrades_tradeTime ON BulletinTrades (tradeTime, seq)",
+        "CREATE INDEX IF NOT EXISTS Chat_system ON Chat (time, seq) WHERE system = 1",
     };
 
     private final Connection mConnection;
@@ -750,8 +752,8 @@ public class SqliteDatabase implements Database {
 
     @Override
     public void saveChatMessage(ChatMessage m) {
-        update("INSERT INTO Chat (chatId, time, firm, user, text, tag) VALUES (?, ?, ?, ?, ?, ?)",
-                m.chatId(), Database.formatTradeTime(m.time()), m.firm(), m.user(), m.text(), m.tag());
+        update("INSERT INTO Chat (chatId, time, firm, user, text, tag, system) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                m.chatId(), Database.formatTradeTime(m.time()), m.firm(), m.user(), m.text(), m.tag(), m.system() ? 1 : 0);
     }
 
     /** The tag condition is a LIKE, which is case-insensitive for ASCII letters only (MongoDB: all letters). */
@@ -769,11 +771,23 @@ public class SqliteDatabase implements Database {
         }
         tSql.append(" ORDER BY time DESC, seq DESC LIMIT ?");
         tParams.add(pLimit);
-        List<ChatMessage> tOut = query(tSql.toString(), rs -> new ChatMessage(rs.getString("chatId"),
-                Database.parseTradeTime(rs.getString("time")), rs.getString("firm"), rs.getString("user"),
-                rs.getString("text"), str(rs, "tag")), tParams.toArray());
+        List<ChatMessage> tOut = query(tSql.toString(), SqliteDatabase::chatMessage, tParams.toArray());
         Collections.reverse(tOut);
         return new ArrayList<>(tOut);
+    }
+
+    @Override
+    public List<ChatMessage> listSystemChatMessages(int pLimit) {
+        List<ChatMessage> tOut = query("SELECT * FROM Chat WHERE system = 1 ORDER BY time DESC, seq DESC LIMIT ?",
+                SqliteDatabase::chatMessage, pLimit);
+        Collections.reverse(tOut);
+        return new ArrayList<>(tOut);
+    }
+
+    // system is NULL in messages stored before system messages
+    private static ChatMessage chatMessage(ResultSet rs) throws SQLException {
+        return new ChatMessage(rs.getString("chatId"), Database.parseTradeTime(rs.getString("time")),
+                rs.getString("firm"), rs.getString("user"), rs.getString("text"), str(rs, "tag"), rs.getInt("system") == 1);
     }
 
     /** The text with LIKE's wildcards (and the escape character) escaped, so it matches literally. */

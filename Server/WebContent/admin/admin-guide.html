@@ -93,6 +93,7 @@ ol.marks li { margin: 6px 0; }
     <a href="#load">Loading instruments from a file</a>
     <div class="group">More</div>
     <a href="#deleting">Deleting things</a>
+    <a href="#system-messages">System messages</a>
     <a href="#password">Admin password</a>
     <a href="../user-guide.html">User guide (traders)</a>
     <a href="../api-doc.html">Trading API (developers)</a>
@@ -140,7 +141,7 @@ activity, like a trading session.</p>
 <h2 id="screen">The screen</h2>
 <figure>
     <a href="guide/admin-dashboard.png" target="_blank" title="Open full size"><img src="guide/admin-dashboard.png" alt="The admin start page with the menu on the left"></a>
-    <figcaption>The start page after signing in.</figcaption>
+    <figcaption>The start page after signing in, with the latest system messages.</figcaption>
 </figure>
 <ol class="marks">
     <li><span class="mark">1</span><b>The menu</b>. Each kind of data has a <b>List</b> page and a <b>Create</b>
@@ -544,6 +545,26 @@ entry with OK or ERROR and the reason.</p>
 </table>
 <p><b>Delete All Orders</b> and <b>Delete All Bulletins</b> remove everything in the market, for every
 firm and in any trading state. The firms see their orders or bulletins disappear.</p>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<h2 id="system-messages">System messages</h2>
+<p><b>System Messages</b> (in the <b>System</b> section of the menu) sends a message to every trading user, e.g.
+that a market opens late, that trading is halted, or about maintenance. Type the message (at most 512
+characters, fewer with special characters) and, if you like, a tag, and click <b>Send to All Users</b>.</p>
+<figure class="form">
+    <a href="guide/system-messages.png" target="_blank" title="Open full size"><img src="guide/system-messages.png" alt="The System Messages page"></a>
+    <figcaption>System Messages: a new message, and the latest ones sent.</figcaption>
+</figure>
+<ul>
+    <li>Users who are signed in get it at once, as a popup in every view. It is also in the <b>Chat</b> view,
+        with a light orange background and <i>System message</i> instead of a sender.</li>
+    <li>The latest 10 system messages are shown to every user in the Chat view, also after signing in later
+        or on another day, and on this page and the <b>Dashboard</b> of the admin interface, newest first,
+        with the admin who sent each.</li>
+    <li>The server sends one itself each time it starts (sender <i>System</i>, tag <i>Restart</i>), telling the
+        users that the orders entered before the start have been cancelled.</li>
+    <li>A system message can't be changed or deleted. Send a new one to correct it.</li>
+</ul>
 
 <!-- ───────────────────────────────────────────────────────────── -->
 <h2 id="password">Admin password</h2>

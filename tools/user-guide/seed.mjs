@@ -126,6 +126,8 @@ await call(s.anna, 'POST', `/api/bulletins/${diesel.bulletinId}/offer`, { price:
 
 // ── Chat ───────────────────────────────────────────────────────────────
 const chat = (user, text, tag) => call(s[user], 'POST', '/api/chat', { text, tag });
+// a system message from the market operator (admin interface)
+await call(admin, 'POST', '/api/admin/chat', { text: 'Good morning. Grains and Metals are open as usual; the server is restarted Saturday 08:00-09:00 for maintenance.', tag: 'Operations' });
 await chat('erik', 'Good morning all. Wheat looks bid after the crop report.', 'grains');
 await chat('lena', 'Anyone interested in Diesel Jan? We are buyers of 2000 t, see the bulletin.', 'energy');
 await chat('anna', 'Copper offered at 9860 in 20 t if anyone needs it.', 'metals');

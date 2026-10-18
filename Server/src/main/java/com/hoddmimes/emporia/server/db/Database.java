@@ -247,6 +247,9 @@ public interface Database {
      */
     List<ChatMessage> listChatMessages(String pFromDate, String pToDate, String pTag, int pLimit);
 
+    /** The latest pLimit system chat messages (ChatMessage.system), of any day, returned oldest first. */
+    List<ChatMessage> listSystemChatMessages(int pLimit);
+
     // ── Login ────────────────────────────────────────────────────────────
 
     /** A trading user's login: {"success":true,"userId","firm"} or {"success":false,"message"}. */

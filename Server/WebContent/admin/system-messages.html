@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emporia &mdash; System Messages</title>
+    <link rel="stylesheet" href="css/cd.css">
+</head>
+<body>
+    <header class="cd-header">
+        <span class="logo">EMPORIA</span>
+        <span class="subtitle">Administration</span>
+        <div class="spacer"></div>
+        <span class="user-info" id="user-info"></span>
+        <button class="btn btn-ghost btn-sm" onclick="cdSession.logout()" style="margin-left:14px;">
+            Logout
+        </button>
+    </header>
+
+    <div class="cd-layout">
+        <nav class="cd-sidebar"></nav>
+
+        <main class="cd-content">
+            <div class="page-title-row">
+                <h2>System Messages</h2>
+            </div>
+
+            <div id="message" class="alert alert-hidden"></div>
+
+            <div class="card" style="max-width:720px;">
+                <form id="send-form" onsubmit="sendMessage(event)">
+                    <div class="form-group">
+                        <label for="f-text">Message <span style="color:var(--error)">*</span></label>
+                        <textarea id="f-text" rows="4" placeholder="Sent to every trading user, e.g. 'The Grains market opens at 10:00 today.'" oninput="updateCount()"></textarea>
+                        <div class="form-hint"><span id="f-count">0/512</span> bytes. Every trading user sees it at once
+                            as a popup and in the Chat view, with the system message color.</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="f-tag">Tag</label>
+                        <input type="text" id="f-tag" placeholder="Optional, e.g. Maintenance" style="max-width:300px;">
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button type="submit" class="btn btn-primary" id="send-button">Send to All Users</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card" style="max-width:720px;">
+                <div class="card-header"><h3>Latest system messages</h3></div>
+                <div id="sysmsg-list" class="sysmsg-list">Loading&hellip;</div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/cd-session.js"></script>
+    <script src="js/cd-api.js"></script>
+    <script src="js/cd-nav.js"></script>
+    <script src="js/cd-sysmsg.js"></script>
+    <script>
+        cdNav.render('system-messages');
+        cdSession.guard('user-info');
+
+        // POST /api/admin/chat: a chat message with system true, stored and sent to every trading user
+        const TEXT_BYTES = 512, TAG_BYTES = 64;
+        const utf8Bytes = s => new TextEncoder().encode(s).length;
+
+        async function loadMessages() {
+            const r = await cdSysMsg.load();
+            if (r.status === 401) { window.location.href = 'login.html'; return; }
+            const el = document.getElementById('sysmsg-list');
+            if (!r.ok) { el.textContent = 'Failed to load the system messages: ' + r.error; return; }
+            cdSysMsg.render(el, r.data.messages);
+        }
+
+        function updateCount() {
+            const n = utf8Bytes(document.getElementById('f-text').value.trim());
+            const el = document.getElementById('f-count');
+            el.textContent = n + '/' + TEXT_BYTES;
+            el.style.color = n > TEXT_BYTES ? 'var(--error)' : '';
+        }
+
+        async function sendMessage(event) {
+            event.preventDefault();
+            const text = document.getElementById('f-text').value.trim();
+            const tag  = document.getElementById('f-tag').value.trim();
+            if (!text) { showMessage('Write a message first.', true); return; }
+            if (utf8Bytes(text) > TEXT_BYTES) { showMessage(`The message must be at most ${TEXT_BYTES} bytes (UTF-8).`, true); return; }
+            if (utf8Bytes(tag) > TAG_BYTES)   { showMessage(`The tag must be at most ${TAG_BYTES} bytes (UTF-8).`, true); return; }
+            const button = document.getElementById('send-button');
+            button.disabled = true;
+            const r = await cdApi.request('../api/admin/chat', cdApi.json('POST', tag ? { text, tag } : { text }));
+            button.disabled = false;
+            if (r.status === 401) { window.location.href = 'login.html'; return; }
+            if (!r.ok) { showMessage('Not sent: ' + r.error, true); return; }
+            document.getElementById('f-text').value = '';
+            updateCount();
+            showMessage('The system message was sent to all trading users.', false);
+            loadMessages();
+        }
+
+        function showMessage(text, isError) {
+            const el = document.getElementById('message');
+            el.textContent = text;
+            el.className = 'alert ' + (isError ? 'alert-error' : 'alert-success');
+        }
+
+        loadMessages();
+    </script>
+</body>
+</html>

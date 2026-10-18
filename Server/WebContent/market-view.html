@@ -701,6 +701,7 @@
             if (ordersView) loadOrders();
             if (portfolioView) loadPortfolio();
             if (tradesView && tradesDate === todayString()) loadTrades();
+            if (chatView) loadChat(); else loadSystemChats();   // missed chat and system messages
             showMissedOffers();
         }
 
@@ -1380,14 +1381,14 @@
         const CHAT_TOAST_MS   = 12000;
         const MAX_INFO_TOASTS = 3;
 
-        // { kind: buy|sell|bulletin|chat, title, lines: [text, ...] }
+        // { kind: buy|sell|bulletin|chat, title, lines: [text, ...], system: a system chat message }
         function showToast(t) {
             const chat = t.kind === 'chat';
             const box = document.getElementById(chat ? 'mv-chat-toasts' : 'mv-toasts');
             const shown = box.querySelectorAll('.mv-toast-info');
             if (shown.length >= MAX_INFO_TOASTS) shown[0].remove();
             const toast = document.createElement('div');
-            toast.className = 'mv-toast mv-toast-info mv-toast-' + t.kind;
+            toast.className = 'mv-toast mv-toast-info mv-toast-' + t.kind + (t.system ? ' mv-toast-system' : '');
             toast.title = 'Click to close';
             toast.innerHTML = '<div class="mv-toast-title">' + escapeHtml(t.title) + '</div>'
                 + t.lines.map(l => '<div>' + escapeHtml(l) + '</div>').join('');
@@ -2380,7 +2381,12 @@
         let chatView    = false;
         let chatDate    = null;      // yyyy-MM-dd: the messages from this day on
         let chatTag     = '';        // the tag filter: tag contains (case-insensitive), '' = all
-        let chatMessages = [];       // { chatId, time, firm, user, text, tag }, oldest first
+        let chatMessages = [];       // { chatId, time, firm, user, text, tag, system }, oldest first
+        // System messages (system true: sent by the market operator from the admin interface): the latest
+        // SYSTEM_CHATS of any day (GET /api/chat/system), loaded at startup and kept current by the Chat
+        // messages. The Chat view merges them into its list in time order, also those older than its day.
+        const SYSTEM_CHATS = 10;
+        let systemChats  = [];
 
         const utf8Bytes = (s) => new TextEncoder().encode(s).length;
 
@@ -2468,9 +2474,9 @@
             const params = new URLSearchParams({ fromDate: chatDate });   // date: the server's today
             if (chatTag) params.set('tag', chatTag);
             try {
-                const r = await fetch('api/chat?' + params);
-                const data = await r.json().catch(() => null);
-                if (!r.ok) throw new Error('HTTP ' + r.status + ((data && data.error) ? ': ' + data.error : ''));
+                const [r] = await Promise.all([fetch('api/chat?' + params), loadSystemChats()]);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
                 if (!chatView || key !== chatDate + '|' + chatTag) return;   // changed meanwhile
                 chatMessages = data.messages || [];
                 renderChat(data.more);
@@ -2480,18 +2486,40 @@
             }
         }
 
+        // The latest system messages; failures are only logged (the chat still works)
+        async function loadSystemChats() {
+            try {
+                const r = await fetch('api/chat/system?limit=' + SYSTEM_CHATS);
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                systemChats = (await r.json()).messages || [];
+            } catch (e) {
+                console.error('Failed to load the system messages', e);
+            }
+        }
+
+        // The Chat view's list: its day's messages and the system messages (those matching the tag filter),
+        // in time order, each once
+        function chatList() {
+            const ids = new Set(chatMessages.map(m => m.chatId));
+            const tag = chatTag.toLowerCase();
+            const extra = systemChats.filter(m => !ids.has(m.chatId) && (!tag || (m.tag || '').toLowerCase().includes(tag)));
+            if (extra.length === 0) return chatMessages;
+            return chatMessages.concat(extra).sort((a, b) => a.time - b.time || (a.chatId < b.chatId ? -1 : 1));
+        }
+
         function isOwnChat(m) {
             const s = trSession._session;
-            return !!s && m.firm === s.firm && m.user === s.userId;
+            return !m.system && !!s && m.firm === s.firm && m.user === s.userId;
         }
 
         function chatMessageHtml(m) {
             const d = new Date(m.time);
-            const when = (todayString() !== chatDate) ? d.toLocaleDateString() + ' ' : '';   // several days shown
-            return '<div class="mv-chat-msg' + (isOwnChat(m) ? ' mv-chat-own' : '') + '">'
+            // the date when several days are shown, or for a system message of an earlier day
+            const when = (todayString() !== chatDate || d.toDateString() !== new Date().toDateString()) ? d.toLocaleDateString() + ' ' : '';
+            return '<div class="mv-chat-msg' + (isOwnChat(m) ? ' mv-chat-own' : '') + (m.system ? ' mv-chat-system' : '') + '">'
                 + '<div class="mv-chat-head">'
                 +   '<span>' + escapeHtml(when + d.toLocaleTimeString(undefined, { hour12: false })) + '</span>'
-                +   '<span class="mv-chat-who">' + escapeHtml(m.user) + ' (' + escapeHtml(m.firm) + ')</span>'
+                +   '<span class="mv-chat-who">' + (m.system ? 'System message' : escapeHtml(m.user) + ' (' + escapeHtml(m.firm) + ')') + '</span>'
                 +   (m.tag ? '<span class="mv-chat-tag">' + escapeHtml(m.tag) + '</span>' : '')
                 + '</div>'
                 + '<div class="mv-chat-text">' + escapeHtml(m.text) + '</div>'
@@ -2501,23 +2529,30 @@
         function renderChat(more) {
             const el = document.getElementById('ch-messages');
             if (!el) return;
-            if (chatMessages.length === 0) {
+            const list = chatList();
+            if (list.length === 0) {
                 el.innerHTML = '<div class="mv-empty">No chat messages.</div>';
                 return;
             }
             el.innerHTML = (more ? '<div class="mv-chat-note">Only the latest ' + chatMessages.length + ' messages are shown.</div>' : '')
-                + chatMessages.map(chatMessageHtml).join('');
+                + list.map(chatMessageHtml).join('');
             el.scrollTop = el.scrollHeight;   // the latest at the bottom
         }
 
-        // A Chat message (bdx): a popup unless it is the user's own, and added to the Chat view if it matches
+        // A Chat message (bdx): a popup unless it is the user's own, and added to the Chat view if it matches.
+        // A system message is also kept with the latest system messages.
         function chatReceived(m) {
+            const shown = chatView && chatList().some(x => x.chatId === m.chatId);   // e.g. loaded meanwhile
+            if (m.system && !systemChats.some(x => x.chatId === m.chatId)) {
+                systemChats.push(m);
+                if (systemChats.length > SYSTEM_CHATS) systemChats.shift();
+            }
             if (!isOwnChat(m)) {
                 const text = (m.text.length > 200) ? m.text.slice(0, 200) + '…' : m.text;
-                showToast({ kind: 'chat', title: 'Chat: ' + m.user + ' (' + m.firm + ')',
+                showToast({ kind: 'chat', system: m.system, title: m.system ? 'System message' : 'Chat: ' + m.user + ' (' + m.firm + ')',
                             lines: (m.tag ? ['[' + m.tag + ']'] : []).concat([text]) });
             }
-            if (!chatView || chatMessages.some(x => x.chatId === m.chatId)) return;
+            if (!chatView || shown) return;
             const today = todayString();
             if (chatDate > today || (chatTag && !(m.tag || '').toLowerCase().includes(chatTag.toLowerCase()))) return;
             const el = document.getElementById('ch-messages');
@@ -2574,6 +2609,7 @@
 
         // ── Boot ──────────────────────────────────────────────────────────
         loadMarkets();
+        loadSystemChats();
         wssConnect();
     </script>
 </body>

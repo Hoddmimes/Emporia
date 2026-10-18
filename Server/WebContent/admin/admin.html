@@ -26,15 +26,30 @@
                 <p>Welcome to the Emporia Common Data administration interface.
                    Use the navigation on the left to manage business data and system configuration.</p>
             </div>
+            <div class="card" style="max-width:720px;">
+                <div class="card-header"><h3>Latest system messages</h3>
+                    <a href="system-messages.html" class="btn btn-outline btn-sm">Send a System Message</a></div>
+                <div id="sysmsg-list" class="sysmsg-list">Loading&hellip;</div>
+            </div>
         </main>
     </div>
 
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-sysmsg.js"></script>
     <script>
         cdNav.render('dashboard');
         cdSession.guard('user-info');
+
+        // The latest system messages (sent to all trading users from System Messages)
+        (async () => {
+            const r = await cdSysMsg.load();
+            const el = document.getElementById('sysmsg-list');
+            if (r.status === 401) return;   // cdSession.guard goes to the login page
+            if (!r.ok) { el.textContent = 'Failed to load the system messages: ' + r.error; return; }
+            cdSysMsg.render(el, r.data.messages);
+        })();
     </script>
 </body>
 </html>

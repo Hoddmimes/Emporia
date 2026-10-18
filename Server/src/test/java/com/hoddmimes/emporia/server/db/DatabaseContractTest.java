@@ -391,4 +391,18 @@ abstract class DatabaseContractTest {
         assertTrue(mDb.listChatMessages(null, "2026-10-13", null, 10).isEmpty());
         assertThrows(IllegalArgumentException.class, () -> mDb.listChatMessages("x", "2026-10-16", null, 10));
     }
+
+    @Test
+    void systemChat() {
+        ChatMessage s1 = new ChatMessage("s1", time("2026-10-13T08:00:00.000"), "", "Admin", "maintenance", "", true);
+        ChatMessage m1 = new ChatMessage("c1", time("2026-10-14T10:00:00.000"), "FA", "anna", "hello", "");
+        ChatMessage s2 = new ChatMessage("s2", time("2026-10-15T07:00:00.000"), "", "Admin", "late open", "XSTO", true);
+        ChatMessage s3 = new ChatMessage("s3", time("2026-10-16T07:00:00.000"), "", "Admin", "open", "", true);
+        for (ChatMessage m : List.of(s1, m1, s2, s3)) mDb.saveChatMessage(m);
+
+        assertEquals(List.of(s1, s2, s3), mDb.listSystemChatMessages(10));   // of any day, oldest first
+        assertEquals(List.of(s2, s3), mDb.listSystemChatMessages(2));        // the latest
+        assertEquals(List.of(s1, m1, s2), mDb.listChatMessages(null, "2026-10-15", null, 10));   // in the chat too
+        assertFalse(mDb.listChatMessages(null, "2026-10-14", null, 10).get(1).system());
+    }
 }
