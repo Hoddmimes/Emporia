@@ -4,15 +4,29 @@
   "verbose": false,
   "sessions": [
     {
-      "firm": "ThinAir",
-      "user": "Geek",
+      "firm": "FirmA",
+      "user": "TA1",
       "password": "changeit",
-      "repeat": 1,
+      "repeat": 1000,
       "txRate": 30,
       "directives": [
         { "type": "AddOrder", "instrument": "ABB", "side": "BUY", "price": 101.00, "quantity": 10, "userRef": "bidOrder" },
-        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 100.00, "quantity": 5, "userRef": "askOrder"  },
-        { "type": "DeleteOrder", "userRef": "bidOrder" }
+        { "type": "AddOrder", "instrument": "ABB", "side": "SELL", "price": 102.00, "quantity": 5, "userRef": "askOrder"  },
+        { "type": "DeleteOrder", "userRef": "bidOrder" },
+        { "type": "DeleteOrder", "userRef": "askOrder" }
+      ]
+    },
+    {
+      "firm": "FirmB",
+      "user": "TB1",
+      "password": "changeit",
+      "repeat": 1000,
+      "txRate": 30,
+      "directives": [
+        { "type": "AddOrder", "instrument": "ALFA", "side": "BUY", "price": 101.00, "quantity": 10, "userRef": "bidOrder" },
+        { "type": "AddOrder", "instrument": "ALFA", "side": "SELL", "price": 102.00, "quantity": 5, "userRef": "askOrder"  },
+        { "type": "DeleteOrder", "userRef": "bidOrder" },
+        { "type": "DeleteOrder", "userRef": "askOrder" }
       ]
     }
   ]
