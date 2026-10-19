@@ -91,6 +91,33 @@
                                    title="Unchecked: a firm's orders never trade with each other; an incoming order that would trade with an order of its own firm has its rest cancelled">
                         </span>
                     </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Max Order Quantity
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(decimal)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-maxOrderQuantity" class="field-input" step="any" min="0"
+                                   placeholder="no limit" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Max Order Value
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(price x quantity)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-maxOrderValue" class="field-input" step="any" min="0"
+                                   placeholder="no limit" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Price Band %
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(around the last trade price)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-priceBand" class="field-input" step="any" min="0"
+                                   placeholder="no limit" oninput="checkChanged()">
+                        </span>
+                    </div>
 
                     <!-- CONTINUOUS only -->
                     <div class="detail-row" id="row-inverse">
@@ -154,6 +181,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-limits.js"></script>
     <script>
         cdNav.render('list-markets');
         cdSession.guard('user-info');
@@ -197,6 +225,7 @@
                 document.getElementById('d-close').value                 !== originalValues.close              ||
                 document.getElementById('d-inverse').checked             !== originalValues.inverse            ||
                 document.getElementById('d-selfTrade').checked           !== originalValues.selfTrade          ||
+                cdLimits.key('d')                                        !== originalValues.limits             ||
                 document.getElementById('d-preOpenTime').value           !== originalValues.preOpenTime        ||
                 document.getElementById('d-openAuctionTime').value       !== originalValues.openAuctionTime    ||
                 document.getElementById('d-auctionInterval').value       !== originalValues.auctionInterval    ||
@@ -221,6 +250,7 @@
                 document.getElementById('d-close').value              = m.close                || '';
                 document.getElementById('d-inverse').checked          = !!m.inverse;
                 document.getElementById('d-selfTrade').checked        = m.selfTrade !== false;
+                cdLimits.fill('d', m);
                 document.getElementById('d-preOpenTime').value        = m.preOpenTime          || '';
                 document.getElementById('d-openAuctionTime').value    = m.openAuctionTime      || '';
                 document.getElementById('d-auctionInterval').value    = m.auctionInterval      || '';
@@ -236,6 +266,7 @@
                     close:                m.close                || '',
                     inverse:              !!m.inverse,
                     selfTrade:            m.selfTrade !== false,
+                    limits:               cdLimits.key('d'),
                     preOpenTime:          m.preOpenTime          || '',
                     openAuctionTime:      m.openAuctionTime      || '',
                     auctionInterval:      m.auctionInterval      || '',
@@ -256,6 +287,7 @@
                 close:                document.getElementById('d-close').value.trim(),
                 inverse:              document.getElementById('d-inverse').checked,
                 selfTrade:            document.getElementById('d-selfTrade').checked,
+                ...cdLimits.read('d'),
                 preOpenTime:          document.getElementById('d-preOpenTime').value.trim(),
                 openAuctionTime:      document.getElementById('d-openAuctionTime').value.trim(),
                 auctionInterval:      document.getElementById('d-auctionInterval').value.trim(),
@@ -275,6 +307,7 @@
                     close:                body.close,
                     inverse:              body.inverse,
                     selfTrade:            body.selfTrade,
+                    limits:               cdLimits.key('d'),
                     preOpenTime:          body.preOpenTime,
                     openAuctionTime:      body.openAuctionTime,
                     auctionInterval:      body.auctionInterval,

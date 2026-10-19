@@ -238,6 +238,9 @@ Quote it when reporting a problem; the server log shows it on every line about t
     <tr><td><code>selfTrade</code></td><td><code>false</code> if the market prevents self-trade: your firm's
         orders never trade with each other (see <code>selfTradeCancelled</code> under <code>POST /api/orders</code>).
         <code>true</code>: they may.</td></tr>
+    <tr><td><code>maxOrderQuantity</code>, <code>maxOrderValue</code>, <code>priceBand</code></td><td>The market's
+        order limits, scaled, 0 = none; see <a href="#instruments">the instruments</a>, whose limits are the ones
+        that apply.</td></tr>
 </table>
 </div>
 
@@ -258,6 +261,13 @@ Quote it when reporting a problem; the server log shows it on every line about t
         <code>EUR</code>; empty if none was set.</td></tr>
     <tr><td><code>unit</code></td><td>The unit of the quantity, free text such as <code>t</code>,
         <code>MWh</code> or <code>bbl</code>; empty if none was set. A price is per unit.</td></tr>
+    <tr><td><code>maxOrderQuantity</code>, <code>maxOrderValue</code>, <code>priceBand</code></td><td>The order
+        limits that apply to the instrument (its own, otherwise its market's), scaled; 0 = no limit. An order
+        (<code>POST</code> or <code>PATCH</code>) is rejected with 400 if its quantity is above
+        <code>maxOrderQuantity</code>, its value (price &times; quantity) above <code>maxOrderValue</code>, or its
+        price further than <code>priceBand</code> percent (scaled: 10% = 1000000) from the reference price:
+        today's last trade price, or without a trade today the latest trade price of an earlier day (no band if
+        the instrument never traded). The error says which limit and its value.</td></tr>
     <tr><td><code>tradingStatus</code></td><td><code>ACTIVE</code> or <code>SUSPENDED</code>.</td></tr>
     <tr><td><code>instType</code></td><td><code>COMMODITY</code>, <code>EQUITY</code>, <code>OPTION</code>,
         <code>FUTURE</code> or <code>OTC</code>; options and futures also have <code>expirationDate</code>,

@@ -33,7 +33,10 @@ public class InstrumentEndpoints implements RestEndpoint {
             }
             JsonArray tArray = new JsonArray();
             for (var tInstrument : mCtx.instrumentCache.getInstrumentsByMarket(tMarketId)) {
-                tArray.add(tInstrument.toJson());
+                JsonObject tJson = tInstrument.toJson();
+                // The limits that apply: the instrument's own, each 0 replaced by its market's
+                mCtx.matchingEngine.orderLimits(tInstrument.instrumentId()).addTo(tJson);
+                tArray.add(tJson);
             }
             JsonObject tOut = new JsonObject();
             tOut.add("instruments", tArray);

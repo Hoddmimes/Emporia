@@ -11,6 +11,8 @@ import com.hoddmimes.emporia.server.bdx.BdxMessage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -165,6 +167,8 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             // Checked again under the book's lock, which the uncross at open takes after the status changed
             String tStatusErr = checkTradingStatus(pReq.instrumentId());
             if (tStatusErr != null) return OrderResponse.error(tStatusErr);
+            String tLimitErr = checkOrderLimits(tBook, pReq.price(), pReq.quantity());
+            if (tLimitErr != null) return OrderResponse.error(tLimitErr);
             return tBook.addOrder(pReq, isMarketOpen(pReq.instrumentId()), isSelfTradeAllowed(pReq.instrumentId()));
         });
     }
@@ -177,6 +181,9 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
         return durable(tBook, () -> {
             if (!isFirmsOrder(tBook, pFirm, tOrderId)) return OrderResponse.error("Order not found: " + pOrderId);
             String tErr = checkTradingStatus(tBook.getInstrumentId());
+            if (tErr != null) return OrderResponse.error(tErr);
+            Order tOrder = tBook.getOrder(tOrderId);
+            tErr = checkOrderLimits(tBook, pPrice > 0 ? pPrice : tOrder.getPrice(), pQuantity);
             if (tErr != null) return OrderResponse.error(tErr);
             return tBook.modifyOrder(tOrderId, pPrice, pQuantity, pUserRef, isMarketOpen(tBook.getInstrumentId()),
                     isSelfTradeAllowed(tBook.getInstrumentId()));
@@ -648,6 +655,79 @@ public class MatchingEngine implements MatchingEngineCallbackIf {
             return "Instrument " + tInstrument.name() + " is SUSPENDED, orders are not accepted";
         }
         return null;
+    }
+
+    /**
+     * The instrument's order limits: its own, each 0 replaced by its market's (0 there too: no check).
+     * OrderLimits.NONE for an instrument or market not in the cache.
+     */
+    public InstrumentCache.OrderLimits orderLimits(long pInstrumentId) {
+        InstrumentCache.InstrumentEntry tInstrument = mInstrumentCache.getInstrument(pInstrumentId);
+        if (tInstrument == null) return InstrumentCache.OrderLimits.NONE;
+        InstrumentCache.MarketEntry tMarket = mInstrumentCache.getMarket(tInstrument.marketId());
+        return tInstrument.limits().orElse(tMarket != null ? tMarket.limits() : InstrumentCache.OrderLimits.NONE);
+    }
+
+    /**
+     * Null if the order (price, quantity; scaled) is within the instrument's order limits, otherwise why not:
+     * at most maxOrderQuantity, a value (price x quantity) of at most maxOrderValue, and a price at most
+     * priceBand percent from the reference price, which is today's last trade price, or without a trade today
+     * the latest stored trade's price (no band check if the instrument never traded). Called under the book's lock.
+     */
+    private String checkOrderLimits(Orderbook pBook, long pPrice, long pQuantity) {
+        InstrumentCache.OrderLimits tLimits = orderLimits(pBook.getInstrumentId());
+        if (tLimits.maxOrderQuantity() > 0 && pQuantity > tLimits.maxOrderQuantity()) {
+            return "Quantity " + plain(pQuantity) + " is above the maximum order quantity " + plain(tLimits.maxOrderQuantity());
+        }
+        if (tLimits.maxOrderValue() > 0) {
+            BigInteger tValue = BigInteger.valueOf(pPrice).multiply(BigInteger.valueOf(pQuantity)).divide(BIG_SCALE);
+            if (tValue.compareTo(BigInteger.valueOf(tLimits.maxOrderValue())) > 0) {
+                return "Order value " + plain(tValue) + " (price x quantity) is above the maximum order value "
+                        + plain(tLimits.maxOrderValue());
+            }
+        }
+        if (tLimits.priceBand() > 0) {
+            long tReference = (pBook.getTradedVolume() > 0) ? pBook.getLastTradePrice() : previousTradePrice(pBook.getInstrumentId());
+            if (tReference > 0) {
+                // The band's half width: reference x band% (band scaled, so divided by 100 x SCALE), rounded down
+                long tWidth = BigInteger.valueOf(tReference).multiply(BigInteger.valueOf(tLimits.priceBand()))
+                        .divide(BIG_SCALE.multiply(BigInteger.valueOf(100))).longValue();
+                if (pPrice < tReference - tWidth || pPrice > tReference + tWidth) {
+                    return "Price " + plain(pPrice) + " is outside the price band " + plain(tReference - tWidth) + " - "
+                            + plain(tReference + tWidth) + " (" + plain(tLimits.priceBand()) + "% around the reference price "
+                            + plain(tReference) + ")";
+                }
+            }
+        }
+        return null;
+    }
+
+    private static final BigInteger BIG_SCALE = BigInteger.valueOf(SCALE);
+
+    /** A scaled value as a plain decimal, e.g. 1234.5 */
+    private static String plain(long pScaled) {
+        return BigDecimal.valueOf(pScaled, 5).stripTrailingZeros().toPlainString();
+    }
+
+    private static String plain(BigInteger pScaled) {
+        return new BigDecimal(pScaled, 5).stripTrailingZeros().toPlainString();
+    }
+
+    /** Per instrument the day it was looked up (epoch day) and the latest stored trade price then. */
+    private final ConcurrentHashMap<Long, long[]> mPreviousTradePrices = new ConcurrentHashMap<>();
+
+    /**
+     * The price band's reference for an instrument that has not traded today: the latest stored trade's price
+     * (Database.lastTradePrice; 0 if none or without a database), looked up once a day per instrument.
+     */
+    private long previousTradePrice(long pInstrumentId) {
+        if (mDB == null) return 0;
+        long tToday = java.time.LocalDate.now().toEpochDay();
+        long[] tCached = mPreviousTradePrices.get(pInstrumentId);
+        if (tCached != null && tCached[0] == tToday) return tCached[1];
+        long tPrice = mDB.lastTradePrice(pInstrumentId);
+        mPreviousTradePrices.put(pInstrumentId, new long[] { tToday, tPrice });
+        return tPrice;
     }
 
     /** True if the instrument's market is OPEN, i.e. incoming orders match (PREOPEN only collects them). */

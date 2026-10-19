@@ -34,7 +34,7 @@ await rest('POST', 'api/admin/authorizations', { firm: 'EASTGRAIN', market: '1' 
 await rest('POST', 'api/admin/authorizations', { firm: 'EASTGRAIN', market: '3' });
 await rest('POST', 'api/admin/markets', { name: 'Dairy', description: 'Butter and milk powder, call auctions',
     type: 'AUCTION', open: '09:00', close: '16:00', tradingStatus: 'CLOSED', auctionInterval: '900', randomAuctionInterval: '60',
-    selfTrade: false });
+    selfTrade: false, maxOrderQuantity: 500 * 100000, priceBand: 10 * 100000 });
 
 // ── Chrome ─────────────────────────────────────────────────────────────
 const { ev, navigate, shot, mark, unmark, resize, close } = await startChrome(BASE, OUT);
@@ -99,7 +99,8 @@ await navigate('admin/markets.html');
 await shot('markets', CONTENT);
 await navigate('admin/create-market.html');
 await set({ 'f-name': 'Softs', 'f-description': 'Sugar, coffee and cocoa', 'f-type': 'CONTINUOUS', 'f-tradingStatus': 'CLOSED',
-            'f-open': '08:30', 'f-close': '17:30', 'f-preOpenTime': '08:15' });
+            'f-open': '08:30', 'f-close': '17:30', 'f-preOpenTime': '08:15',
+            'f-maxOrderQuantity': '1000', 'f-maxOrderValue': '250000', 'f-priceBand': '15' });
 await shot('create-market', FORM);
 await navigate('admin/markets.html');
 await openRow('Grains');

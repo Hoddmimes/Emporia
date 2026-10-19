@@ -668,4 +668,63 @@ class MatchingEngineTest {
         assertEquals(3 * S, orders("A").get(0).getAsJsonObject().get("quantity").getAsLong());   // the buy's rest
         assertEquals(1, orders("A").size());
     }
+
+    // ── Order limits ──────────────────────────────────────────────────────
+
+    private void marketLimits(long pMaxQuantity, long pMaxValue, long pBand) {
+        mCache.putMarket(new InstrumentCache.MarketEntry(1, "Cont", "", "CONTINUOUS", "", "", false, "", "", "", "", "OPEN",
+                true, new InstrumentCache.OrderLimits(pMaxQuantity, pMaxValue, pBand)));
+    }
+
+    @Test
+    void noOrderLimitsByDefault() {
+        assertTrue(add(CONT, Order.Side.BUY, 1000000.00, 1000000, "A").success());
+    }
+
+    @Test
+    void maxOrderQuantityFromTheMarketOrTheInstrument() {
+        marketLimits(100 * S, 0, 0);
+        assertTrue(add(CONT, Order.Side.BUY, 10.00, 100, "A").success());
+        OrderResponse tTooBig = add(CONT, Order.Side.BUY, 10.00, 101, "A");
+        assertFalse(tTooBig.success());
+        assertTrue(tTooBig.message().contains("maximum order quantity 100"), tTooBig.message());
+
+        // The instrument's own limit replaces the market's
+        mCache.putInstrument(new InstrumentCache.InstrumentEntry(CONT, 1, "Wheat", "", S / 100, S, "", "ACTIVE", "", 0, "", "",
+                "EUR", "t", new InstrumentCache.OrderLimits(200 * S, 0, 0)));
+        assertTrue(add(CONT, Order.Side.BUY, 10.00, 200, "A").success());
+        assertFalse(add(CONT, Order.Side.BUY, 10.00, 201, "A").success());
+        assertEquals(200 * S, mEngine.orderLimits(CONT).maxOrderQuantity());
+    }
+
+    @Test
+    void maxOrderValue() {
+        marketLimits(0, 1000 * S, 0);
+        assertTrue(add(CONT, Order.Side.BUY, 10.00, 100, "A").success());    // 1000
+        OrderResponse tTooBig = add(CONT, Order.Side.BUY, 10.01, 100, "A");  // 1001
+        assertFalse(tTooBig.success());
+        assertTrue(tTooBig.message().contains("Order value 1001"), tTooBig.message());
+    }
+
+    @Test
+    void priceBandAroundTheLastTradePrice() {
+        marketLimits(0, 0, 10 * S);   // 10%
+        // No trade yet (and no database): no reference price, no band
+        add(CONT, Order.Side.SELL, 100.00, 1, "A");
+        assertTrue(add(CONT, Order.Side.BUY, 100.00, 1, "B").success());   // a trade at 100
+        assertTrue(add(CONT, Order.Side.BUY, 90.00, 1, "B").success());    // the band's edges are allowed
+        assertTrue(add(CONT, Order.Side.SELL, 110.00, 1, "A").success());
+        OrderResponse tOutside = add(CONT, Order.Side.SELL, 110.01, 1, "A");
+        assertFalse(tOutside.success());
+        assertTrue(tOutside.message().contains("price band 90 - 110"), tOutside.message());
+        assertFalse(add(CONT, Order.Side.BUY, 89.99, 1, "B").success());
+    }
+
+    @Test
+    void aModifyIsCheckedAgainstTheLimits() {
+        String tOrderId = add(CONT, Order.Side.BUY, 10.00, 50, "A").orderId();
+        marketLimits(100 * S, 0, 0);
+        assertFalse(mEngine.modifyOrder("A", tOrderId, 0, 150 * S, null).success());
+        assertTrue(mEngine.modifyOrder("A", tOrderId, 0, 80 * S, null).success());
+    }
 }

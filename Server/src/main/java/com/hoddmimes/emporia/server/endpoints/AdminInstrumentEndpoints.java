@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server.endpoints;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
@@ -107,6 +108,12 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                     String tUnit           = unitOf(tInst);
                     String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, true);
                     if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
+                    InstrumentCache.OrderLimits tLimits = new InstrumentCache.OrderLimits(
+                            Math.round((tInst.has("maxOrderQuantity") ? tInst.get("maxOrderQuantity").getAsDouble() : 0.0) * 100000),
+                            Math.round((tInst.has("maxOrderValue")    ? tInst.get("maxOrderValue").getAsDouble()    : 0.0) * 100000),
+                            Math.round((tInst.has("priceBand")        ? tInst.get("priceBand").getAsDouble()        : 0.0) * 100000));
+                    if (tErr == null && (tLimits.maxOrderQuantity() < 0 || tLimits.maxOrderValue() < 0 || tLimits.priceBand() < 0))
+                        tErr = "maxOrderQuantity, maxOrderValue and priceBand must be 0 or more";
                     if (tErr != null) {
                         tResult.addProperty("status", "ERROR"); tResult.addProperty("message", tErr);
                         tResults.add(tResult); continue;
@@ -114,7 +121,7 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
                     long tId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
                     String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tId, tMarketId, tName, tInstType,
                             tTickSize, tLotSize, tIsin, tTradingStatus, tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
-                            tCurrency, tUnit));
+                            tCurrency, tUnit, tLimits));
                     mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
                     tResult.addProperty("status", "OK");
                     tResults.add(tResult);
@@ -180,10 +187,14 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, true);
             if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
+            InstrumentCache.OrderLimits tLimits = InstrumentCache.OrderLimits.fromJson(tBody);
+            if (tLimits == null) {
+                ctx.status(400).json("{\"error\":\"maxOrderQuantity, maxOrderValue and priceBand must be numbers, 0 or more\"}"); return;
+            }
             long tInstrumentId = mCtx.instrumentCache.nextInstrumentId(tMarketId);
             String tDatabaseId = mCtx.database.createInstrument(new InstrumentEntry(tInstrumentId, tMarketId, tName, tInstType,
                     tTickSize, tLotSize, tIsin, "ACTIVE", tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
-                    tCurrency, tUnit));
+                    tCurrency, tUnit, tLimits));
             mCtx.instrumentCache.putInstrument(mCtx.database.getInstrument(tDatabaseId).value());
             ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
         });
@@ -218,11 +229,15 @@ public class AdminInstrumentEndpoints implements RestEndpoint {
             String tErr = validateInstrument(tInstType, tExpirationDate, tStrikePrice, tUnderlying, tOptionType, false);
             if (tErr == null) tErr = validateCurrencyUnit(tCurrency, tUnit);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
+            InstrumentCache.OrderLimits tLimits = InstrumentCache.OrderLimits.fromJson(tBody);
+            if (tLimits == null) {
+                ctx.status(400).json("{\"error\":\"maxOrderQuantity, maxOrderValue and priceBand must be numbers, 0 or more\"}"); return;
+            }
             try {
                 String tDatabaseId = ctx.pathParam("id");
                 mCtx.database.updateInstrument(tDatabaseId, new InstrumentEntry(0, tMarketId, tName, tInstType,
                         tTickSize, tLotSize, tIsin, "", tExpirationDate, tStrikePrice, tUnderlying, tOptionType,
-                        tCurrency, tUnit));
+                        tCurrency, tUnit, tLimits));
                 putInstrument(tDatabaseId);
                 ctx.json("{\"success\":true}");
             } catch (IllegalArgumentException e) {

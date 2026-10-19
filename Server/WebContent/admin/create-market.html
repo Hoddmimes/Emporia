@@ -76,6 +76,27 @@
                             order that would trade with an order of its own firm has its rest cancelled.</div>
                     </div>
 
+                    <div class="form-group">
+                        <label for="f-maxOrderQuantity">Max Order Quantity
+                            <small style="font-weight:normal;color:var(--text-light);">(decimal, empty or 0 = no limit)</small>
+                        </label>
+                        <input type="number" id="f-maxOrderQuantity" step="any" min="0" placeholder="no limit">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-maxOrderValue">Max Order Value
+                            <small style="font-weight:normal;color:var(--text-light);">(price x quantity, empty or 0 = no limit)</small>
+                        </label>
+                        <input type="number" id="f-maxOrderValue" step="any" min="0" placeholder="no limit">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-priceBand">Price Band %
+                            <small style="font-weight:normal;color:var(--text-light);">(around the last trade price, empty or 0 = no limit)</small>
+                        </label>
+                        <input type="number" id="f-priceBand" step="any" min="0" placeholder="no limit">
+                        <div class="form-hint">Orders above the max quantity or value, or with a price further from the
+                            last trade price than the band, are rejected.</div>
+                    </div>
+
                     <!-- CONTINUOUS only -->
                     <div class="form-group" id="row-inverse" style="display:none;">
                         <label for="f-inverse">Inverse</label>
@@ -114,6 +135,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-limits.js"></script>
     <script>
         cdNav.render('create-market');
         cdSession.guard('user-info');
@@ -156,6 +178,7 @@
                 close:                document.getElementById('f-close').value.trim(),
                 inverse:              document.getElementById('f-inverse').checked,
                 selfTrade:            document.getElementById('f-selfTrade').checked,
+                ...cdLimits.read('f'),
                 preOpenTime:          document.getElementById('f-preOpenTime').value.trim(),
                 openAuctionTime:      document.getElementById('f-openAuctionTime').value.trim(),
                 auctionInterval:      document.getElementById('f-auctionInterval').value.trim(),

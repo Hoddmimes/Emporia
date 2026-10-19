@@ -112,6 +112,33 @@
                                    oninput="checkChanged()">
                         </span>
                     </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Max Order Quantity
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(decimal)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-maxOrderQuantity" class="field-input" step="any" min="0"
+                                   placeholder="market's" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Max Order Value
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(price x quantity)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-maxOrderValue" class="field-input" step="any" min="0"
+                                   placeholder="market's" oninput="checkChanged()">
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Price Band %
+                            <small style="font-weight:normal;color:var(--text-light);display:block;">(around the last trade price)</small>
+                        </span>
+                        <span class="detail-value">
+                            <input type="number" id="d-priceBand" class="field-input" step="any" min="0"
+                                   placeholder="market's" oninput="checkChanged()">
+                        </span>
+                    </div>
 
                     <!-- OPTION + FUTURE -->
                     <div class="detail-row" id="row-expirationDate">
@@ -173,6 +200,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-limits.js"></script>
     <script src="js/cd-currency.js"></script>
     <script>
         cdNav.render('list-instruments');
@@ -220,6 +248,7 @@
                 document.getElementById('d-lotSize').value        !== originalValues.lotSizeDisplay  ||
                 document.getElementById('d-currency').value !== originalValues.currency ||
                 document.getElementById('d-unit').value.trim()    !== originalValues.unit            ||
+                cdLimits.key('d')                                 !== originalValues.limits          ||
                 document.getElementById('d-expirationDate').value !== originalValues.expirationDate  ||
                 document.getElementById('d-strikePrice').value    !== originalValues.strikePriceDisplay ||
                 document.getElementById('d-underlying').value     !== originalValues.underlying      ||
@@ -269,6 +298,7 @@
                 document.getElementById('d-lotSize').value         = lotDisplay;
                 await cdCurrency.fill(document.getElementById('d-currency'), inst.currency || '');
                 document.getElementById('d-unit').value            = inst.unit           || '';
+                cdLimits.fill('d', inst);
                 document.getElementById('d-expirationDate').value  = inst.expirationDate || '';
                 document.getElementById('d-strikePrice').value     = strikeDisplay;
                 document.getElementById('d-underlying').value      = inst.underlying     || '';
@@ -286,6 +316,7 @@
                     lotSizeDisplay:    lotDisplay,
                     currency:          inst.currency       || '',
                     unit:              inst.unit           || '',
+                    limits:            cdLimits.key('d'),
                     expirationDate:    inst.expirationDate || '',
                     strikePriceDisplay:strikeDisplay,
                     underlying:        inst.underlying     || '',
@@ -306,6 +337,7 @@
                 lotSize:        toInternal(document.getElementById('d-lotSize').value),
                 currency:       document.getElementById('d-currency').value,
                 unit:           document.getElementById('d-unit').value.trim(),
+                ...cdLimits.read('d'),
                 expirationDate: document.getElementById('d-expirationDate').value,
                 strikePrice:    toInternal(document.getElementById('d-strikePrice').value),
                 underlying:     document.getElementById('d-underlying').value.trim(),
@@ -325,6 +357,7 @@
                     lotSizeDisplay:    document.getElementById('d-lotSize').value,
                     currency:          body.currency,
                     unit:              body.unit,
+                    limits:            cdLimits.key('d'),
                     expirationDate:    body.expirationDate,
                     strikePriceDisplay:document.getElementById('d-strikePrice').value,
                     underlying:        body.underlying,

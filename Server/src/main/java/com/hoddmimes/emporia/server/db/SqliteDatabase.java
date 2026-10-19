@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.InstrumentCache.MarketEntry;
+import com.hoddmimes.emporia.server.InstrumentCache.OrderLimits;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import com.hoddmimes.emporia.server.me.InternalTrade;
 import com.hoddmimes.emporia.server.me.Order;
@@ -56,7 +57,8 @@ public class SqliteDatabase implements Database {
         """
         CREATE TABLE IF NOT EXISTS Markets (id TEXT PRIMARY KEY, marketId INTEGER NOT NULL, name TEXT,
             description TEXT, type TEXT, open TEXT, close TEXT, inverse INTEGER, preOpenTime TEXT,
-            openAuctionTime TEXT, auctionInterval TEXT, randomAuctionInterval TEXT, tradingStatus TEXT, selfTrade INTEGER)""",
+            openAuctionTime TEXT, auctionInterval TEXT, randomAuctionInterval TEXT, tradingStatus TEXT, selfTrade INTEGER,
+            maxOrderQuantity INTEGER, maxOrderValue INTEGER, priceBand INTEGER)""",
         "CREATE INDEX IF NOT EXISTS Markets_marketId ON Markets (marketId)",
         """
         CREATE TABLE IF NOT EXISTS BulletinMarkets (id TEXT PRIMARY KEY, marketId INTEGER NOT NULL, name TEXT,
@@ -71,7 +73,7 @@ public class SqliteDatabase implements Database {
         CREATE TABLE IF NOT EXISTS Instruments (id TEXT PRIMARY KEY, instrumentId TEXT NOT NULL,
             marketId INTEGER, name TEXT, instType TEXT, tickSize INTEGER, lotSize INTEGER, tradingStatus TEXT,
             isin TEXT, expirationDate TEXT, strikePrice INTEGER, underlying TEXT, optionType TEXT,
-            currency TEXT, unit TEXT)""",
+            currency TEXT, unit TEXT, maxOrderQuantity INTEGER, maxOrderValue INTEGER, priceBand INTEGER)""",
         "CREATE INDEX IF NOT EXISTS Instruments_marketId ON Instruments (marketId)",
         "CREATE INDEX IF NOT EXISTS Instruments_instrumentId ON Instruments (instrumentId)",
         "CREATE TABLE IF NOT EXISTS Authorization (id TEXT PRIMARY KEY, firm TEXT NOT NULL, market TEXT NOT NULL)",
@@ -114,6 +116,12 @@ public class SqliteDatabase implements Database {
         { "Markets", "selfTrade INTEGER" },
         { "Instruments", "currency TEXT" },
         { "Instruments", "unit TEXT" },
+        { "Markets", "maxOrderQuantity INTEGER" },
+        { "Markets", "maxOrderValue INTEGER" },
+        { "Markets", "priceBand INTEGER" },
+        { "Instruments", "maxOrderQuantity INTEGER" },
+        { "Instruments", "maxOrderValue INTEGER" },
+        { "Instruments", "priceBand INTEGER" },
     };
 
     /** Indexes on added columns, created after the columns. */
@@ -412,12 +420,18 @@ public class SqliteDatabase implements Database {
 
     // ── Markets ──────────────────────────────────────────────────────────
 
+    /** The order limits of a Markets or Instruments row (NULL in rows stored before them: 0, no limit). */
+    private static OrderLimits toLimits(ResultSet rs) throws SQLException {
+        return new OrderLimits(rs.getLong("maxOrderQuantity"), rs.getLong("maxOrderValue"), rs.getLong("priceBand"));
+    }
+
     private static MarketEntry toMarket(ResultSet rs) throws SQLException {
         return new MarketEntry(rs.getInt("marketId"), str(rs, "name"), str(rs, "description"), str(rs, "type"),
                 str(rs, "open"), str(rs, "close"), rs.getInt("inverse") != 0,
                 str(rs, "preOpenTime"), str(rs, "openAuctionTime"),
                 str(rs, "auctionInterval"), str(rs, "randomAuctionInterval"), str(rs, "tradingStatus"),
-                rs.getObject("selfTrade") == null || rs.getInt("selfTrade") != 0);   // NULL in markets stored before: allowed
+                rs.getObject("selfTrade") == null || rs.getInt("selfTrade") != 0,    // NULL in markets stored before: allowed
+                toLimits(rs));
     }
 
     @Override
@@ -435,11 +449,12 @@ public class SqliteDatabase implements Database {
         String tId = DatabaseIds.newId();
         update("""
                 INSERT INTO Markets (id, marketId, name, description, type, open, close, inverse, preOpenTime,
-                    openAuctionTime, auctionInterval, randomAuctionInterval, tradingStatus, selfTrade)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    openAuctionTime, auctionInterval, randomAuctionInterval, tradingStatus, selfTrade,
+                    maxOrderQuantity, maxOrderValue, priceBand)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 tId, m.marketId(), m.name(), m.description(), m.type(), m.open(), m.close(), m.inverse(),
                 m.preOpenTime(), m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(),
-                m.selfTrade());
+                m.selfTrade(), m.limits().maxOrderQuantity(), m.limits().maxOrderValue(), m.limits().priceBand());
         return tId;
     }
 
@@ -449,10 +464,12 @@ public class SqliteDatabase implements Database {
         update("""
                 UPDATE Markets SET name = CASE WHEN ? = '' THEN name ELSE ? END, description = ?, type = ?, open = ?,
                     close = ?, inverse = ?, preOpenTime = ?, openAuctionTime = ?, auctionInterval = ?,
-                    randomAuctionInterval = ?, tradingStatus = ?, selfTrade = ?
+                    randomAuctionInterval = ?, tradingStatus = ?, selfTrade = ?,
+                    maxOrderQuantity = ?, maxOrderValue = ?, priceBand = ?
                 WHERE id = ?""",
                 m.name(), m.name(), m.description(), m.type(), m.open(), m.close(), m.inverse(), m.preOpenTime(),
-                m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(), m.selfTrade(), tId);
+                m.openAuctionTime(), m.auctionInterval(), m.randomAuctionInterval(), m.tradingStatus(), m.selfTrade(),
+                m.limits().maxOrderQuantity(), m.limits().maxOrderValue(), m.limits().priceBand(), tId);
     }
 
     @Override
@@ -557,7 +574,7 @@ public class SqliteDatabase implements Database {
         return new InstrumentEntry(tInstrumentId, rs.getInt("marketId"), str(rs, "name"), str(rs, "instType"),
                 rs.getLong("tickSize"), rs.getLong("lotSize"), str(rs, "isin"), str(rs, "tradingStatus"),
                 str(rs, "expirationDate"), rs.getLong("strikePrice"), str(rs, "underlying"), str(rs, "optionType"),
-                str(rs, "currency"), str(rs, "unit"));
+                str(rs, "currency"), str(rs, "unit"), toLimits(rs));
     }
 
     @Override
@@ -575,11 +592,12 @@ public class SqliteDatabase implements Database {
         String tId = DatabaseIds.newId();
         update("""
                 INSERT INTO Instruments (id, instrumentId, marketId, name, instType, tickSize, lotSize, tradingStatus,
-                    isin, expirationDate, strikePrice, underlying, optionType, currency, unit)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    isin, expirationDate, strikePrice, underlying, optionType, currency, unit,
+                    maxOrderQuantity, maxOrderValue, priceBand)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 tId, String.valueOf(i.instrumentId()), i.marketId(), i.name(), i.instType(), i.tickSize(), i.lotSize(),
                 i.tradingStatus(), i.isin(), i.expirationDate(), i.strikePrice(), i.underlying(), i.optionType(),
-                i.currency(), i.unit());
+                i.currency(), i.unit(), i.limits().maxOrderQuantity(), i.limits().maxOrderValue(), i.limits().priceBand());
         return tId;
     }
 
@@ -589,10 +607,11 @@ public class SqliteDatabase implements Database {
         update("""
                 UPDATE Instruments SET name = CASE WHEN ? = '' THEN name ELSE ? END, marketId = ?, instType = ?,
                     tickSize = ?, lotSize = ?, isin = ?, expirationDate = ?, strikePrice = ?, underlying = ?, optionType = ?,
-                    currency = ?, unit = ?
+                    currency = ?, unit = ?, maxOrderQuantity = ?, maxOrderValue = ?, priceBand = ?
                 WHERE id = ?""",
                 i.name(), i.name(), i.marketId(), i.instType(), i.tickSize(), i.lotSize(), i.isin(), i.expirationDate(),
-                i.strikePrice(), i.underlying(), i.optionType(), i.currency(), i.unit(), tId);
+                i.strikePrice(), i.underlying(), i.optionType(), i.currency(), i.unit(),
+                i.limits().maxOrderQuantity(), i.limits().maxOrderValue(), i.limits().priceBand(), tId);
     }
 
     @Override

@@ -82,3 +82,4 @@ This document outline what is being worked on and at the same time shows a timel
 * 26-10-18 Instrument currency and unit: set in the admin instrument pages and the bulk load, shown in the trading price table, order dialog, order book, trade popup and portfolio (totals per currency)
 * 26-10-18 MongoDB indexes for the portfolio: Trades instrumentId (last price), BulletinTrades buyAccount/sellAccount (a firm's bulletin trades) and marketId+instrument (last bulletin price), as SQLite already had
 * 26-10-18 Positions in memory (PositionCache): loaded from all stored trades at startup, updated by the TradePersister and BulletinBoard as each trade is stored; GET /api/portfolio reads no database
+* 26-10-19 Pre-trade order limits: max order quantity, max order value and a price band around the last trade price, per market with instrument overrides (0 = no check)

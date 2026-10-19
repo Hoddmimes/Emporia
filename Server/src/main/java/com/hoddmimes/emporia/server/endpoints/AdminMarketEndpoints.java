@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.hoddmimes.emporia.server.InstrumentCache.MarketEntry;
+import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.RestApiContext;
 import io.javalin.Javalin;
 
@@ -51,9 +52,13 @@ public class AdminMarketEndpoints implements RestEndpoint {
             String tErr = validateMarket(tType, tOpen, tClose,
                     tPreOpenTime, tOpenAuctionTime, tAuctionInterval, tRandomAuctionInterval, true);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
+            InstrumentCache.OrderLimits tLimits = InstrumentCache.OrderLimits.fromJson(tBody);
+            if (tLimits == null) {
+                ctx.status(400).json("{\"error\":\"maxOrderQuantity, maxOrderValue and priceBand must be numbers, 0 or more\"}"); return;
+            }
             String tDatabaseId = mCtx.database.createMarket(new MarketEntry(tMarketId, tName, tDescription, tType,
                     tOpen, tClose, tInverse, tPreOpenTime, tOpenAuctionTime,
-                    tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade));
+                    tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade, tLimits));
             mCtx.instrumentCache.putMarket(mCtx.database.getMarket(tDatabaseId).value());
             mCtx.refreshClientAuthorizations();   // firms authorized for "*" get the new market
             ctx.status(201).json("{\"databaseId\":\"" + tDatabaseId + "\"}");
@@ -89,11 +94,15 @@ public class AdminMarketEndpoints implements RestEndpoint {
             String tErr = validateMarket(tType, tOpen, tClose,
                     tPreOpenTime, tOpenAuctionTime, tAuctionInterval, tRandomAuctionInterval, false);
             if (tErr != null) { ctx.status(400).json("{\"error\":\"" + tErr + "\"}"); return; }
+            InstrumentCache.OrderLimits tLimits = InstrumentCache.OrderLimits.fromJson(tBody);
+            if (tLimits == null) {
+                ctx.status(400).json("{\"error\":\"maxOrderQuantity, maxOrderValue and priceBand must be numbers, 0 or more\"}"); return;
+            }
             try {
                 String tDatabaseId = ctx.pathParam("id");
                 mCtx.database.updateMarket(tDatabaseId, new MarketEntry(0, tName, tDescription, tType,
                         tOpen, tClose, tInverse, tPreOpenTime, tOpenAuctionTime,
-                        tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade));
+                        tAuctionInterval, tRandomAuctionInterval, tTradingStatus, tSelfTrade, tLimits));
                 var tMarket = mCtx.database.getMarket(tDatabaseId);
                 if (tMarket != null) mCtx.instrumentCache.putMarket(tMarket.value());
                 ctx.json("{\"success\":true}");

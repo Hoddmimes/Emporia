@@ -86,6 +86,27 @@
                         <input type="text" id="f-unit" placeholder="e.g. t, MWh, bbl" maxlength="16">
                     </div>
 
+                    <div class="form-group">
+                        <label for="f-maxOrderQuantity">Max Order Quantity
+                            <small style="font-weight:normal;color:var(--text-light);">(decimal, empty or 0 = market's)</small>
+                        </label>
+                        <input type="number" id="f-maxOrderQuantity" step="any" min="0" placeholder="market's">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-maxOrderValue">Max Order Value
+                            <small style="font-weight:normal;color:var(--text-light);">(price x quantity, empty or 0 = market's)</small>
+                        </label>
+                        <input type="number" id="f-maxOrderValue" step="any" min="0" placeholder="market's">
+                    </div>
+                    <div class="form-group">
+                        <label for="f-priceBand">Price Band %
+                            <small style="font-weight:normal;color:var(--text-light);">(around the last trade price, empty or 0 = market's)</small>
+                        </label>
+                        <input type="number" id="f-priceBand" step="any" min="0" placeholder="market's">
+                        <div class="form-hint">Orders above the max quantity or value, or with a price further from the
+                            last trade price than the band, are rejected. Empty: the market's limit applies.</div>
+                    </div>
+
                     <!-- OPTION + FUTURE fields -->
                     <div id="row-expirationDate" style="display:none;" class="form-group">
                         <label for="f-expirationDate">Expiration Date <span style="color:var(--error)">*</span></label>
@@ -125,6 +146,7 @@
     <script src="js/cd-session.js"></script>
     <script src="js/cd-api.js"></script>
     <script src="js/cd-nav.js"></script>
+    <script src="js/cd-limits.js"></script>
     <script src="js/cd-currency.js"></script>
     <script>
         cdNav.render('create-instrument');
@@ -183,6 +205,7 @@
                 lotSize:        toInternalPrice(document.getElementById('f-lotSize').value),
                 currency:       document.getElementById('f-currency').value,
                 unit:           document.getElementById('f-unit').value.trim(),
+                ...cdLimits.read('f'),
                 expirationDate: document.getElementById('f-expirationDate').value,
                 strikePrice:    toInternalPrice(document.getElementById('f-strikePrice').value),
                 underlying:     document.getElementById('f-underlying').value.trim(),

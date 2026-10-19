@@ -36,13 +36,63 @@ public class InstrumentCache {
 
     // ── Value types ───────────────────────────────────────────────────────
 
+    /**
+     * Pre-trade limits for an order, checked by the matching engine when an order is added or modified.
+     * All scaled longs like prices (MatchingEngine.SCALE): maxOrderQuantity, maxOrderValue (price x quantity,
+     * in the instrument's currency) and priceBand, a percentage (10% = 10 * SCALE) around the reference price.
+     * 0 means: on a market no check, on an instrument the market's value.
+     */
+    public record OrderLimits(long maxOrderQuantity, long maxOrderValue, long priceBand) {
+
+        public static final OrderLimits NONE = new OrderLimits(0, 0, 0);
+
+        /** These limits with each 0 replaced by the default's value (an instrument's limits over its market's). */
+        public OrderLimits orElse(OrderLimits pDefault) {
+            return new OrderLimits(maxOrderQuantity > 0 ? maxOrderQuantity : pDefault.maxOrderQuantity,
+                                   maxOrderValue    > 0 ? maxOrderValue    : pDefault.maxOrderValue,
+                                   priceBand        > 0 ? priceBand        : pDefault.priceBand);
+        }
+
+        public void addTo(JsonObject pJson) {
+            pJson.addProperty("maxOrderQuantity", maxOrderQuantity);
+            pJson.addProperty("maxOrderValue",    maxOrderValue);
+            pJson.addProperty("priceBand",        priceBand);
+        }
+
+        /** Reads the three fields (scaled longs, absent = 0); null if one is negative or not a number. */
+        public static OrderLimits fromJson(JsonObject pJson) {
+            try {
+                long tQuantity = pJson.has("maxOrderQuantity") ? pJson.get("maxOrderQuantity").getAsLong() : 0;
+                long tValue    = pJson.has("maxOrderValue")    ? pJson.get("maxOrderValue").getAsLong()    : 0;
+                long tBand     = pJson.has("priceBand")        ? pJson.get("priceBand").getAsLong()        : 0;
+                return (tQuantity < 0 || tValue < 0 || tBand < 0) ? null : new OrderLimits(tQuantity, tValue, tBand);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+    }
+
     public record MarketEntry(int marketId, String name, String description, String type,
                               String open, String close, boolean inverse,
                               String preOpenTime, String openAuctionTime,
                               String auctionInterval, String randomAuctionInterval,
-                              String tradingStatus, boolean selfTrade) {
+                              String tradingStatus, boolean selfTrade, OrderLimits limits) {
 
-        /** A market that allows self-trade (the default). */
+        public MarketEntry {
+            if (limits == null) limits = OrderLimits.NONE;
+        }
+
+        /** A market without order limits. */
+        public MarketEntry(int marketId, String name, String description, String type,
+                           String open, String close, boolean inverse,
+                           String preOpenTime, String openAuctionTime,
+                           String auctionInterval, String randomAuctionInterval,
+                           String tradingStatus, boolean selfTrade) {
+            this(marketId, name, description, type, open, close, inverse, preOpenTime, openAuctionTime,
+                 auctionInterval, randomAuctionInterval, tradingStatus, selfTrade, OrderLimits.NONE);
+        }
+
+        /** A market that allows self-trade (the default), without order limits. */
         public MarketEntry(int marketId, String name, String description, String type,
                            String open, String close, boolean inverse,
                            String preOpenTime, String openAuctionTime,
@@ -68,6 +118,7 @@ public class InstrumentCache {
             j.addProperty("randomAuctionInterval", randomAuctionInterval);
             j.addProperty("tradingStatus",         tradingStatus);
             j.addProperty("selfTrade",             selfTrade);
+            limits.addTo(j);
             return j;
         }
     }
@@ -75,7 +126,21 @@ public class InstrumentCache {
     public record InstrumentEntry(long instrumentId, int marketId, String name, String instType,
                                   long tickSize, long lotSize, String isin, String tradingStatus,
                                   String expirationDate, long strikePrice,
-                                  String underlying, String optionType, String currency, String unit) {
+                                  String underlying, String optionType, String currency, String unit,
+                                  OrderLimits limits) {
+
+        public InstrumentEntry {
+            if (limits == null) limits = OrderLimits.NONE;
+        }
+
+        /** Without order limits (the market's apply). */
+        public InstrumentEntry(long instrumentId, int marketId, String name, String instType,
+                               long tickSize, long lotSize, String isin, String tradingStatus,
+                               String expirationDate, long strikePrice, String underlying, String optionType,
+                               String currency, String unit) {
+            this(instrumentId, marketId, name, instType, tickSize, lotSize, isin, tradingStatus,
+                 expirationDate, strikePrice, underlying, optionType, currency, unit, OrderLimits.NONE);
+        }
 
         /** Without currency and unit. */
         public InstrumentEntry(long instrumentId, int marketId, String name, String instType,
@@ -101,6 +166,7 @@ public class InstrumentCache {
             j.addProperty("optionType",     optionType);
             j.addProperty("currency",       currency);
             j.addProperty("unit",           unit);
+            limits.addTo(j);
             return j;
         }
     }

@@ -1,6 +1,7 @@
 package com.hoddmimes.emporia.server.db;
 
 import com.google.gson.JsonObject;
+import com.hoddmimes.emporia.server.InstrumentCache;
 import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.InstrumentCache.MarketEntry;
 import com.hoddmimes.emporia.server.PositionCache;
@@ -190,6 +191,13 @@ abstract class DatabaseContractTest {
         String tNoSelfTrade = mDb.createMarket(new MarketEntry(3, "NoSelf", "", "CONTINUOUS", "", "", false, "", "", "", "", "CLOSED", false));
         assertFalse(mDb.getMarket(tNoSelfTrade).value().selfTrade());
         assertFalse(mDb.setMarketStatus(3, "OPEN").selfTrade());
+
+        // Order limits: none by default, stored on create and update
+        assertEquals(InstrumentCache.OrderLimits.NONE, mDb.getMarket(tNoSelfTrade).value().limits());
+        InstrumentCache.OrderLimits tLimits = new InstrumentCache.OrderLimits(100 * S, 5000 * S, 10 * S);
+        mDb.updateMarket(tNoSelfTrade, new MarketEntry(0, "", "", "CONTINUOUS", "", "", false, "", "", "", "", "CLOSED", false, tLimits));
+        assertEquals(tLimits, mDb.getMarket(tNoSelfTrade).value().limits());
+        assertEquals(tLimits, mDb.setMarketStatus(3, "CLOSED").limits());
         mDb.deleteMarket(tNoSelfTrade);
 
         assertEquals("OPEN", mDb.setMarketStatus(1, "OPEN").tradingStatus());
@@ -243,6 +251,9 @@ abstract class DatabaseContractTest {
         mDb.updateInstrument(tId, new InstrumentEntry(0, 1, "", "COMMODITY", S, S, "", "", "", 0, "", "", "SEK", "bushel"));
         assertEquals(new InstrumentEntry(tWheat, 1, "WHEAT", "COMMODITY", S, S, "", "ACTIVE", "", 0, "", "", "SEK", "bushel"),
                 mDb.getInstrument(tId).value());
+        InstrumentCache.OrderLimits tLimits = new InstrumentCache.OrderLimits(S, 0, S / 2);
+        mDb.updateInstrument(tId, new InstrumentEntry(0, 1, "", "COMMODITY", S, S, "", "", "", 0, "", "", "SEK", "bushel", tLimits));
+        assertEquals(tLimits, mDb.getInstrument(tId).value().limits());
         mDb.updateInstrumentStatus(tId, "SUSPENDED");
         assertEquals("SUSPENDED", mDb.getInstrument(tId).value().tradingStatus());
 

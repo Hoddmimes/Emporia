@@ -266,6 +266,13 @@ updated the next time they reload the page.</p>
         and the rest of it is cancelled (the trader's popup says so); in an auction, or the uncross at Open, the
         later of two crossing orders of the same firm is removed. Can be changed at any time; it applies to the
         next order.</td></tr>
+    <tr><td>Max Order Quantity, Max Order Value, Price Band %</td><td>Optional order limits, checked when an order
+        is entered or changed; empty or 0 means no check (the default). An order with a larger quantity, or a
+        larger value (price &times; quantity, in the instrument's currency), is rejected. With a price band, the
+        price must be within that percentage of the reference price: today's last trade price, or if the
+        instrument has not traded today its latest trade price on an earlier day (no check if it never traded).
+        Example: band 10, last price 200: prices from 180 to 220 are accepted. The limits apply to every
+        instrument in the market that has no limit of its own, and to the next order.</td></tr>
     <tr><td>Inverse, Open Auction Time</td><td>Continuous only. Stored with the market but not used by the trading engine.</td></tr>
 </table>
 <figure class="form">
@@ -480,6 +487,8 @@ changed, but they can be deleted. Click the name to open the instrument.</p>
         the most common ones are at the top of the list.</td></tr>
     <tr><td>Unit</td><td>Optional. The unit of the quantity, up to 16 characters, such as <code>t</code>,
         <code>MWh</code> or <code>bbl</code>. Both are shown to the traders with the instrument.</td></tr>
+    <tr><td>Max Order Quantity, Max Order Value, Price Band %</td><td>Optional, as for the market. A value set
+        here replaces the market's for this instrument; empty or 0 means the market's limit applies.</td></tr>
     <tr><td>Expiration Date, Strike Price, Underlying</td><td>Required for FUTURE and OPTION. Option Type (CALL or PUT) is required for OPTION.</td></tr>
 </table>
 <figure class="form">
@@ -516,7 +525,8 @@ instruments to delete; either may be left out:</p>
 <ul>
     <li><b>ADD</b>: <code>ID</code> is the instrument's name. <code>market</code> is the market's name or
         number. The other fields are those of Create Instrument: <code>instType</code>, <code>tickSize</code>,
-        <code>lotSize</code>, <code>currency</code> (an ISO 4217 code), <code>unit</code>, <code>isin</code>, <code>expirationDate</code>, <code>strikePrice</code>,
+        <code>lotSize</code>, <code>currency</code> (an ISO 4217 code), <code>unit</code>, <code>maxOrderQuantity</code>,
+        <code>maxOrderValue</code>, <code>priceBand</code> (a percentage), <code>isin</code>, <code>expirationDate</code>, <code>strikePrice</code>,
         <code>underlying</code>, <code>optionType</code>, and <code>tradingStatus</code>
         (SUSPENDED, otherwise the instrument is ACTIVE). Prices and sizes are decimals.</li>
     <li><b>DELETE</b>: <code>ID</code> is the instrument's number, as stored in the database (the market's

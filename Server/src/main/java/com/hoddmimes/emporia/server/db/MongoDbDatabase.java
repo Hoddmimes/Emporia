@@ -3,6 +3,7 @@ package com.hoddmimes.emporia.server.db;
 import com.google.gson.JsonObject;
 import com.hoddmimes.emporia.server.InstrumentCache.InstrumentEntry;
 import com.hoddmimes.emporia.server.InstrumentCache.MarketEntry;
+import com.hoddmimes.emporia.server.InstrumentCache.OrderLimits;
 import com.hoddmimes.emporia.server.bulletin.BulletinMarket;
 import com.hoddmimes.emporia.server.me.AddOrderRequest;
 import com.hoddmimes.emporia.server.me.InternalTrade;
@@ -282,6 +283,18 @@ public class MongoDbDatabase implements Database {
 
     // ── Markets ──────────────────────────────────────────────────────────
 
+    /** The order limits of a Markets or Instruments document (absent in those stored before them: 0, no limit). */
+    private static OrderLimits toLimits(Document pDoc) {
+        return new OrderLimits(lng(pDoc, "maxOrderQuantity"), lng(pDoc, "maxOrderValue"), lng(pDoc, "priceBand"));
+    }
+
+    /** Adds the order limits' fields to pDoc and returns it. */
+    private static Document withLimits(Document pDoc, OrderLimits pLimits) {
+        return pDoc.append("maxOrderQuantity", pLimits.maxOrderQuantity())
+                   .append("maxOrderValue",    pLimits.maxOrderValue())
+                   .append("priceBand",        pLimits.priceBand());
+    }
+
     /** Maps a Markets document; null if it has no marketId. */
     static MarketEntry toMarket(Document pDoc) {
         Integer tMarketId = pDoc.getInteger("marketId");
@@ -293,12 +306,12 @@ public class MongoDbDatabase implements Database {
                 str(pDoc, "open"), str(pDoc, "close"), tInverse != null && tInverse,
                 str(pDoc, "preOpenTime"), str(pDoc, "openAuctionTime"),
                 str(pDoc, "auctionInterval"), str(pDoc, "randomAuctionInterval"),
-                str(pDoc, "tradingStatus"), tSelfTrade == null || tSelfTrade);
+                str(pDoc, "tradingStatus"), tSelfTrade == null || tSelfTrade, toLimits(pDoc));
     }
 
     /** The fields of a market that an update writes (all but the marketId and name). */
     private static Document marketFields(MarketEntry m) {
-        return new Document("description",          m.description())
+        return withLimits(new Document("description",          m.description())
                 .append("type",                 m.type())
                 .append("open",                 m.open())
                 .append("close",                m.close())
@@ -308,7 +321,7 @@ public class MongoDbDatabase implements Database {
                 .append("auctionInterval",      m.auctionInterval())
                 .append("randomAuctionInterval",m.randomAuctionInterval())
                 .append("tradingStatus",        m.tradingStatus())
-                .append("selfTrade",            m.selfTrade());
+                .append("selfTrade",            m.selfTrade()), m.limits());
     }
 
     @Override
@@ -455,12 +468,12 @@ public class MongoDbDatabase implements Database {
                 lng(pDoc, "tickSize"), lng(pDoc, "lotSize"),
                 str(pDoc, "isin"), str(pDoc, "tradingStatus"), str(pDoc, "expirationDate"),
                 lng(pDoc, "strikePrice"), str(pDoc, "underlying"), str(pDoc, "optionType"),
-                str(pDoc, "currency"), str(pDoc, "unit"));
+                str(pDoc, "currency"), str(pDoc, "unit"), toLimits(pDoc));
     }
 
     /** The fields of an instrument that an update writes (all but the instrumentId, name and tradingStatus). */
     private static Document instrumentFields(InstrumentEntry i) {
-        return new Document("marketId",      i.marketId())
+        return withLimits(new Document("marketId",      i.marketId())
                 .append("instType",      i.instType())
                 .append("tickSize",      i.tickSize())
                 .append("lotSize",       i.lotSize())
@@ -470,7 +483,7 @@ public class MongoDbDatabase implements Database {
                 .append("underlying",    i.underlying())
                 .append("optionType",    i.optionType())
                 .append("currency",      i.currency())
-                .append("unit",          i.unit());
+                .append("unit",          i.unit()), i.limits());
     }
 
     @Override
