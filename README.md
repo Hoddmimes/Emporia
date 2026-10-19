@@ -3,6 +3,9 @@ _None AI text_
 # Emporia
 A market place system for trading commodities with fokus on simplicity and pragmatism.
 
+
+![](engine.png)
+
 ## Background
 This is just another AI slope project. The aim is to build a simple and pragmatic trading system 
 target low end /startup markets minimizing the implementation and deployment of a trading venue.
@@ -72,18 +75,18 @@ The server stores its data in **MongoDB or SQLite**, chosen by `database` in the
 There is no tool to move data between the two.
 
 ### Installation on Linux
-Download the installer [emporia-1.0-021.run](https://github.com/Hoddmimes/Emporia/raw/main/Server/emporia-1.0-021.run)
+Download the installer [emporia-1.0-030.run](https://github.com/Hoddmimes/Emporia/raw/main/Server/emporia-1.0-030.run)
 (about 40 MB) and run it as root:
 
 ```bash
-sudo bash emporia-1.0-021.run
+sudo bash emporia-1.0-030.run
 ```
 
 Java 21 or later must be installed. The installer asks for the installation directory (default
 `/opt/emporia`), the HTTPS port and the certificate and private key (PEM files), and starts the server as
 the systemd service `emporia` with an SQLite database. Running a newer installer on the same directory
 upgrades it and keeps the configuration and the data. The installed `README.txt` shows how to start, stop,
-enable and disable the service; `sudo bash emporia-1.0-021.run --help` lists the options.
+enable and disable the service; `sudo bash emporia-1.0-030.run --help` lists the options.
 
 ### Documentation
 - [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
