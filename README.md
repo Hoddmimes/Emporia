@@ -101,6 +101,45 @@ the systemd service `emporia` with an SQLite database. Running a newer installer
 upgrades it and keeps the configuration and the data. The installed `README.txt` shows how to start, stop,
 enable and disable the service; `sudo bash emporia-1.0-030.run --help` lists the options.
 
+**_Installing without root_**
+
+You can also install the server by hand as an ordinary user. It then runs as you and is not a system service:
+
+1. Unpack the files into a directory of your own. `--extract` does not need root:
+   ```bash
+   bash emporia-1.0-030.run --extract ~/emporia
+   ```
+   This gives you `emporia.jar`, `WebContent`, `log4j2.xml`, `README.txt` and `uninstall.sh`.
+   `uninstall.sh` is for the service installation only, so you can delete it.
+2. Put the certificate and private key there as `cert.pem` and `key.pem` (`chmod 600 key.pem`).
+3. Write `~/emporia/emporia.json`. Ports below 1024 need root, so use higher ones (e.g. 8443):
+   ```json
+   {
+     "sessionInactivityTime": "05:00",
+     "database": { "type": "sqlite", "file": "./emporia.db" },
+     "http_interface": {
+       "root": "./WebContent",
+       "interface": "0.0.0.0",
+       "https_port": "8443",
+       "ssl": { "cert": "./cert.pem", "key": "./key.pem" }
+     }
+   }
+   ```
+   To run without HTTPS, use `"http_port": "8080"` instead of `https_port` and leave out `ssl`.
+4. Start the server from that directory, since the paths in the config are relative to it (Java 21+):
+   ```bash
+   cd ~/emporia
+   nohup java -Demporia.console.level=WARN -Dlog4j2.configurationFile=log4j2.xml \
+         -jar emporia.jar -config emporia.json > emporia.out 2>&1 &
+   ```
+   The log is written to `server.log`. Stop the server with `kill <pid>` (SIGTERM), not `kill -9`: on
+   SIGTERM it stores the trades still queued before it exits. To start it at boot, use a systemd user
+   service (`~/.config/systemd/user/emporia.service` with the same `WorkingDirectory` and `ExecStart`,
+   then `systemctl --user enable --now emporia`). Without `loginctl enable-linger` the service stops when
+   you log out, and some systems need an administrator to enable lingering.
+5. To upgrade, stop the server, unpack the new installer into an empty directory and copy its
+   `emporia.jar` and `WebContent` over the old ones. Keep `emporia.json`, `emporia.db` and the PEM files.
+
 ### Documentation
 - [User guide](https://hoddmimes.com/emporia/user-guide.html): the web trading interface, with screenshots.
 - [Trading API](https://hoddmimes.com/emporia/api-doc.html): REST endpoints and WebSocket messages for developers.
