@@ -78,6 +78,19 @@ There is no tool to move data between the two.
 Download the installer [emporia-1.0-030.run](https://github.com/Hoddmimes/Emporia/raw/main/Server/emporia-1.0-030.run)
 (about 40 MB) and run it as root:
 
+**_Why Root?_**
+
+The installer sets the server up as a system service, which only root can do:
+- it creates the system user `emporia`, which the server runs as (never as root);
+- it installs into a system directory (default `/opt/emporia`) and sets the owners and permissions: the
+  program files belong to root, so the service can't change them, while the service writes the database
+  and the log, and only it (and root) can read the configuration and the private key;
+- it writes the systemd unit `/etc/systemd/system/emporia.service` and enables, starts and, on an upgrade,
+  stops the service with `systemctl`;
+- the unit gives the server the right to listen on ports below 1024 (e.g. 443) without being root.
+
+Root is only needed for the installation; the server itself runs as the unprivileged user `emporia`.
+
 ```bash
 sudo bash emporia-1.0-030.run
 ```
